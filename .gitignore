@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# Eval reports are committed on purpose (see fixtures/eval-runs/README.md).
+# Scratch runs are not.
+fixtures/eval-runs/scratch/

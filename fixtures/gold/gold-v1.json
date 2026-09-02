@@ -1,0 +1,27 @@
+{
+  "version": "gold-v1",
+  "frozen": false,
+  "frozenAt": null,
+  "ticketsDir": "../tickets/sample",
+  "notes": "Scaffold. The eleven fixture tickets are in place and a run against this set reports flag volume, category mix, and cost — but gaps and verdicts are empty, so precision and recall are undefined and every report will say so. Labels arrive from the week-5 blind-first labeling sessions; freeze this file the moment a number from it is reported anywhere. CART-08 is a deliberately well-specified control: a model that flags it is producing noise, and a gold set with no clean tickets cannot detect that.",
+  "reviewers": [
+    {
+      "id": "pending",
+      "role": "placeholder — no labeling session has run yet",
+      "independentOfPrompt": false
+    }
+  ],
+  "tickets": [
+    { "externalId": "PAY-142", "gaps": [], "verdicts": [] },
+    { "externalId": "AUTH-88", "gaps": [], "verdicts": [] },
+    { "externalId": "SEARCH-31", "gaps": [], "verdicts": [] },
+    { "externalId": "INV-204", "gaps": [], "verdicts": [] },
+    { "externalId": "ACCT-17", "gaps": [], "verdicts": [] },
+    { "externalId": "NOTIF-56", "gaps": [], "verdicts": [] },
+    { "externalId": "RPT-19", "gaps": [], "verdicts": [] },
+    { "externalId": "ONB-73", "gaps": [], "verdicts": [] },
+    { "externalId": "API-121", "gaps": [], "verdicts": [] },
+    { "externalId": "BILL-64", "gaps": [], "verdicts": [] },
+    { "externalId": "CART-08", "gaps": [], "verdicts": [] }
+  ]
+}

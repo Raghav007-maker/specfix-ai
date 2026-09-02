@@ -1,0 +1,7 @@
+key,title,description,acceptance_criteria,updated_at
+INV-204,Warn when stock is low,"Warehouse staff want a warning when a SKU is running low so they can reorder before it sells out. The threshold should probably be configurable, and someone needs to be notified.","- A warning is shown for low stock
+- The threshold can be changed
+- Someone is notified",2026-08-22T11:05:00Z
+ACCT-17,Let users delete their account,"We need to support account deletion for privacy reasons. When a user deletes their account their data should be removed. Orders may need to be kept for accounting.","- User can request deletion from settings
+- Account is deleted
+- User receives confirmation",2026-08-25T08:30:00Z

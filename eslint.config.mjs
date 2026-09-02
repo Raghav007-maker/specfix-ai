@@ -1,0 +1,35 @@
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/.next/**', 'coverage/**'] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/consistent-type-imports': 'error',
+      'no-console': 'off',
+      eqeqeq: ['error', 'always'],
+    },
+  },
+  {
+    // The repository layer is the only place allowed to build raw SQL against
+    // tenant tables. Everything else goes through it (README rule 4).
+    files: ['apps/**/*.ts', 'apps/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'pg',
+              message:
+                'Use @specfix/db repositories. Raw database clients are not allowed in apps/.',
+            },
+          ],
+        },
+      ],
+    },
+  }
+);

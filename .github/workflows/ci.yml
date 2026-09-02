@@ -1,0 +1,78 @@
+# CI for Phase 1.
+#
+# The Postgres service exists so migrations and the tenant-isolation test actually
+# execute. Without it those tests skip, and a skipped isolation test is how you ship
+# a cross-tenant read. Supabase is not available in CI, so packages/db/test/auth-shim.sql
+# stands in for the `auth` schema and `auth.uid()`.
+#
+# What is deliberately NOT here: `npm run eval -- run`. It costs money per invocation
+# and needs a real key. `eval validate` is the part that belongs in CI — it catches a
+# malformed gold set, which is the failure that would silently corrupt a metric.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: specfix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/specfix_test
+      # Analysis is never called in CI, but config validation reads these.
+      OPENAI_MODEL_EXTRACT: gpt-4o-mini
+      OPENAI_MODEL_JUDGE: gpt-4o-mini
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: format
+        run: npm run format:check
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: migrate
+        run: npm run db:migrate -- --shim
+
+      - name: test
+        run: npm test
+
+      - name: validate gold sets
+        run: npm run eval -- validate --set gold-v1
+
+      # A dependency advisory should be visible without failing the build on a
+      # transitive dev-only finding. Reviewed, not gated.
+      - name: audit
+        run: npm audit --audit-level=high
+        continue-on-error: true

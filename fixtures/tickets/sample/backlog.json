@@ -1,0 +1,16 @@
+[
+  {
+    "key": "AUTH-88",
+    "summary": "Add \"remember me\" to login",
+    "description": "Users complain they have to log in every time they open the app. Add a \"remember me\" checkbox on the login form so they stay signed in.\n\nShould work on mobile too.",
+    "acceptance_criteria": "- Checkbox appears on login form\n- When checked, the user stays logged in\n- When unchecked, behaviour is unchanged",
+    "updated_at": "2026-08-14T09:12:00Z"
+  },
+  {
+    "key": "SEARCH-31",
+    "summary": "Make product search faster",
+    "description": "Search feels slow on the category pages, especially for customers with large carts. We should make it faster. The team looked at this last quarter and thought caching would help.\n\nMarketing wants the top results to still be relevant, so don't break relevance.",
+    "acceptance_criteria": "- Search is noticeably faster\n- Results are still relevant\n- No regression in existing tests",
+    "updated_at": "2026-08-20T16:40:00Z"
+  }
+]

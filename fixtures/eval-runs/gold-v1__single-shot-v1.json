@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-01T08:49:00.558Z",
+  "goldSet": {
+    "version": "gold-v1",
+    "frozen": false,
+    "tickets": 11
+  },
+  "prompt": {
+    "name": "single-shot-v1",
+    "version": "single-shot-v1@2b2cda9dffb3"
+  },
+  "model": {
+    "id": "gpt-4o-mini-2024-07-18",
+    "temperature": 0,
+    "seed": 1337
+  },
+  "reviewerScope": [
+    "pending"
+  ],
+  "independentScope": false,
+  "tickets": {
+    "analyzed": 11,
+    "failed": 0
+  },
+  "flags": {
+    "produced": 15,
+    "real": 0,
+    "noise": 0,
+    "disputed": 0,
+    "unjudged": 15,
+    "perTicket": 1.36
+  },
+  "precision": {
+    "numerator": 0,
+    "denominator": 0,
+    "value": null,
+    "lower": null,
+    "upper": null
+  },
+  "recall": {
+    "numerator": 0,
+    "denominator": 0,
+    "value": null,
+    "lower": null,
+    "upper": null
+  },
+  "gaps": {
+    "total": 0,
+    "covered": 0
+  },
+  "agreement": null,
+  "byCategory": [
+    {
+      "category": "missing_info",
+      "produced": 15,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 15,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    },
+    {
+      "category": "vague_language",
+      "produced": 0,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 0,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    },
+    {
+      "category": "contradiction",
+      "produced": 0,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 0,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    },
+    {
+      "category": "edge_case",
+      "produced": 0,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 0,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    },
+    {
+      "category": "security_compliance",
+      "produced": 0,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 0,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    },
+    {
+      "category": "untestable",
+      "produced": 0,
+      "real": 0,
+      "noise": 0,
+      "unjudged": 0,
+      "precision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null,
+        "lower": null,
+        "upper": null
+      }
+    }
+  ],
+  "cost": {
+    "usd": 0.002952,
+    "usdPerTicket": 0.000268,
+    "inputTokens": 14542,
+    "outputTokens": 1284
+  },
+  "quality": {
+    "truncatedTickets": 0,
+    "unverifiedSpans": 0
+  },
+  "caveats": [
+    "Labels come from a reviewer who saw the prompt. Usable for iteration; not a headline precision claim.",
+    "15 of 15 flags (100%) have no recorded verdict. They are excluded from precision, and cannot yet be credited with covering a gap, so recall is a lower bound.",
+    "No reviewer gaps in scope, so recall is undefined. Run the blind-first labeling flow to populate them.",
+    "gold-v1 is not frozen. Labels can still change, so a metric shift may be the answer key moving."
+  ],
+  "failures": []
+}
