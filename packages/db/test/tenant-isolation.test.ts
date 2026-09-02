@@ -150,15 +150,10 @@ describe.skipIf(!hasDatabase)('cross-tenant isolation', () => {
   let b: World;
 
   beforeAll(async () => {
-    // The shim is idempotent on bare Postgres; on real Supabase auth already exists
-    // and is owned by supabase_admin, so applying the shim is skipped.
-    const [authExists] = await query<{ exists: boolean }>(
-      `select (to_regclass('auth.users') is not null) as exists`
-    );
-    if (!authExists?.exists) {
-      const shim = await readFile(resolve(import.meta.dirname, 'auth-shim.sql'), 'utf8');
-      await query(shim);
-    }
+    // The shim is idempotent; applying it here means the suite works against a bare
+    // local Postgres as well as CI.
+    const shim = await readFile(resolve(import.meta.dirname, 'auth-shim.sql'), 'utf8');
+    await query(shim);
     a = await makeWorld('alpha');
     b = await makeWorld('beta');
   }, 60_000);

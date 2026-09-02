@@ -57,6 +57,25 @@ export async function startSession(
   return session;
 }
 
+/**
+ * The reviewer's session for this version, or null if they have not started one.
+ *
+ * Separate from `startSession` because a page render must be able to ask "where is
+ * this reviewer up to?" without creating a session as a side effect of looking.
+ */
+export async function findSession(
+  tenantId: TenantId,
+  ticketVersionId: string,
+  reviewerId: string
+): Promise<LabelingSessionRow | null> {
+  const [session] = await query<LabelingSessionRow>(
+    `select ${SESSION_COLUMNS} from labeling_sessions
+     where tenant_id = $1 and ticket_version_id = $2 and reviewer_id = $3`,
+    [tenantId, ticketVersionId, reviewerId]
+  );
+  return session ?? null;
+}
+
 export async function addGap(
   tenantId: TenantId,
   sessionId: string,
@@ -171,6 +190,45 @@ export async function flagsForReveal(
 
     return { session: await loadSession(client, tenantId, sessionId), flags };
   });
+}
+
+/**
+ * The same gate as `flagsForReveal`, without the write.
+ *
+ * `flagsForReveal` is the *transition* — it stamps revealed_at and is called once,
+ * from an explicit reviewer action. This is the *read*, called on every subsequent
+ * render. Splitting them keeps a page load (or a router prefetch) from silently
+ * timestamping a reveal the reviewer never saw, while still re-checking the lock on
+ * every single read rather than trusting the caller to have checked it.
+ */
+export async function revealedFlags(
+  tenantId: TenantId,
+  sessionId: string
+): Promise<{ session: LabelingSessionRow; flags: FlagRow[] }> {
+  const [session] = await query<LabelingSessionRow>(
+    `select ${SESSION_COLUMNS} from labeling_sessions
+     where tenant_id = $1 and id = $2`,
+    [tenantId, sessionId]
+  );
+  if (!session) throw new LabelingOrderError(`no such labeling session: ${sessionId}`);
+
+  if (session.gaps_locked_at === null) {
+    throw new LabelingOrderError(
+      "model flags cannot be revealed before the reviewer's own gap list is locked"
+    );
+  }
+
+  const flags = await query<FlagRow>(
+    `select id, tenant_id, ticket_id, ticket_version_id, category, quoted_span,
+            what_unclear, why_it_matters, question_for_pm, severity, status,
+            edited_question, dedupe_key
+     from flags
+     where tenant_id = $1 and ticket_version_id = $2 and status <> 'stale'
+     order by array_position(array['high','medium','low'], severity), created_at`,
+    [tenantId, session.ticket_version_id]
+  );
+
+  return { session, flags };
 }
 
 /** Links one of the reviewer's gaps to a model flag that covers it. */

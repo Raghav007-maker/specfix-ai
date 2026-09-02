@@ -79,6 +79,30 @@ export async function listProjects(tenantId: TenantId): Promise<ProjectRow[]> {
   );
 }
 
+export interface MembershipRow {
+  tenant_id: string;
+  tenant_name: string;
+  role: 'owner' | 'admin' | 'reviewer';
+}
+
+/**
+ * The tenants a user belongs to. This is the one lookup that is legitimately
+ * user-scoped rather than tenant-scoped: it is how a signed-in reviewer discovers
+ * which tenant(s) they may act in before any tenant_id is known. It returns only
+ * tenants the user is actually a member of, so it cannot leak another tenant's
+ * existence. Every subsequent query is scoped by the tenant_id chosen from here.
+ */
+export async function listMembershipsForUser(userId: string): Promise<MembershipRow[]> {
+  return query<MembershipRow>(
+    `select m.tenant_id, t.name as tenant_name, m.role
+     from memberships m
+     join tenants t on t.id = m.tenant_id
+     where m.user_id = $1
+     order by t.name`,
+    [userId]
+  );
+}
+
 export type ReadinessEvent =
   'ticket_ingested' | 'analysis_complete' | 'all_flags_resolved' | 'marked_ready';
 
@@ -147,6 +171,33 @@ export async function listReadinessEvents(
      from readiness_events
      where tenant_id = $1 and ticket_id = $2
      order by occurred_at`,
+    [tenantId, ticketId]
+  );
+}
+
+export interface ReadinessTimelineRow extends ReadinessEventRow {
+  /** Null for system-generated events, which carry no user_id. */
+  user_email: string | null;
+}
+
+/**
+ * As listReadinessEvents, but resolves the actor's email for display.
+ *
+ * The join reaches into Supabase's auth.users. That is identity, not tenant data, and
+ * the ids being resolved came out of rows already scoped to this tenant — so no
+ * membership check is needed here and none is implied.
+ */
+export async function readinessTimeline(
+  tenantId: TenantId,
+  ticketId: string
+): Promise<ReadinessTimelineRow[]> {
+  return query<ReadinessTimelineRow>(
+    `select e.id, e.ticket_id, e.ticket_version_id, e.event, e.user_id,
+            e.backfilled, e.occurred_at, u.email as user_email
+     from readiness_events e
+     left join auth.users u on u.id = e.user_id
+     where e.tenant_id = $1 and e.ticket_id = $2
+     order by e.occurred_at`,
     [tenantId, ticketId]
   );
 }

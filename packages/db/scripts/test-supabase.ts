@@ -13,10 +13,13 @@ async function main() {
 
   // Test set_config with request.jwt.claim.sub
   const testId = '11111111-1111-1111-1111-111111111111';
-  const uidRes = await query(`
+  const uidRes = await query(
+    `
     select set_config('request.jwt.claim.sub', $1, true),
            auth.uid() as uid
-  `, [testId]);
+  `,
+    [testId]
+  );
   console.log('Result of auth.uid() after setting request.jwt.claim.sub:', uidRes);
 }
 

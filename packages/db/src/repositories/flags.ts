@@ -168,6 +168,35 @@ export async function listDecisionsForFlag(
   );
 }
 
+export interface TicketDecisionRow extends FlagDecisionRow {
+  user_email: string | null;
+  category: string;
+  question_for_pm: string;
+  severity: string;
+}
+
+/**
+ * Every decision ever recorded against any flag on a ticket, oldest first — the
+ * audit trail the review UI shows. Joined to the flag so the trail reads as
+ * "who decided what about which question" rather than as a list of uuids.
+ */
+export async function listDecisionsForTicket(
+  tenantId: TenantId,
+  ticketId: string
+): Promise<TicketDecisionRow[]> {
+  return query<TicketDecisionRow>(
+    `select d.id, d.flag_id, d.user_id, d.decision, d.edited_text, d.resolution_note,
+            d.created_at, u.email as user_email,
+            f.category, f.question_for_pm, f.severity
+     from flag_decisions d
+     join flags f on f.id = d.flag_id and f.tenant_id = d.tenant_id
+     left join auth.users u on u.id = d.user_id
+     where d.tenant_id = $1 and f.ticket_id = $2
+     order by d.created_at`,
+    [tenantId, ticketId]
+  );
+}
+
 /** Precision inputs straight from the database, for the metrics dashboard. */
 export interface PrecisionCounts {
   reviewed: number;

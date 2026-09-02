@@ -162,6 +162,130 @@ export async function listTicketsForProject(
   );
 }
 
+export interface TicketDetailRow {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  project_name: string;
+  external_id: string;
+  external_key: string;
+  title: string;
+  content_hash: string;
+}
+
+/**
+ * One ticket, or null when it does not exist *in this tenant* — which is the same
+ * answer, deliberately. A caller that treats null as 404 cannot be used to probe
+ * whether an id exists somewhere else.
+ */
+export async function getTicket(
+  tenantId: TenantId,
+  ticketId: string
+): Promise<TicketDetailRow | null> {
+  const [ticket] = await query<TicketDetailRow>(
+    `select t.id, t.tenant_id, t.project_id, p.name as project_name,
+            t.external_id, t.external_key, t.title, t.content_hash
+     from tickets t
+     join projects p on p.id = t.project_id and p.tenant_id = t.tenant_id
+     where t.tenant_id = $1 and t.id = $2`,
+    [tenantId, ticketId]
+  );
+  return ticket ?? null;
+}
+
+export interface TicketVersionDetail {
+  id: string;
+  ticket_id: string;
+  content_hash: string;
+  title: string;
+  description_text: string;
+  acceptance_criteria_text: string;
+  captured_at: Date;
+}
+
+/**
+ * The most recent version of a ticket — the one a reviewer acts on. Flags,
+ * labeling sessions, and readiness are all keyed to a version, so every page that
+ * shows a ticket resolves this first. Null when the ticket has no version yet
+ * (which ingest never produces, but a caller must not assume).
+ */
+export async function latestVersion(
+  tenantId: TenantId,
+  ticketId: string
+): Promise<TicketVersionDetail | null> {
+  const [version] = await query<TicketVersionDetail>(
+    `select id, ticket_id, content_hash, title, description_text,
+            acceptance_criteria_text, captured_at
+     from ticket_versions
+     where tenant_id = $1 and ticket_id = $2
+     order by captured_at desc
+     limit 1`,
+    [tenantId, ticketId]
+  );
+  return version ?? null;
+}
+
+export interface TicketQueueRow {
+  ticket_id: string;
+  external_key: string;
+  title: string;
+  latest_version_id: string | null;
+  total_flags: number;
+  open_flags: number;
+  analyzed: boolean;
+  ready: boolean;
+}
+
+/**
+ * The review queue for a project: one row per ticket, carrying the counts a
+ * reviewer needs to decide what to pick up next — how many flags are open on the
+ * current version, whether it has been analyzed at all, and whether it has already
+ * been marked ready. Counts are scoped to the latest version so resolved flags on
+ * superseded text never inflate the queue.
+ */
+export async function ticketQueue(
+  tenantId: TenantId,
+  projectId: string
+): Promise<TicketQueueRow[]> {
+  return query<TicketQueueRow>(
+    `with latest as (
+       select distinct on (v.ticket_id)
+         v.ticket_id, v.id as version_id, v.title
+       from ticket_versions v
+       where v.tenant_id = $1
+       order by v.ticket_id, v.captured_at desc
+     )
+     select
+       t.id as ticket_id,
+       t.external_key,
+       coalesce(l.title, t.title) as title,
+       l.version_id as latest_version_id,
+       coalesce(count(f.id) filter (where f.status <> 'stale'), 0)::int as total_flags,
+       coalesce(count(f.id) filter (where f.status = 'open'), 0)::int as open_flags,
+       exists (
+         select 1 from analysis_runs r
+         where r.tenant_id = t.tenant_id
+           and r.ticket_version_id = l.version_id
+           and r.status = 'succeeded'
+       ) as analyzed,
+       exists (
+         select 1 from readiness_events e
+         where e.tenant_id = t.tenant_id
+           and e.ticket_id = t.id
+           and e.ticket_version_id = l.version_id
+           and e.event = 'marked_ready'
+       ) as ready
+     from tickets t
+     left join latest l on l.ticket_id = t.id
+     left join flags f
+       on f.tenant_id = t.tenant_id and f.ticket_version_id = l.version_id
+     where t.tenant_id = $1 and t.project_id = $2
+     group by t.id, t.external_key, t.title, l.title, l.version_id
+     order by t.external_key`,
+    [tenantId, projectId]
+  );
+}
+
 async function rows<T extends QueryResultRow>(
   client: PoolClient,
   sql: string,

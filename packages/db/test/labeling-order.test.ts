@@ -28,6 +28,8 @@ import {
   linkGap,
   completeSession,
   listGaps,
+  findSession,
+  revealedFlags,
   recallCounts,
   doubleLabeledVersions,
 } from '../src/index.ts';
@@ -45,7 +47,7 @@ interface Fixture {
 async function setup(label: string): Promise<Fixture> {
   const tenant = await createTenant(`labeling-${label}`);
   const users = await query<{ id: string }>(
-    `insert into auth.users (id, email) values (gen_random_uuid(), $1), (gen_random_uuid(), $2) returning id`,
+    `insert into auth.users (email) values ($1), ($2) returning id`,
     [
       `${label}-a-${Math.random().toString(36).slice(2)}@example.test`,
       `${label}-b-${Math.random().toString(36).slice(2)}@example.test`,
@@ -112,15 +114,8 @@ describe.skipIf(!hasDatabase)('blind-first labeling order', () => {
   let f: Fixture;
 
   beforeAll(async () => {
-    // The shim is idempotent on bare Postgres; on real Supabase auth already exists
-    // and is owned by supabase_admin, so applying the shim is skipped.
-    const [authExists] = await query<{ exists: boolean }>(
-      `select (to_regclass('auth.users') is not null) as exists`
-    );
-    if (!authExists?.exists) {
-      const shim = await readFile(resolve(import.meta.dirname, 'auth-shim.sql'), 'utf8');
-      await query(shim);
-    }
+    const shim = await readFile(resolve(import.meta.dirname, 'auth-shim.sql'), 'utf8');
+    await query(shim);
     f = await setup('blind');
   }, 60_000);
 
@@ -242,4 +237,66 @@ describe.skipIf(!hasDatabase)('blind-first labeling order', () => {
     expect(await doubleLabeledVersions(f9.tenantId)).toEqual([f9.ticketVersionId]);
     // Two reviewers, one gap each: the denominator is 2, not 1. Deduplicating here
     // would silently discard the disagreement the overlap exists to measure.
-    expect((await recallCoun
+    expect((await recallCounts(f9.tenantId)).gaps).toBe(2);
+  });
+
+  // The dashboard re-reads flags on every render of the review page. It must go
+  // through a gate that is just as strict as the one guarding the transition, and it
+  // must not itself perform the reveal — otherwise merely loading (or prefetching) a
+  // page would stamp revealed_at for a reviewer who never saw anything.
+  describe('revealedFlags, the read-only gate the dashboard renders through', () => {
+    it('refuses to return flags before the gap list is locked', async () => {
+      const f10 = await setup('read-gate');
+      const session = await startSession(f10.tenantId, f10.ticketVersionId, f10.userId);
+      await addGap(f10.tenantId, session.id, 'no currency stated');
+
+      await expect(revealedFlags(f10.tenantId, session.id)).rejects.toThrow(
+        /before the reviewer's own gap list is locked/
+      );
+    });
+
+    it('does not reveal: reading never advances the session', async () => {
+      const f11 = await setup('read-no-write');
+      const session = await startSession(f11.tenantId, f11.ticketVersionId, f11.userId);
+      const gap = await addGap(f11.tenantId, session.id, 'no currency stated');
+      await lockGaps(f11.tenantId, session.id);
+
+      const read = await revealedFlags(f11.tenantId, session.id);
+      expect(read.flags).toHaveLength(1);
+      // Locked but never revealed: the stage and timestamp are untouched by the read.
+      expect(read.session.revealed_at).toBeNull();
+      expect(read.session.stage).toBe('reveal');
+
+      const stored = await findSession(f11.tenantId, f11.ticketVersionId, f11.userId);
+      expect(stored?.revealed_at).toBeNull();
+
+      // The proof that the read did not stand in for the transition: linking is still
+      // refused, because as far as the server is concerned the reveal has not happened.
+      await expect(linkGap(f11.tenantId, session.id, gap.id, f11.flagId)).rejects.toThrow(
+        /have not been revealed/
+      );
+    });
+
+    it('is scoped to the tenant, so another tenant cannot read a session', async () => {
+      const mine = await setup('read-mine');
+      const theirs = await setup('read-theirs');
+      const session = await startSession(mine.tenantId, mine.ticketVersionId, mine.userId);
+      await lockGaps(mine.tenantId, session.id);
+
+      await expect(revealedFlags(theirs.tenantId, session.id)).rejects.toThrow(
+        /no such labeling session/
+      );
+    });
+  });
+
+  describe('findSession', () => {
+    it('returns null instead of creating one, so a page render has no side effect', async () => {
+      const f12 = await setup('find');
+      expect(await findSession(f12.tenantId, f12.ticketVersionId, f12.userId)).toBeNull();
+
+      const started = await startSession(f12.tenantId, f12.ticketVersionId, f12.userId);
+      const found = await findSession(f12.tenantId, f12.ticketVersionId, f12.userId);
+      expect(found?.id).toBe(started.id);
+    });
+  });
+});
