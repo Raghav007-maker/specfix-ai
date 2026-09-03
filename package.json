@@ -12,6 +12,7 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "npm -w apps/web run dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,6 +22,7 @@
     "db:migrate": "tsx packages/db/scripts/migrate.ts",
     "db:reset": "tsx packages/db/scripts/migrate.ts --reset",
     "eval": "tsx packages/eval/src/cli.ts",
+    "ops": "tsx scripts/ops.ts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test"
   },
   "devDependencies": {

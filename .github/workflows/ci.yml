@@ -38,7 +38,12 @@ jobs:
           --health-retries 10
 
     env:
+      # Migrations run against this; the service below is disposable, so both names
+      # point at it. Outside CI they differ: DATABASE_URL is the real project, and
+      # SPECFIX_TEST_DATABASE_URL is what the fixture-writing suites are allowed to
+      # touch. See test/setup-db.ts.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/specfix_test
+      SPECFIX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/specfix_test
       # Analysis is never called in CI, but config validation reads these.
       OPENAI_MODEL_EXTRACT: gpt-4o-mini
       OPENAI_MODEL_JUDGE: gpt-4o-mini

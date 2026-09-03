@@ -59,7 +59,8 @@ export interface LlmCallInput {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
-  error?: string | undefined;
+  /** null and undefined both mean "no error"; the insert normalizes to null. */
+  error?: string | null;
 }
 
 export interface RecordAnalysisInput {

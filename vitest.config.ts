@@ -10,7 +10,7 @@ export default defineConfig({
     include: ['packages/**/test/**/*.test.ts'],
     environment: 'node',
     globals: false,
-    setupFiles: ['dotenv/config'],
+    setupFiles: ['dotenv/config', r('./test/setup-db.ts')],
   },
   resolve: {
     alias: {

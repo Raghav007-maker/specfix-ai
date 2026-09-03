@@ -30,6 +30,13 @@
       "@specfix/eval": ["packages/eval/src/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/scripts/**/*.ts", "packages/*/test/**/*.ts"],
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/scripts/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "vitest.config.ts"
+  ],
   "exclude": ["node_modules", "**/dist", "**/.next"]
 }

@@ -103,6 +103,30 @@ export async function listMembershipsForUser(userId: string): Promise<Membership
   );
 }
 
+export interface AuthUserRow {
+  id: string;
+  email: string | null;
+}
+
+/**
+ * Resolve a Supabase identity by email. Like listMembershipsForUser this is
+ * deliberately not tenant-scoped, because it runs before any tenant is known — but
+ * unlike that function it is not reachable from the app: it exists so an operator
+ * holding direct database credentials can grant an already-registered reviewer
+ * access to a workspace (scripts/ops.ts). It returns identity only, never tenant
+ * data, so it cannot be used to discover what a user has access to.
+ *
+ * Returns null for an unknown email. The reviewer has to sign up through the web app
+ * first, so that Supabase — not this code — owns their password.
+ */
+export async function findUserByEmail(email: string): Promise<AuthUserRow | null> {
+  const [user] = await query<AuthUserRow>(
+    `select id, email from auth.users where lower(email) = lower($1)`,
+    [email]
+  );
+  return user ?? null;
+}
+
 export type ReadinessEvent =
   'ticket_ingested' | 'analysis_complete' | 'all_flags_resolved' | 'marked_ready';
 
