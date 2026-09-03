@@ -14,8 +14,10 @@
  * silently succeeds cross-tenant is a data-integrity incident, so `decideFlag`,
  * `linkGap`, and friends are exercised too.
  *
- * Skipped without DATABASE_URL. In CI a postgres:16 service provides one, so this
- * does run on every push — a skipped isolation test is how a cross-tenant read ships.
+ * Skipped without SPECFIX_TEST_DATABASE_URL. In CI a postgres:16 service provides one,
+ * so this does run on every push — a skipped isolation test is how a cross-tenant read
+ * ships. The gate is deliberately not DATABASE_URL: this suite writes fixtures, so it
+ * must never inherit the credentials the app runs on. See test/setup-db.ts.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -47,7 +49,7 @@ import {
 } from '../src/index.ts';
 import type { NormalizedTicket } from '@specfix/shared';
 
-const hasDatabase = Boolean(process.env.DATABASE_URL);
+const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
 function ticket(key: string, title: string): NormalizedTicket {
   return {
@@ -268,7 +270,7 @@ describe.skipIf(!hasDatabase)('cross-tenant isolation', () => {
 });
 
 describe.skipIf(hasDatabase)('cross-tenant isolation', () => {
-  it('is skipped without DATABASE_URL — CI provides one', () => {
+  it('is skipped without SPECFIX_TEST_DATABASE_URL — CI provides one', () => {
     expect(hasDatabase).toBe(false);
   });
 });

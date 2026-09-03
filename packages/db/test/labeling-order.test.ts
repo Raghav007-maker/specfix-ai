@@ -7,7 +7,9 @@
  * into a number that measures nothing. So the ordering is a server rule, and this is
  * the test that holds it.
  *
- * Skipped without DATABASE_URL; CI provides one.
+ * Skipped without SPECFIX_TEST_DATABASE_URL; CI provides one. That variable, and not
+ * DATABASE_URL, is the gate: this suite writes fixtures, so it must never inherit the
+ * credentials the app runs on. See test/setup-db.ts.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -34,7 +36,7 @@ import {
   doubleLabeledVersions,
 } from '../src/index.ts';
 
-const hasDatabase = Boolean(process.env.DATABASE_URL);
+const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
 interface Fixture {
   tenantId: string;

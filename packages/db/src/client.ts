@@ -17,12 +17,14 @@ export function getPool(): Pool {
     if (!connectionString) {
       throw new Error('DATABASE_URL is not set.');
     }
+    const isRemote = !/localhost|127\.0\.0\.1/.test(connectionString);
     pool = new Pool({
       connectionString,
       max: Number(process.env.PGPOOL_MAX ?? 10),
       // Supabase's pooler drops idle connections; fail fast rather than hang.
       connectionTimeoutMillis: 10_000,
       idleTimeoutMillis: 30_000,
+      ssl: isRemote ? { rejectUnauthorized: false } : undefined,
     });
   }
   return pool;
