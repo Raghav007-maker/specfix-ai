@@ -11,6 +11,7 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     setupFiles: ['dotenv/config', r('./test/setup-db.ts')],
+    fileParallelism: false,
   },
   resolve: {
     alias: {
