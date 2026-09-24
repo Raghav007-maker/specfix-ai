@@ -34,6 +34,28 @@ comparable across prompt versions if the set it was measured on did not move.
 
 ## `eval-runs/`
 
-Committed eval reports. `npm run eval -- run --set gold-v1 --prompt single-shot-v1`
-writes one here. They are committed so that a prompt change which lowers precision
-is visible as a diff, which is the whole point of the harness.
+Committed eval reports. They are committed so that a prompt change which lowers
+precision is visible as a diff, which is the whole point of the harness.
+
+One file per gold set **per arm**:
+
+```
+gold-v1__single-shot-v1.json              Extractor only
+gold-v1__single-shot-v1+deliberated.json  Extractor → Adversarial Critic
+```
+
+```bash
+npm run eval -- run --set gold-v1 --prompt single-shot-v1
+```
+
+```bash
+npm run eval -- run --set gold-v1 --prompt single-shot-v1 --deliberate
+```
+
+The arms are separate files on purpose. A deliberated run writing over the baseline
+would destroy the comparison it exists to make.
+
+A `+deliberated` report also carries a `control` block: the volume-matched
+random-pruning test that decides whether the Critic's precision is judgment or
+arithmetic. Do not quote precision from one of these files without the p-value and
+lift beside it — see `docs/deliberation-and-control.md`.

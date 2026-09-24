@@ -3,6 +3,7 @@ import type { AnalyzedFlag } from '@specfix/core';
 import type { FlagCategory } from '@specfix/shared';
 import { scoreRun, type TicketRun } from '../src/score.ts';
 import { buildReport, caveatsFor, diffReports, renderReport, reportPath } from '../src/report.ts';
+import type { ControlResult } from '../src/control.ts';
 import type { GoldSet, LoadedGoldSet } from '../src/gold.ts';
 import type { RunSummary } from '../src/runner.ts';
 
@@ -241,6 +242,22 @@ describe('scoreRun', () => {
   it('reports no agreement figure with a single reviewer', () => {
     expect(scoreRun(baseSet(), [run('PAY-142', ['k-real'])]).agreement).toBeNull();
   });
+
+  it('ignores pruned flags entirely', () => {
+    // The scorecard describes what a reviewer was shown. A pruned flag was not shown,
+    // so counting it as a false positive would charge the Critic for work it withheld,
+    // and counting it as produced would inflate flagsPerTicket. It is carried on the
+    // run only so `runControl` can resample it.
+    const withPruned = scoreRun(baseSet(), [
+      run('PAY-142', ['k-real'], { prunedFlags: [flag('k-noise'), flag('k-new')] }),
+    ]);
+    const without = scoreRun(baseSet(), [run('PAY-142', ['k-real'])]);
+
+    expect(withPruned.flagsProduced).toBe(1);
+    expect(withPruned.precision).toEqual(without.precision);
+    expect(withPruned.recall).toEqual(without.recall);
+    expect(withPruned.counts).toEqual(without.counts);
+  });
 });
 
 function loaded(set: GoldSet): LoadedGoldSet {
@@ -250,6 +267,7 @@ function loaded(set: GoldSet): LoadedGoldSet {
 function summary(runs: TicketRun[]): RunSummary {
   return {
     runs,
+    arm: 'single_shot',
     promptVersion: 'single-shot-v1@abc123abc123',
     model: 'gpt-4o-mini',
     temperature: 0,
@@ -257,6 +275,26 @@ function summary(runs: TicketRun[]): RunSummary {
     latencyMsTotal: 4200,
     inputTokens: 1000,
     outputTokens: 500,
+  };
+}
+
+function control(overrides: Partial<ControlResult> = {}): ControlResult {
+  return {
+    applicable: true,
+    reason: '',
+    observedPrecision: 0.9,
+    nullMeanPrecision: 0.5,
+    nullP95Precision: 0.7,
+    lift: 0.4,
+    pValue: 0.001,
+    significant: true,
+    iterations: 1000,
+    seed: 20250901,
+    candidatesTotal: 100,
+    prunedTotal: 40,
+    judgedSurvivors: 60,
+    gapsLostToPruning: [],
+    ...overrides,
   };
 }
 
@@ -305,6 +343,59 @@ describe('buildReport', () => {
     expect(text).toContain('n/a (0 observations)');
     expect(text).toContain('No tickets were analyzed');
   });
+
+  it('refuses to build a deliberated report without its control', () => {
+    // A deliberated precision figure without the control is the unfalsifiable claim
+    // this whole arm exists to replace — and in a status update it looks identical to
+    // a real result. Throwing is the only outcome that cannot be skimmed past.
+    const runs = [run('PAY-142', ['k-real'])];
+    const set = baseSet();
+    expect(() =>
+      buildReport({
+        gold: loaded(set),
+        promptName: 'single-shot-v1',
+        summary: { ...summary(runs), arm: 'deliberated' },
+        scorecard: scoreRun(set, runs),
+        generatedAt: '2026-08-31T00:00:00.000Z',
+      })
+    ).toThrow(/random-pruning control/);
+  });
+
+  it('carries the control onto the deliberated report and prints both numbers', () => {
+    const runs = [run('PAY-142', ['k-real'], { prunedFlags: [flag('k-noise')] })];
+    const set = baseSet();
+    const report = buildReport({
+      gold: loaded(set),
+      promptName: 'single-shot-v1',
+      summary: { ...summary(runs), arm: 'deliberated' },
+      scorecard: scoreRun(set, runs),
+      control: control(),
+      generatedAt: '2026-08-31T00:00:00.000Z',
+    });
+
+    expect(report.arm).toBe('deliberated');
+    expect(report.control?.pValue).toBe(0.001);
+
+    const text = renderReport(report);
+    // The chance baseline has to appear next to the observed figure. Someone reading
+    // "90% precision" alone has no way to know what a coin flip reached.
+    expect(text).toMatch(/BEATS CHANCE/);
+    expect(text).toMatch(/50\.0%/);
+  });
+
+  it('does not attach a control to a single-shot report', () => {
+    const runs = [run('PAY-142', ['k-real'])];
+    const set = baseSet();
+    const report = buildReport({
+      gold: loaded(set),
+      promptName: 'single-shot-v1',
+      summary: summary(runs),
+      scorecard: scoreRun(set, runs),
+      control: control(),
+      generatedAt: '2026-08-31T00:00:00.000Z',
+    });
+    expect(report.control).toBeUndefined();
+  });
 });
 
 describe('caveatsFor', () => {
@@ -343,6 +434,63 @@ describe('caveatsFor', () => {
     set.frozen = false;
     const caveats = caveatsFor(loaded(set), scoreRun(set, [run('PAY-142', ['k-real'])])).join(' ');
     expect(caveats).toMatch(/not frozen/);
+  });
+
+  it('leads with the control when the Critic lost to chance', () => {
+    // Ahead of every other caveat, because it governs whether the precision figure
+    // underneath it means anything at all.
+    const set = baseSet();
+    const card = scoreRun(set, [run('PAY-142', ['k-real'])]);
+    const caveats = caveatsFor(
+      loaded(set),
+      card,
+      control({ significant: false, pValue: 0.42, lift: 0.01, nullMeanPrecision: 0.89 })
+    );
+
+    expect(caveats[0]).toMatch(/did NOT beat the volume-matched random-pruning control/);
+    expect(caveats[0]).toMatch(/prunes, not that it prunes the right flags/);
+  });
+
+  it('leads with destroyed recall even when the Critic beat chance', () => {
+    const set = baseSet();
+    const card = scoreRun(set, [run('PAY-142', ['k-real'])]);
+    const caveats = caveatsFor(
+      loaded(set),
+      card,
+      control({
+        gapsLostToPruning: [
+          { externalId: 'PAY-142', gapId: 'g2', description: 'no limit', prunedBy: [] },
+        ],
+      })
+    );
+
+    expect(caveats[0]).toMatch(/PAY-142\/g2/);
+    expect(caveats[0]).toMatch(/should be zero/);
+  });
+
+  it('calls a statistically real but tiny lift what it is', () => {
+    const set = baseSet();
+    const card = scoreRun(set, [run('PAY-142', ['k-real'])]);
+    const caveats = caveatsFor(
+      loaded(set),
+      card,
+      control({ significant: true, pValue: 0.02, lift: 0.012, nullMeanPrecision: 0.86 })
+    ).join(' ');
+
+    expect(caveats).toMatch(/Statistically real, practically small/);
+  });
+
+  it('says precision is not yet distinguishable from chance when no control could run', () => {
+    const set = baseSet();
+    const card = scoreRun(set, [run('PAY-142', ['k-real'])]);
+    const caveats = caveatsFor(
+      loaded(set),
+      card,
+      control({ applicable: false, reason: 'the Critic pruned nothing', pValue: null, lift: null })
+    ).join(' ');
+
+    expect(caveats).toMatch(/No random-pruning control was computed/);
+    expect(caveats).toMatch(/discarding flags at random/);
   });
 });
 
@@ -413,5 +561,18 @@ describe('reportPath', () => {
     expect(reportPath('/runs', 'gold-v1', 'single-shot-v1')).toMatch(
       /gold-v1__single-shot-v1\.json$/
     );
+  });
+
+  it('keeps the two arms in different files', () => {
+    // Without the suffix, a --deliberate run would overwrite the baseline report it is
+    // supposed to be compared against, destroying the comparison in the act of making it.
+    const baseline = reportPath('/runs', 'gold-v1', 'single-shot-v1', 'single_shot');
+    const critic = reportPath('/runs', 'gold-v1', 'single-shot-v1', 'deliberated');
+
+    expect(critic).not.toBe(baseline);
+    expect(critic).toMatch(/gold-v1__single-shot-v1\+deliberated\.json$/);
+    // Omitting the arm must keep resolving to the baseline path, or every committed
+    // report from before the Critic existed would silently relocate.
+    expect(reportPath('/runs', 'gold-v1', 'single-shot-v1')).toBe(baseline);
   });
 });

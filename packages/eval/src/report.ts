@@ -15,14 +15,23 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { formatRate, type Rate } from './metrics.ts';
 import type { Scorecard } from './score.ts';
+import type { ControlResult } from './control.ts';
+import { SIGNIFICANCE_THRESHOLD } from './control.ts';
 import type { LoadedGoldSet } from './gold.ts';
-import type { RunSummary } from './runner.ts';
+import type { DeliberationTotals, RunArm, RunSummary } from './runner.ts';
 
-export const REPORT_SCHEMA_VERSION = 1;
+/**
+ * Bumped to 2 by the deliberation arm: `arm`, `deliberation` and `control` are new,
+ * and a v1 report has none of them. The version is checked when diffing so a v1 and
+ * a v2 report are never compared as though they measured the same thing.
+ */
+export const REPORT_SCHEMA_VERSION = 2;
 
 export interface EvalReport {
   schemaVersion: number;
   generatedAt: string;
+  /** Which arm of the ablation produced this. A v1 report has no `arm`; read it as single_shot. */
+  arm: RunArm;
   goldSet: { version: string; frozen: boolean; tickets: number };
   prompt: { name: string; version: string };
   model: { id: string; temperature: number; seed: number | null };
@@ -44,6 +53,17 @@ export interface EvalReport {
   byCategory: Scorecard['byCategory'];
   cost: { usd: number; usdPerTicket: number | null; inputTokens: number; outputTokens: number };
   quality: { truncatedTickets: number; unverifiedSpans: number };
+  /** Critic-pass totals. Absent on the single-shot arm. */
+  deliberation?: DeliberationTotals;
+  /**
+   * The random-pruning control. Absent on the single-shot arm, where there is no
+   * pruning decision to test.
+   *
+   * This is the field that decides whether the deliberation arm produced a result.
+   * A precision figure from a deliberated run, quoted without this, is not evidence
+   * of anything — see packages/eval/src/control.ts.
+   */
+  control?: ControlResult;
   caveats: string[];
   failures: { externalId: string; error: string }[];
 }
@@ -53,16 +73,27 @@ export interface BuildReportInput {
   promptName: string;
   summary: RunSummary;
   scorecard: Scorecard;
+  /** Required on the deliberated arm; ignored on the single-shot arm. */
+  control?: ControlResult | undefined;
   /** Injected rather than read from the clock, so tests are deterministic. */
   generatedAt: string;
 }
 
 export function buildReport(input: BuildReportInput): EvalReport {
   const { gold, summary, scorecard } = input;
+  const deliberated = summary.arm === 'deliberated';
+
+  if (deliberated && !input.control) {
+    // Refusing rather than defaulting. A deliberated report without its control is a
+    // precision number with the one thing that makes it falsifiable removed, and it
+    // would look identical to a real result in a status update.
+    throw new Error('a deliberated run must be reported with its random-pruning control');
+  }
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
     generatedAt: input.generatedAt,
+    arm: summary.arm,
     goldSet: {
       version: gold.set.version,
       frozen: gold.set.frozen,
@@ -99,7 +130,9 @@ export function buildReport(input: BuildReportInput): EvalReport {
       truncatedTickets: scorecard.truncatedTickets,
       unverifiedSpans: scorecard.unverifiedSpans,
     },
-    caveats: caveatsFor(gold, scorecard),
+    ...(summary.deliberation ? { deliberation: summary.deliberation } : {}),
+    ...(deliberated && input.control ? { control: input.control } : {}),
+    caveats: caveatsFor(gold, scorecard, input.control),
     failures: summary.runs
       .filter((r) => r.error)
       .map((r) => ({ externalId: r.externalId, error: r.error as string })),
@@ -110,7 +143,11 @@ export function buildReport(input: BuildReportInput): EvalReport {
  * Every condition here has burned someone's metric before. They are emitted in
  * severity order so the first line of the list is the one that matters most.
  */
-export function caveatsFor(gold: LoadedGoldSet, scorecard: Scorecard): string[] {
+export function caveatsFor(
+  gold: LoadedGoldSet,
+  scorecard: Scorecard,
+  control?: ControlResult | undefined
+): string[] {
   const caveats: string[] = [];
   const { counts, precision, recall } = scorecard;
 
@@ -118,6 +155,10 @@ export function caveatsFor(gold: LoadedGoldSet, scorecard: Scorecard): string[] 
     caveats.push('No tickets were analyzed. Every number below is empty.');
     return caveats;
   }
+
+  // First, ahead of everything else, because it governs whether the precision figure
+  // below it means anything at all on a deliberated run.
+  caveats.push(...controlCaveats(control));
 
   if (!scorecard.independentScope) {
     caveats.push(
@@ -189,6 +230,58 @@ export function caveatsFor(gold: LoadedGoldSet, scorecard: Scorecard): string[] 
   return caveats;
 }
 
+/**
+ * The caveats that decide whether a deliberated precision figure is a result.
+ *
+ * Written as text in the report rather than left to the reader, because the report is
+ * what gets pasted into a status update. By the time someone reads "precision 84%"
+ * out of context, they have no way to know a coin flip reached 82%.
+ */
+function controlCaveats(control: ControlResult | undefined): string[] {
+  if (!control) return [];
+  const caveats: string[] = [];
+
+  if (control.gapsLostToPruning.length > 0) {
+    const ids = control.gapsLostToPruning.map((g) => `${g.externalId}/${g.gapId}`).join(', ');
+    caveats.push(
+      `The Critic pruned the only flag covering ${control.gapsLostToPruning.length} real gap(s): ${ids}. ` +
+        'This is recall the Critic destroyed, and it should be zero. Fix the prompt before reading the precision figure as an improvement.'
+    );
+  }
+
+  if (!control.applicable) {
+    caveats.push(
+      `No random-pruning control was computed: ${control.reason}. Precision on this arm is not yet distinguishable from precision achieved by discarding flags at random.`
+    );
+    return caveats;
+  }
+
+  const p = (control.pValue as number).toFixed(3);
+  const lift = ((control.lift as number) * 100).toFixed(1);
+  const nullMean = ((control.nullMeanPrecision as number) * 100).toFixed(1);
+
+  if (!control.significant) {
+    caveats.push(
+      `The Critic did NOT beat the volume-matched random-pruning control (p=${p}, threshold ${SIGNIFICANCE_THRESHOLD}). ` +
+        `Discarding ${control.prunedTotal} flags at random reaches ${nullMean}% precision on average, so this run is ` +
+        'evidence that the Critic prunes, not that it prunes the right flags.'
+    );
+  } else if ((control.lift as number) < 0.05) {
+    caveats.push(
+      `The Critic beats random pruning (p=${p}) but only by ${lift}pp over a ${nullMean}% chance baseline. ` +
+        'Statistically real, practically small; do not report it as a headline gain.'
+    );
+  }
+
+  if (control.judgedSurvivors < 30) {
+    caveats.push(
+      `The control rests on ${control.judgedSurvivors} judged surviving flags. The p-value is honest at this size but the effect estimate is not stable.`
+    );
+  }
+
+  return caveats;
+}
+
 export function renderReport(report: EvalReport): string {
   const lines: string[] = [];
   const row = (label: string, value: string): string => `  ${label.padEnd(22)}${value}`;
@@ -196,6 +289,7 @@ export function renderReport(report: EvalReport): string {
   lines.push('');
   lines.push(`${report.prompt.version}  ×  ${report.goldSet.version}`);
   lines.push('─'.repeat(72));
+  lines.push(row('arm', report.arm === 'deliberated' ? 'extractor + critic' : 'extractor only'));
   lines.push(
     row(
       'model',
@@ -226,6 +320,7 @@ export function renderReport(report: EvalReport): string {
       `${report.flags.real} real  ${report.flags.noise} noise  ${report.flags.disputed} disputed  ${report.flags.unjudged} unjudged`
     )
   );
+  lines.push(...renderDeliberation(report, row));
   if (report.agreement) {
     const { kappa, rawAgreement, items, reviewerPair } = report.agreement;
     lines.push(
@@ -273,8 +368,95 @@ export function renderReport(report: EvalReport): string {
   return lines.join('\n');
 }
 
-export function reportPath(runsDir: string, goldVersion: string, promptName: string): string {
-  return join(runsDir, `${goldVersion}__${promptName}.json`);
+/**
+ * The Critic block. Precision and the control are printed adjacently and always
+ * together, because the two numbers only mean something as a pair — "precision 84%"
+ * on its own reads as a result, and "precision 84%, chance 82%, p=0.41" reads as
+ * what it is.
+ */
+function renderDeliberation(
+  report: EvalReport,
+  row: (label: string, value: string) => string
+): string[] {
+  const { deliberation, control } = report;
+  if (!deliberation && !control) return [];
+  const lines: string[] = [''];
+
+  if (deliberation) {
+    lines.push(
+      row(
+        'critic',
+        `${deliberation.criticPromptVersion}  ` +
+          `${deliberation.pruned}/${deliberation.candidatesProduced} pruned  ` +
+          `${deliberation.questionsRefined} rewritten  ` +
+          `${deliberation.severitiesChanged} reseverified`
+      )
+    );
+    const anomalies = [
+      deliberation.unreviewed > 0 ? `${deliberation.unreviewed} unreviewed (kept)` : '',
+      deliberation.duplicateReviews > 0
+        ? `${deliberation.duplicateReviews} duplicate verdicts`
+        : '',
+      deliberation.outOfRangeReviews > 0
+        ? `${deliberation.outOfRangeReviews} out-of-range verdicts`
+        : '',
+      deliberation.modelsDiffer ? 'MODELS DIFFER between passes' : '',
+    ].filter(Boolean);
+    if (anomalies.length > 0) lines.push(row('critic anomalies', anomalies.join('  ')));
+  }
+
+  if (control) {
+    if (!control.applicable) {
+      lines.push(row('control', `not computed — ${control.reason}`));
+    } else {
+      const verdict = control.significant ? 'BEATS CHANCE' : 'NOT BETTER THAN CHANCE';
+      lines.push(
+        row(
+          'control',
+          `${pct(control.observedPrecision)} vs ${pct(control.nullMeanPrecision)} chance  ` +
+            `(p95 ${pct(control.nullP95Precision)})`
+        )
+      );
+      lines.push(
+        row(
+          '',
+          `p=${(control.pValue as number).toFixed(3)}  ` +
+            `lift ${((control.lift as number) * 100).toFixed(1)}pp  ` +
+            `${control.iterations} permutations, seed ${control.seed}   ${verdict}`
+        )
+      );
+    }
+    lines.push(
+      row(
+        'gaps lost to pruning',
+        control.gapsLostToPruning.length === 0
+          ? '0'
+          : `${control.gapsLostToPruning.length}  ${control.gapsLostToPruning
+              .map((g) => `${g.externalId}/${g.gapId}`)
+              .join(', ')}`
+      )
+    );
+  }
+
+  return lines;
+}
+
+function pct(value: number | null): string {
+  return value === null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
+}
+
+export function reportPath(
+  runsDir: string,
+  goldVersion: string,
+  promptName: string,
+  arm: RunArm = 'single_shot'
+): string {
+  // The arm is part of the filename because both arms use the same extractor prompt
+  // by design. Without it, a deliberation run would overwrite the baseline report it
+  // is supposed to be compared against — destroying the comparison in the act of
+  // making it.
+  const suffix = arm === 'deliberated' ? '+deliberated' : '';
+  return join(runsDir, `${goldVersion}__${promptName}${suffix}.json`);
 }
 
 export async function writeReport(path: string, report: EvalReport): Promise<void> {
@@ -309,6 +491,20 @@ export interface ReportDiff {
 export function diffReports(previous: EvalReport, next: EvalReport): ReportDiff {
   const notes: string[] = [];
 
+  if (previous.schemaVersion !== next.schemaVersion) {
+    notes.push(
+      `Report schema changed (v${previous.schemaVersion} → v${next.schemaVersion}). Fields may not be comparable.`
+    );
+  }
+  // The arm is the ablation. Diffing across it is the intended comparison, but it must
+  // be labelled, because a precision jump from the Critic and a precision jump from a
+  // better prompt look identical in a delta.
+  if ((previous.arm ?? 'single_shot') !== (next.arm ?? 'single_shot')) {
+    notes.push(
+      `Arm changed (${previous.arm ?? 'single_shot'} → ${next.arm ?? 'single_shot'}). ` +
+        'A precision delta across arms is the Critic effect, and is only a result if the random-pruning control is significant.'
+    );
+  }
   if (previous.goldSet.version !== next.goldSet.version) {
     notes.push(
       `Gold set changed (${previous.goldSet.version} → ${next.goldSet.version}). The comparison is not apples to apples.`

@@ -19,8 +19,8 @@ import { callForAnalysis, type LlmCallRecord } from './openai.ts';
 
 export const DEFAULT_PROMPT = 'single-shot-v1';
 
-const OPEN = '<ticket>';
-const CLOSE = '</ticket>';
+export const TICKET_OPEN = '<ticket>';
+export const TICKET_CLOSE = '</ticket>';
 const TRUNCATION_MARKER = '\n\n[... description truncated for length ...]';
 
 export interface AnalyzedFlag extends LlmFlag {
@@ -48,12 +48,24 @@ export interface AnalyzeOutcome {
   flags: AnalyzedFlag[];
   meta: AnalysisMeta;
   calls: LlmCallRecord[];
+  /**
+   * The ticket block as the model saw it, without delimiters. The Critic pass
+   * re-verifies quoted spans against this exact string, so it must be the same text
+   * the Extractor was given, not a re-render.
+   */
+  renderedTicketBody: string;
 }
 
 export interface AnalyzeOptions {
   promptName?: string;
   /** Overrides OPENAI_MODEL_JUDGE for this call. */
   model?: string;
+  /**
+   * How this call is recorded in llm_calls. Defaults to `single_shot`; the
+   * deliberation pipeline passes `extract` so the two arms of the ablation are
+   * distinguishable in the cost and latency breakdown.
+   */
+  purpose?: LlmCallRecord['purpose'];
 }
 
 export async function analyzeTicket(
@@ -67,7 +79,7 @@ export async function analyzeTicket(
   const rendered = renderTicket(ticket, config.maxTicketInputTokens);
 
   const { result, calls } = await callForAnalysis({
-    purpose: 'single_shot',
+    purpose: options.purpose ?? 'single_shot',
     promptVersion: prompt.version,
     model,
     systemMessage: prompt.systemMessage,
@@ -93,6 +105,7 @@ export async function analyzeTicket(
       unverifiedSpans,
     },
     calls,
+    renderedTicketBody: rendered.body,
   };
 }
 
@@ -104,16 +117,31 @@ interface RenderedTicket {
 }
 
 /**
+ * Replaces delimiter tags occurring in text that will be placed inside those
+ * delimiters.
+ *
+ * Without this, a ticket can close the delimiter early and everything after it
+ * reads as if it came from outside the data block — which is exactly the attack in
+ * fixtures/tickets/adversarial/injection-02-delimiter-escape.md.
+ *
+ * `tags` is explicit rather than a fixed list because the Critic pass wraps two
+ * blocks, `<ticket>` and `<candidates>`, and each block has to neutralize both.
+ */
+export function neutralizeDelimiters(text: string, tags: readonly string[]): string {
+  return tags.reduce(
+    (out, tag) => out.replace(new RegExp(`<\\/?\\s*${tag}\\s*>`, 'gi'), '[delimiter removed]'),
+    text
+  );
+}
+
+/**
  * Builds the delimited user message.
  *
  * Any `<ticket>` or `</ticket>` occurring in the ticket text is replaced before
- * wrapping. Without this, a ticket can close the delimiter early and everything
- * after it reads as if it came from outside the data block — which is exactly the
- * attack in fixtures/tickets/adversarial/injection-02-delimiter-escape.md.
+ * wrapping.
  */
 export function renderTicket(ticket: AnalyzableTicket, maxTokens: number): RenderedTicket {
-  const neutralize = (text: string): string =>
-    text.replace(/<\/?\s*ticket\s*>/gi, '[delimiter removed]');
+  const neutralize = (text: string): string => neutralizeDelimiters(text, ['ticket']);
 
   const title = neutralize(ticket.title);
   const acceptanceCriteria = neutralize(ticket.acceptanceCriteriaText);
@@ -145,7 +173,7 @@ export function renderTicket(ticket: AnalyzableTicket, maxTokens: number): Rende
   }
 
   return {
-    userMessage: `${OPEN}\n${body}\n${CLOSE}`,
+    userMessage: `${TICKET_OPEN}\n${body}\n${TICKET_CLOSE}`,
     body,
     truncated,
   };

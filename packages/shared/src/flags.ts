@@ -40,14 +40,50 @@ export type Severity = z.infer<typeof SeveritySchema>;
  * Resolved flags belong to a specific ticket_version; when a newer version
  * arrives the old ones are marked stale rather than silently carried forward or
  * lost. See packages/db/migrations/0001_init.sql.
+ *
+ * `pruned` is the Adversarial Critic's rejection. It is deliberately distinct from
+ * `dismissed`: dismissed means a human read the question and judged it noise, which
+ * is evidence about the model; pruned means the second model pass filtered it before
+ * a human ever saw it, which is evidence about the Critic. Collapsing the two would
+ * let the Critic's own prunes count as human dismissals and make its precision
+ * unfalsifiable. Pruned flags are stored, hidden from the review queue, and read back
+ * by the random-pruning control.
  */
-export const FLAG_STATUSES = ['open', 'accepted', 'edited', 'dismissed', 'stale'] as const;
+export const FLAG_STATUSES = [
+  'open',
+  'accepted',
+  'edited',
+  'dismissed',
+  'stale',
+  'pruned',
+] as const;
 export const FlagStatusSchema = z.enum(FLAG_STATUSES);
 export type FlagStatus = z.infer<typeof FlagStatusSchema>;
 
 export const REVIEW_DECISIONS = ['accepted', 'edited', 'dismissed', 'reopened'] as const;
 export const ReviewDecisionSchema = z.enum(REVIEW_DECISIONS);
 export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
+
+/**
+ * Where a flag came from.
+ *
+ * This exists to keep one number honest. Precision answers "of the gaps the
+ * *model* raised, how many were real?" A question a developer typed is real by
+ * construction — a human chose to ask it — so counting developer-origin rows in
+ * the precision denominator inflates the metric for free, and the inflation grows
+ * with adoption.
+ *
+ * Every precision computation filters on `ai_agent`. See `scoreRun` in
+ * packages/eval/src/score.ts and the test that guards it. This constant exists
+ * now, ahead of the developer-query feature, precisely so that feature cannot
+ * arrive and quietly change what precision means.
+ */
+export const FLAG_ORIGINS = ['ai_agent', 'developer'] as const;
+export const FlagOriginSchema = z.enum(FLAG_ORIGINS);
+export type FlagOrigin = z.infer<typeof FlagOriginSchema>;
+
+/** The only origin that may enter a precision denominator. */
+export const AI_ORIGIN: FlagOrigin = 'ai_agent';
 
 /**
  * A flag exactly as the model is required to return it.
@@ -83,6 +119,12 @@ export const FlagSchema = LlmFlagSchema.extend({
   ticket_id: z.string(),
   ticket_version_id: z.string(),
   analysis_run_id: z.string(),
+  /**
+   * Defaults to `ai_agent` so existing model-produced rows keep their meaning.
+   * A developer-raised query sets this explicitly and is thereby excluded from
+   * precision.
+   */
+  origin: FlagOriginSchema.default(AI_ORIGIN),
   status: FlagStatusSchema,
   dedupe_key: z.string(),
   edited_question: z.string().nullable(),
@@ -91,8 +133,9 @@ export type Flag = z.infer<typeof FlagSchema>;
 
 /**
  * Precision counts a flag as a real issue when the reviewer accepted it, with or
- * without editing the wording. Dismissed means noise. Anything still open or
- * stale is not yet evidence either way and is excluded from the denominator.
+ * without editing the wording. Dismissed means noise. Anything still open, stale or
+ * pruned is not yet evidence either way and is excluded from the denominator — a
+ * pruned flag in particular has no human verdict at all, only the Critic's.
  */
 export function isRealIssue(status: FlagStatus): boolean {
   return status === 'accepted' || status === 'edited';

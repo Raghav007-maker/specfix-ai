@@ -12,9 +12,15 @@
  */
 import OpenAI from 'openai';
 import type { ChatCompletion, ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { AnalysisResultSchema, type AnalysisResult } from '@specfix/shared';
+import type { z } from 'zod';
+import {
+  AnalysisResultSchema,
+  CriticResultSchema,
+  type AnalysisResult,
+  type CriticResult,
+} from '@specfix/shared';
 import { getConfig } from './config.ts';
-import { responseFormat } from './schema.ts';
+import { criticResponseFormat, responseFormat } from './schema.ts';
 import { costUsd } from './cost.ts';
 
 let client: OpenAI | undefined;
@@ -38,7 +44,7 @@ export function resetClient(): void {
 
 /** One recorded call, ready to be written to the llm_calls table. */
 export interface LlmCallRecord {
-  purpose: 'extract' | 'judge' | 'single_shot';
+  purpose: 'extract' | 'critic' | 'judge' | 'single_shot';
   promptVersion: string;
   model: string;
   request: { messages: ChatCompletionMessageParam[]; temperature: number; seed: number | null };
@@ -73,6 +79,11 @@ export interface StructuredCallOutcome {
   calls: LlmCallRecord[];
 }
 
+export interface CriticCallOutcome {
+  result: CriticResult;
+  calls: LlmCallRecord[];
+}
+
 /**
  * Sends one analysis request and returns validated output.
  *
@@ -83,6 +94,27 @@ export interface StructuredCallOutcome {
 export async function callForAnalysis(
   options: StructuredCallOptions
 ): Promise<StructuredCallOutcome> {
+  return callStructured(options, AnalysisResultSchema, responseFormat());
+}
+
+/** The Critic pass. Same transport, retry and schema-repair behaviour; different schema. */
+export async function callForCritique(options: StructuredCallOptions): Promise<CriticCallOutcome> {
+  return callStructured(options, CriticResultSchema, criticResponseFormat());
+}
+
+/**
+ * The shared request loop.
+ *
+ * Generic over the response schema so the Extractor and Critic passes cannot drift
+ * apart in how they retry, how they repair a schema failure, or what they record —
+ * a divergence there would show up as an unexplained difference between the two
+ * arms of the ablation rather than as a bug.
+ */
+async function callStructured<T>(
+  options: StructuredCallOptions,
+  schema: z.ZodType<T>,
+  format: ReturnType<typeof responseFormat>
+): Promise<{ result: T; calls: LlmCallRecord[] }> {
   const config = getConfig();
   const calls: LlmCallRecord[] = [];
 
@@ -100,7 +132,7 @@ export async function callForAnalysis(
         messages,
         temperature: config.temperature,
         ...(config.seed === null ? {} : { seed: config.seed }),
-        response_format: responseFormat(),
+        response_format: format,
       })
     );
 
@@ -108,7 +140,7 @@ export async function callForAnalysis(
     calls.push(record);
 
     const content = completion.choices[0]?.message?.content ?? '';
-    const validated = validate(content);
+    const validated = validate(content, schema);
 
     if (validated.ok) {
       return { result: validated.value, calls };
@@ -138,9 +170,10 @@ export async function callForAnalysis(
   }
 }
 
-function validate(
-  content: string
-): { ok: true; value: AnalysisResult } | { ok: false; error: string } {
+function validate<T>(
+  content: string,
+  schema: z.ZodType<T>
+): { ok: true; value: T } | { ok: false; error: string } {
   if (content.trim() === '') {
     return { ok: false, error: 'empty response content' };
   }
@@ -150,7 +183,7 @@ function validate(
   } catch (error) {
     return { ok: false, error: `not valid JSON: ${message(error)}` };
   }
-  const result = AnalysisResultSchema.safeParse(parsed);
+  const result = schema.safeParse(parsed);
   return result.success
     ? { ok: true, value: result.data }
     : {

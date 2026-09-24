@@ -37,7 +37,11 @@ export interface AnalysisMetaInput {
   costUsd: number;
 }
 
-/** Shaped to accept `AnalyzedFlag` from @specfix/core. */
+/**
+ * Shaped to accept `AnalyzedFlag`, `ApprovedFlag` and `PrunedFlag` from
+ * @specfix/core without translation — hence the optional critic fields, which are
+ * absent on a single-shot run and present on a deliberated one.
+ */
 export interface FlagInput {
   category: string;
   quoted_span: string;
@@ -46,11 +50,19 @@ export interface FlagInput {
   question_for_pm: string;
   severity: string;
   dedupeKey: string;
+  /** Defaults to 'ai_agent'. Only 'ai_agent' rows enter a precision denominator. */
+  origin?: 'ai_agent' | 'developer';
+  /** Absent when no Critic pass ran. Stored as null, which is not the same as 'keep'. */
+  criticVerdict?: 'keep' | 'prune';
+  criticReason?: string;
+  /** The Extractor's wording, stored only when the Critic actually changed it. */
+  originalQuestion?: string;
+  originalSeverity?: string;
 }
 
 /** Shaped to accept `LlmCallRecord` from @specfix/core. */
 export interface LlmCallInput {
-  purpose: 'extract' | 'judge' | 'single_shot';
+  purpose: 'extract' | 'critic' | 'judge' | 'single_shot';
   promptVersion: string;
   model: string;
   request: unknown;
@@ -73,7 +85,14 @@ export interface RecordAnalysisInput {
 
 export interface RecordAnalysisResult {
   run: AnalysisRunRow;
+  /** Flags a reviewer will see. Excludes anything the Critic pruned. */
   flagIds: string[];
+  /**
+   * Flags the Critic rejected, stored but hidden. Kept separate so a caller cannot
+   * accidentally report a pruned flag as work produced — and so the control arm has
+   * somewhere to read them from.
+   */
+  prunedFlagIds: string[];
   /** Flags whose dedupe_key already existed for this version, so nothing was inserted. */
   flagsSkipped: number;
 }
@@ -110,7 +129,16 @@ export async function recordAnalysis(
     if (!run) throw new Error('analysis_runs insert returned no row');
 
     const flagIds: string[] = [];
+    const prunedFlagIds: string[] = [];
     for (const flag of input.flags) {
+      const pruned = flag.criticVerdict === 'prune';
+      // A refinement is only recorded when it actually changed something, so a
+      // non-null pre_critic_question always means "the Critic rewrote this".
+      const questionChanged =
+        flag.originalQuestion !== undefined && flag.originalQuestion !== flag.question_for_pm;
+      const severityChanged =
+        flag.originalSeverity !== undefined && flag.originalSeverity !== flag.severity;
+
       // `on conflict do nothing` rather than an update: a flag already recorded for
       // this version may carry a reviewer's verdict, and re-running analysis must
       // not overwrite it.
@@ -118,8 +146,10 @@ export async function recordAnalysis(
         client,
         `insert into flags (
            tenant_id, ticket_id, ticket_version_id, analysis_run_id, category,
-           quoted_span, what_unclear, why_it_matters, question_for_pm, severity, dedupe_key
-         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           quoted_span, what_unclear, why_it_matters, question_for_pm, severity,
+           dedupe_key, origin, status, critic_verdict, critic_reason,
+           pre_critic_question, pre_critic_severity
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          on conflict (tenant_id, ticket_version_id, dedupe_key) do nothing
          returning id`,
         [
@@ -134,9 +164,15 @@ export async function recordAnalysis(
           flag.question_for_pm,
           flag.severity,
           flag.dedupeKey,
+          flag.origin ?? 'ai_agent',
+          pruned ? 'pruned' : 'open',
+          flag.criticVerdict ?? null,
+          flag.criticReason ?? null,
+          questionChanged ? flag.originalQuestion : null,
+          severityChanged ? flag.originalSeverity : null,
         ]
       );
-      if (inserted[0]) flagIds.push(inserted[0].id);
+      if (inserted[0]) (pruned ? prunedFlagIds : flagIds).push(inserted[0].id);
     }
 
     for (const call of input.calls) {
@@ -168,7 +204,12 @@ export async function recordAnalysis(
       [tenantId, input.ticketId, input.ticketVersionId]
     );
 
-    return { run, flagIds, flagsSkipped: input.flags.length - flagIds.length };
+    return {
+      run,
+      flagIds,
+      prunedFlagIds,
+      flagsSkipped: input.flags.length - flagIds.length - prunedFlagIds.length,
+    };
   });
 }
 

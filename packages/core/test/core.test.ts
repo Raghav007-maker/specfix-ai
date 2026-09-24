@@ -67,7 +67,11 @@ describe('prompt loading', () => {
   });
 
   it('names the available prompts when asked for one that does not exist', async () => {
-    await expect(loadPrompt('does-not-exist')).rejects.toThrow(/Available: single-shot-v1/);
+    // Asserted per-name rather than as one string: the list is directory order, and a
+    // new prompt landing in the middle of it is not a reason for this test to fail.
+    await expect(loadPrompt('does-not-exist')).rejects.toThrow(/single-shot-v1/);
+    await expect(loadPrompt('does-not-exist')).rejects.toThrow(/critic-v1/);
+    await expect(loadPrompt('does-not-exist')).rejects.toThrow(/Available:/);
   });
 });
 

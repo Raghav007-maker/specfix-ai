@@ -3,20 +3,25 @@
  *
  *   npm run eval -- validate --set gold-v1
  *   npm run eval -- run --set gold-v1 --prompt single-shot-v1
- *   npm run eval -- run --set gold-v1 --prompt two-pass-v1 --limit 5 --no-write
+ *   npm run eval -- run --set gold-v1 --prompt single-shot-v1 --deliberate
  *   npm run eval -- show --set gold-v1 --prompt single-shot-v1
- *   npm run eval -- compare --set gold-v1 --a single-shot-v1 --b two-pass-v1
+ *   npm run eval -- compare --set gold-v1 --a single-shot-v1 --b single-shot-v1+deliberated
  *
  * `validate` needs no API key and no network, which is why it is the subcommand CI
  * runs. `run` costs money and is invoked by a human.
+ *
+ * The ablation is run as the same `--prompt` twice, once with `--deliberate`. Using the
+ * same extractor prompt in both arms is what makes the difference attributable to the
+ * Critic; the two reports land in different files because `reportPath` keys on the arm.
  */
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { hasOpenAiCredentials } from '@specfix/core';
 import { findInconsistencies, loadGoldSet, GoldSetError } from './gold.ts';
-import { runPrompt } from './runner.ts';
+import { runPrompt, type RunArm } from './runner.ts';
 import { scoreRun } from './score.ts';
+import { runControl } from './control.ts';
 import {
   buildReport,
   diffReports,
@@ -39,6 +44,9 @@ specfix eval
 
   run --set <name> --prompt <name> [options]
       Analyze the set's tickets and score the result.
+      --deliberate         run the Adversarial Critic after the Extractor, and
+                           score it against a volume-matched random-pruning control
+      --critic <name>      critic prompt for --deliberate (default critic-v1)
       --limit <n>          only the first n tickets
       --model <id>         override the configured model
       --reviewer <a,b>     score against these reviewers only
@@ -46,11 +54,12 @@ specfix eval
       --no-write           print the report without writing it
       --check              exit 1 if precision or recall regressed
 
-  show --set <name> --prompt <name>
-      Print the committed report.
+  show --set <name> --prompt <name> [--deliberate]
+      Print the committed report for that arm.
 
   compare --set <name> --a <prompt> --b <prompt>
-      Diff two committed reports.
+      Diff two committed reports. Suffix a prompt name with "+deliberated" to name
+      the Critic arm, e.g. --a single-shot-v1 --b single-shot-v1+deliberated.
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -116,6 +125,7 @@ async function validate(flags: Flags): Promise<number> {
 async function run(flags: Flags): Promise<number> {
   const setName = required(flags, 'set');
   const promptName = required(flags, 'prompt');
+  const arm: RunArm = flags['deliberate'] === undefined ? 'single_shot' : 'deliberated';
 
   if (!hasOpenAiCredentials()) {
     process.stderr.write('OPENAI_API_KEY is not set. `run` makes real API calls.\n');
@@ -131,21 +141,34 @@ async function run(flags: Flags): Promise<number> {
   const summary = await runPrompt({
     gold,
     promptName,
+    arm,
+    criticPrompt: flags['critic'] === '' ? undefined : flags['critic'],
     model: flags['model'],
     limit: numeric(flags, 'limit'),
     concurrency: numeric(flags, 'concurrency') ?? 3,
     onProgress: (event) => {
-      const status = event.error ? `FAILED ${event.error}` : `${event.flagCount} flags`;
+      const pruned = event.prunedCount === undefined ? '' : `, ${event.prunedCount} pruned`;
+      const status = event.error ? `FAILED ${event.error}` : `${event.flagCount} flags${pruned}`;
       process.stderr.write(`  [${event.index}/${event.total}] ${event.externalId}  ${status}\n`);
     },
   });
 
   const scorecard = scoreRun(gold.set, summary.runs, reviewerIds ? { reviewerIds } : {});
+
+  // The control runs against the same reviewer scope the scorecard resolved, not the
+  // requested one. Scoring against independent reviewers while testing against all of
+  // them would compare a precision figure to a null built from different labels.
+  const control =
+    arm === 'deliberated'
+      ? runControl(gold.set, summary.runs, { reviewerIds: scorecard.reviewerScope })
+      : undefined;
+
   const report = buildReport({
     gold,
     promptName,
     summary,
     scorecard,
+    control,
     generatedAt: new Date().toISOString(),
   });
 
@@ -154,7 +177,7 @@ async function run(flags: Flags): Promise<number> {
     `  wall-clock latency total: ${(summary.latencyMsTotal / 1000).toFixed(1)}s\n`
   );
 
-  const path = reportPath(RUNS_DIR, gold.set.version, promptName);
+  const path = reportPath(RUNS_DIR, gold.set.version, promptName, arm);
   const previous = await readReport(path);
   let regressed = false;
 
@@ -169,13 +192,20 @@ async function run(flags: Flags): Promise<number> {
     process.stdout.write(`\n  wrote ${path}\n`);
   }
 
-  return flags['check'] !== undefined && regressed ? 1 : 0;
+  // A deliberated run that loses to random pruning is a failed experiment, not a
+  // passing build. Under --check it exits non-zero even when precision went up,
+  // because "precision went up" is the thing the control exists to disqualify.
+  const controlFailed =
+    control !== undefined && (!control.significant || control.gapsLostToPruning.length > 0);
+
+  return flags['check'] !== undefined && (regressed || controlFailed) ? 1 : 0;
 }
 
 async function show(flags: Flags): Promise<number> {
   const gold = await loadGoldSet(goldPath(required(flags, 'set')));
   const promptName = required(flags, 'prompt');
-  const path = reportPath(RUNS_DIR, gold.set.version, promptName);
+  const arm: RunArm = flags['deliberate'] === undefined ? 'single_shot' : 'deliberated';
+  const path = reportPath(RUNS_DIR, gold.set.version, promptName, arm);
   const report = await readReport(path);
 
   if (!report) {
@@ -191,8 +221,8 @@ async function compare(flags: Flags): Promise<number> {
   const a = required(flags, 'a');
   const b = required(flags, 'b');
 
-  const reportA = await readReport(reportPath(RUNS_DIR, gold.set.version, a));
-  const reportB = await readReport(reportPath(RUNS_DIR, gold.set.version, b));
+  const reportA = await readReport(armPath(gold.set.version, a));
+  const reportB = await readReport(armPath(gold.set.version, b));
 
   if (!reportA || !reportB) {
     process.stderr.write(`missing committed report for ${!reportA ? a : b}\n`);
@@ -203,6 +233,14 @@ async function compare(flags: Flags): Promise<number> {
   process.stdout.write(renderReport(reportB));
   process.stdout.write(`\n  ${a} → ${b}\n${renderDiff(diffReports(reportA, reportB))}\n`);
   return 0;
+}
+
+/** Resolves `single-shot-v1` or `single-shot-v1+deliberated` to a report path. */
+function armPath(goldVersion: string, name: string): string {
+  const suffix = '+deliberated';
+  return name.endsWith(suffix)
+    ? reportPath(RUNS_DIR, goldVersion, name.slice(0, -suffix.length), 'deliberated')
+    : reportPath(RUNS_DIR, goldVersion, name, 'single_shot');
 }
 
 type Flags = Record<string, string | undefined>;

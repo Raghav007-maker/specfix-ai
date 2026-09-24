@@ -27,7 +27,9 @@ This is a real, well-documented problem in requirements engineering (it's the re
 
 ## 2. Solution — scoped to the actual wedge
 
-**In scope for v1:** ingest a Jira ticket → flag ambiguity, missing information, vague/untestable language, contradictions, and unaddressed edge cases → human (PM) reviews and resolves each flag in a dashboard → ticket is marked ready for development.
+**In scope for v1:** ingest a Jira ticket → flag ambiguity, missing information, vague/untestable language, contradictions, and unaddressed edge cases → a second Critic pass drops the false alarms → human (PM) reviews and resolves each surviving flag in a dashboard → ticket is marked ready for development and the disambiguated acceptance criteria are written back to Jira once.
+
+**The Jira write, precisely:** exactly one write, when the PM signs the ticket off. Not on a developer's commit, not when a PR merges, not when the team ships something beyond what the ticket described. Extra scope shipped by a developer is fine and often good — but the ticket is a record of what was agreed at sign-off, and a tool that keeps rewriting it to match the code destroys the only artifact that would show the two had diverged.
 
 **Explicitly out of scope for v1** (deferred, see roadmap): Gherkin/Playwright generation, PR-vs-spec verification, doc auto-sync, multi-agent autonomous workflows. Every one of these is a real, larger, harder problem, and building them before the core flagging loop is independently validated is how a six-person team ends up with four half-finished products instead of one that works.
 
@@ -41,10 +43,11 @@ This is a real, well-documented problem in requirements engineering (it's the re
 
 ### Phase 1 (8-10 weeks) — MVP: ambiguity detection + review dashboard
 - Jira API ingestion (pull ticket title, description, acceptance criteria on demand or via webhook).
-- LLM analysis pipeline (see Section 5) producing structured flags: category, what's unclear, why it matters, a specific question for the PM.
+- LLM analysis pipeline (see Section 4) producing structured flags: category, what's unclear, why it matters, a specific question for the PM.
+- Adversarial Critic pass that prunes false alarms before a reviewer sees them — shipped behind the `--deliberate` eval arm first, and adopted in production only if it beats the random-pruning control (Section 8).
 - Review dashboard: ticket + flags side by side, one-click approve/edit/dismiss per flag, audit trail of decisions.
-- Track: flag precision, flag recall (against reviewer's own list), time-to-ready per ticket, questions-per-ticket before vs. after.
-- **No test generation, no PR analysis, no write-back to Jira without explicit human approval.**
+- Track: flag precision, flag recall (against reviewer's own list), Critic lift over chance, time-to-ready per ticket, questions-per-ticket before vs. after.
+- **No test generation, no PR analysis. One Jira write, on explicit PM sign-off, and no other.**
 
 ### Phase 2 (8-12 weeks) — Gherkin/Playwright scaffold generation + traceability
 - Only start this once Phase 1 flag precision is holding up on real, independently-scored tickets.
@@ -65,14 +68,21 @@ This is a real, well-documented problem in requirements engineering (it's the re
 Jira API / webhook
         │
         ▼
-Requirement Parser (LLM call, gpt-4o-mini for extraction,
-gpt-4o for the ambiguity/edge-case judgment pass)
+Extractor pass (LLM call — candidate flags from ticket text)
         │
         ▼
-Structured flags → Postgres (ticket, flag, category, status, reviewer decision)
+Adversarial Critic pass (second LLM call — keep/prune per candidate,
+pruned flags stored but never shown to the reviewer)
         │
         ▼
-Review Dashboard (Next.js) — PM approves/edits/dismisses each flag
+Structured flags → Postgres (ticket, flag, category, status, origin,
+critic verdict, reviewer decision)
+        │
+        ▼
+Review Dashboard (Next.js) — PM approves/edits/dismisses each surviving flag
+        │
+        ▼ (on PM sign-off, once)
+Write disambiguated acceptance criteria back to the Jira ticket
         │
         ▼ (Phase 2 only, on approval)
 Spec Compiler → Gherkin + Playwright scaffold (placeholders for selectors)
@@ -82,9 +92,13 @@ Traceability store (Postgres + pgvector for requirement/test embeddings)
 ```
 
 Design principles carried through from earlier review:
-- Human review gate after every AI-generated artifact — no exceptions in Phase 1-2.
-- Nothing writes back to Jira/Confluence without an explicit human click.
+- Human review gate after every AI-generated artifact — no exceptions in Phase 1-2. The Critic
+  is not a gate; it filters candidates *before* the human gate, and everything that survives it
+  still needs a human decision.
+- The one write to Jira happens on an explicit human click, at PM sign-off, and nowhere else.
 - Tenant isolation is a Day-1 schema decision (row-level security keyed on tenant_id), not a retrofit — this cannot be added safely later once real customer data is in the database.
+- The Critic's value is an empirical question with a stated null hypothesis, not an assumption.
+  See Section 8 and `docs/deliberation-and-control.md`.
 
 ---
 
@@ -92,7 +106,7 @@ Design principles carried through from earlier review:
 
 | Layer | Choice | Why |
 |---|---|---|
-| LLM | OpenAI only. `gpt-4o-mini` for extraction/parsing (cheap, high volume); `gpt-4o` for the actual ambiguity judgment call that a human will act on | Single provider per budget constraint. Tiering by task, not by vendor, is the actual lever for cost control here. |
+| LLM | OpenAI only. `gpt-4o-mini` for both the extraction pass and the Critic pass by default (`OPENAI_MODEL_EXTRACT`, `OPENAI_MODEL_JUDGE`) | Single provider per budget constraint. The two passes share a model on purpose: running the Critic on a stronger model than the Extractor would vary model *and* pipeline at the same time, so a precision gain could not be attributed to the Critic. Tiering the judgment pass up is a deliberate follow-up study, and `modelsDiffer` marks any run where it happened. |
 | Embeddings | `text-embedding-3-small` | pgvector is fine under ~1M vectors at this stage; the small model is enough and meaningfully cheaper than `-large`. |
 | Orchestration | BullMQ (Redis-backed) | Phase 1-2 is a 3-5 step linear/branching pipeline. Temporal and LangGraph both solve problems (complex durable workflows, multi-agent branching) you don't have yet — adding them now is complexity with no current payoff. |
 | Database | Supabase (Postgres + pgvector + auth + storage in one bill) | Avoids running separate auth (Clerk) and Postgres (RDS) services that do overlapping jobs. Plain Postgres underneath — can split out later with no rewrite. |
@@ -117,6 +131,13 @@ The five-agent vision (deep research agent, browser-exploring test generator, au
 
 Everything else in the five-agent list (codebase-cross-referencing research agent, browser-automation test generator, autonomous PR reasoning agent, autonomous doc-writer) stays out of scope until Phase 1-2 data exists to justify the added cost and risk.
 
+**The Adversarial Critic is not one of these agents.** It is a second single-shot LLM call with a
+fixed schema, no tools, no memory, and no conversation — it reviews a list and returns a verdict
+per item. It costs roughly one extra extraction call per ticket, not the 10-50x of a tool-calling
+agent loop, and it writes nothing anywhere. It is also the only component in Phase 1 whose value
+is stated as a null hypothesis rather than assumed: if it does not beat the random-pruning
+control, it gets removed rather than defended.
+
 ---
 
 ## 7. Features by phase (concrete list)
@@ -124,8 +145,11 @@ Everything else in the five-agent list (codebase-cross-referencing research agen
 **Phase 1:**
 - Jira ticket ingestion (manual trigger + webhook)
 - Ambiguity/gap flagging across: missing information, vague language, contradictions, unhandled edge cases, security/compliance gaps, untestable criteria
+- Adversarial Critic pass: keep/prune per candidate flag, with pruned flags stored for audit and never shown to the reviewer
 - Review dashboard: side-by-side view, approve/edit/dismiss per flag, resolution audit trail
-- Metrics dashboard: flag precision/recall, time-to-ready, questions-per-ticket
+- Developer-authored questions on a ticket, recorded with `origin = 'developer'` so they stay out of the precision denominator
+- Single Jira write-back of disambiguated acceptance criteria at PM sign-off
+- Metrics dashboard: flag precision/recall, Critic lift over the random-pruning control, time-to-ready, questions-per-ticket
 
 **Phase 2 (gated on Phase 1 data):**
 - Gherkin generation from approved requirements
@@ -144,20 +168,35 @@ Everything else in the five-agent list (codebase-cross-referencing research agen
 
 | Metric | How it's measured | Why it matters |
 |---|---|---|
-| Flag precision | % of raised flags an independent reviewer marks "real issue" | Determines noise level / alert fatigue risk |
+| Flag precision | % of raised flags an independent reviewer marks "real issue", counted over AI-authored flags only | Determines noise level / alert fatigue risk |
 | Flag recall | % of the reviewer's own gap list the model caught | Determines actual coverage |
+| **Critic lift over chance** | Observed precision on the Critic arm vs. a volume-matched random-pruning control (1000 permutations, p < 0.05) | The only measurement that distinguishes a Critic that judges from one that merely discards |
+| **Gaps lost to pruning** | Reviewer gaps whose only covering flag the Critic pruned | Must be zero. The Critic can beat the control on precision while destroying recall |
 | Time-to-ready | Time from ticket creation to "marked ready for dev," before vs. after tool | Real, measurable proxy for the rework-prevention thesis |
 | Questions-per-ticket | Developer questions asked post-handoff, before vs. after | Leading indicator, easier to collect than full rework cost |
 | Rework rate (PRs rejected in QA for "missing requirement" reasons) | Requires a design partner baseline in Phase 0/1 | This is the number that eventually supports a rework-reduction claim — not before it's measured |
 
 No "50% reduction" or similar number goes into any external material until it's derived from this table with a real design partner's data, not assumed.
 
+**Two measurement rules that are not optional:**
+
+- **Precision on the Critic arm is never quoted without its control.** Pruning raises precision
+  mechanically; a coin flip does it too. "Precision improved after we added the Critic" is a
+  claim no result can refute, which makes it not a finding. `buildReport` throws rather than
+  emit a deliberated report with the control missing. Full reasoning in
+  `docs/deliberation-and-control.md`.
+- **Precision counts AI-authored flags only.** Once developers can add their own questions to a
+  ticket, those questions are real by construction — a human bothered to ask. Letting them into
+  the denominator makes precision climb with adoption while the model stays exactly as good as
+  it was. `flags.origin` records which is which, and the query filters on it.
+
 ---
 
 ## 9. Security & data handling (Day-1 constraints, not retrofits)
 
 - Row-level security in Postgres, tenant_id on every table, enforced at the query layer — decided now, because retrofitting isolation after real customer data exists is far riskier than building it in from the first schema migration.
-- Treat all ticket/PR text as untrusted input to the LLM: separate system/user message roles, never concatenate raw ticket text into a system prompt, validate LLM output against an expected schema before using it, log every LLM call (input, output, prompt version) for audit and debugging.
+- Treat all ticket/PR text as untrusted input to the LLM: separate system/user message roles, never concatenate raw ticket text into a system prompt, validate LLM output against an expected schema before using it, log every LLM call (input, output, prompt version) for audit and debugging. The Critic pass gets the same treatment: the candidate flags it reviews are model output derived from ticket text, so they are delimiter-neutralized on the way in exactly as the ticket is.
+- The Jira write-back (Section 2) needs a token with write scope, which is a materially larger blast radius than the read-only token the rest of Phase 1 uses. It is held separately, used by exactly one code path, and that path is reachable only from an authenticated PM sign-off action — not from the analysis worker, and not from a webhook.
 - No SOC 2 / formal compliance program yet — noted as a known gap to close before any enterprise pilot that requires it, not before.
 
 ---
@@ -179,6 +218,7 @@ Phase 1 (8-10 weeks): 1 backend/infra engineer, 1 ML/prompt engineer, 1 frontend
 ## 12. Open risks
 
 - Precision/recall on real (not self-authored) tickets is unknown — the immediate next step, not a later concern.
+- **The Critic may not beat chance.** The random-pruning control (Section 8) is built to detect exactly this, and a run that fails it fails the build. The honest outcome in that case is to delete the second pass and its API cost, not to retune the threshold until it passes.
 - Single LLM provider = no fallback; acceptable now, needs revisiting before any hard-gating feature (Phase 3+) ships.
 - Atlassian platform risk on the PR-verification piece is unresolved, not mitigated — don't build Phase 3 without a specific answer to it.
 - No design partner confirmed yet as of this plan — Phase 1 dashboard work can proceed in parallel with securing one, but the metrics in Section 8 are meaningless without real ticket flow from an actual team.
