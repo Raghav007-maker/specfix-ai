@@ -137,6 +137,11 @@ describe('cost accounting', () => {
     expect(costUsd('gpt-4o-mini', 1_000_000, 1_000_000)).toBeCloseTo(0.75, 6);
   });
 
+  it('prices grok models correctly', () => {
+    expect(priceFor('grok-2')).toEqual({ inputPerMillion: 2, outputPerMillion: 10 });
+    expect(priceFor('grok-2-latest')).toEqual({ inputPerMillion: 2, outputPerMillion: 10 });
+  });
+
   it('applies the base price to a dated snapshot id', () => {
     expect(priceFor('gpt-4o-mini-2024-07-18')).toEqual(priceFor('gpt-4o-mini'));
   });

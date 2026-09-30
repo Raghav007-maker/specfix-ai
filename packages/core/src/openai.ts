@@ -30,6 +30,7 @@ export function getClient(): OpenAI {
     const config = getConfig();
     client = new OpenAI({
       apiKey: config.openaiApiKey,
+      baseURL: config.openaiBaseUrl,
       timeout: config.requestTimeoutMs,
       // Retries are handled here, not by the SDK, so every attempt is logged.
       maxRetries: 0,

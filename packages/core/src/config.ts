@@ -9,6 +9,7 @@ import 'dotenv/config';
 
 const ConfigSchema = z.object({
   openaiApiKey: z.string().min(1, 'OPENAI_API_KEY is required'),
+  openaiBaseUrl: z.string().url().optional(),
   modelExtract: z.string().min(1),
   modelJudge: z.string().min(1),
   temperature: z.number().min(0).max(2),
@@ -28,6 +29,7 @@ export function getConfig(): Config {
 
   const parsed = ConfigSchema.safeParse({
     openaiApiKey: process.env.OPENAI_API_KEY ?? '',
+    openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() || undefined,
     modelExtract: process.env.OPENAI_MODEL_EXTRACT ?? 'gpt-4o-mini',
     modelJudge: process.env.OPENAI_MODEL_JUDGE ?? 'gpt-4o-mini',
     temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0),

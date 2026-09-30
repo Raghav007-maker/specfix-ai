@@ -14,6 +14,8 @@ export interface ModelPricing {
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10 },
+  'grok-2': { inputPerMillion: 2, outputPerMillion: 10 },
+  'grok-beta': { inputPerMillion: 2, outputPerMillion: 10 },
 };
 
 const warned = new Set<string>();
