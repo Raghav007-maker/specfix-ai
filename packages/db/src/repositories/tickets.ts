@@ -34,6 +34,10 @@ export interface IngestResult {
   isNewVersion: boolean;
   /** Flags marked stale because a newer version superseded them. */
   staledFlagCount: number;
+  /** Scenarios marked stale because a newer version superseded the requirement. */
+  staledScenarioCount: number;
+  /** Scaffolds marked stale alongside the scenarios they were emitted from. */
+  staledScaffoldCount: number;
 }
 
 export async function ingestTicket(
@@ -97,6 +101,8 @@ export async function ingestTicket(
         version: existing[0],
         isNewVersion: false,
         staledFlagCount: 0,
+        staledScenarioCount: 0,
+        staledScaffoldCount: 0,
       };
     }
 
@@ -134,6 +140,32 @@ export async function ingestTicket(
       [tenantId, ticketRow.id, version.id]
     );
 
+    // Generated specs are pinned to a version too. When the requirement text changes,
+    // scenarios and their scaffolds go stale rather than masquerading as coverage of
+    // text that no longer exists — the same mechanism, and what the Phase 2 drift view
+    // reads. Dismissed scenarios stay dismissed, for the same reason dismissed flags do.
+    const staledScenarios = await rows<{ id: string }>(
+      client,
+      `update scenarios set status = 'stale'
+       where tenant_id = $1
+         and ticket_id = $2
+         and ticket_version_id <> $3
+         and status in ('draft', 'approved', 'edited')
+       returning id`,
+      [tenantId, ticketRow.id, version.id]
+    );
+
+    const staledScaffolds = await rows<{ id: string }>(
+      client,
+      `update test_scaffolds set status = 'stale'
+       where tenant_id = $1
+         and ticket_id = $2
+         and ticket_version_id <> $3
+         and status in ('draft', 'approved', 'edited')
+       returning id`,
+      [tenantId, ticketRow.id, version.id]
+    );
+
     await client.query(
       `insert into readiness_events (tenant_id, ticket_id, ticket_version_id, event)
        values ($1, $2, $3, 'ticket_ingested')`,
@@ -145,6 +177,8 @@ export async function ingestTicket(
       version,
       isNewVersion: true,
       staledFlagCount: staled.length,
+      staledScenarioCount: staledScenarios.length,
+      staledScaffoldCount: staledScaffolds.length,
     };
   });
 }

@@ -45,7 +45,7 @@ export function resetClient(): void {
 
 /** One recorded call, ready to be written to the llm_calls table. */
 export interface LlmCallRecord {
-  purpose: 'extract' | 'critic' | 'judge' | 'single_shot';
+  purpose: 'extract' | 'critic' | 'judge' | 'single_shot' | 'compile_gherkin';
   promptVersion: string;
   model: string;
   request: { messages: ChatCompletionMessageParam[]; temperature: number; seed: number | null };
@@ -101,6 +101,22 @@ export async function callForAnalysis(
 /** The Critic pass. Same transport, retry and schema-repair behaviour; different schema. */
 export async function callForCritique(options: StructuredCallOptions): Promise<CriticCallOutcome> {
   return callStructured(options, CriticResultSchema, criticResponseFormat());
+}
+
+/**
+ * A generic structured call, for a schema the caller supplies.
+ *
+ * The Spec Compiler uses this so its `compile_gherkin` pass shares the exact retry,
+ * schema-repair and call-logging behaviour of the analysis passes rather than
+ * reimplementing it. `format` is passed explicitly because each purpose has its own
+ * strict JSON Schema.
+ */
+export async function callForSchema<T>(
+  options: StructuredCallOptions,
+  schema: z.ZodType<T>,
+  format: ReturnType<typeof responseFormat>
+): Promise<{ result: T; calls: LlmCallRecord[] }> {
+  return callStructured(options, schema, format);
 }
 
 /**

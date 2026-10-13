@@ -17,6 +17,7 @@ import {
   type TicketDecisionRow,
 } from '@/lib/repos';
 import { AppHeader } from '@/components/app-header';
+import { TicketTabs } from '@/components/ticket-tabs';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { beginReview } from './actions';
 import { AuditTrail, BlindGapStage, MarkReady, ReviewStage, TicketText } from './stages';
@@ -106,6 +107,8 @@ export default async function TicketPage({
             </div>
           ) : null}
         </div>
+
+        <TicketTabs ticketId={ticket.id} active="review" />
 
         {error ? (
           <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

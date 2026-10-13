@@ -96,6 +96,54 @@ export async function listOpenFlagsForTicket(
   );
 }
 
+/**
+ * The resolved clarifications the Spec Compiler reads, for one version.
+ *
+ * A flag the reviewer accepted or edited is a decision the PM made about the
+ * requirement, so it is the disambiguation the compiler should condition on. The
+ * `answer` is the reviewer's resolution note when they left one — Phase 1 does not
+ * force a structured answer, so it is often empty, and the compiler leans on the
+ * acceptance criteria in that case. Pruned, dismissed, open and stale flags are
+ * excluded: none of them is a decision the requirement now reflects.
+ */
+export interface ResolvedFlag {
+  flagId: string;
+  category: string;
+  questionForPm: string;
+  answer: string;
+}
+
+export async function resolvedFlagsForVersion(
+  tenantId: TenantId,
+  ticketVersionId: string
+): Promise<ResolvedFlag[]> {
+  const rows = await query<{
+    flag_id: string;
+    category: string;
+    question_for_pm: string;
+    answer: string;
+  }>(
+    `select f.id as flag_id, f.category,
+            coalesce(f.edited_question, f.question_for_pm) as question_for_pm,
+            coalesce((
+              select d.resolution_note from flag_decisions d
+              where d.tenant_id = f.tenant_id and d.flag_id = f.id and d.resolution_note is not null
+              order by d.created_at desc
+              limit 1
+            ), '') as answer
+     from flags f
+     where f.tenant_id = $1 and f.ticket_version_id = $2 and f.status in ('accepted', 'edited')
+     order by f.created_at`,
+    [tenantId, ticketVersionId]
+  );
+  return rows.map((r) => ({
+    flagId: r.flag_id,
+    category: r.category,
+    questionForPm: r.question_for_pm,
+    answer: r.answer,
+  }));
+}
+
 export async function decideFlag(tenantId: TenantId, input: DecideFlagInput): Promise<FlagRow> {
   if (input.decision === 'edited' && !input.editedText?.trim()) {
     throw new FlagDecisionError("an edited flag needs the reviewer's replacement text");

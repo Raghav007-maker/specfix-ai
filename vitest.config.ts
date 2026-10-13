@@ -20,6 +20,7 @@ export default defineConfig({
       '@specfix/db': r('./packages/db/src/index.ts'),
       '@specfix/ingest': r('./packages/ingest/src/index.ts'),
       '@specfix/eval': r('./packages/eval/src/index.ts'),
+      '@specfix/compiler': r('./packages/compiler/src/index.ts'),
     },
   },
 });

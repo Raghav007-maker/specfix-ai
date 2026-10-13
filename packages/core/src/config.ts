@@ -12,6 +12,10 @@ const ConfigSchema = z.object({
   openaiBaseUrl: z.string().url().optional(),
   modelExtract: z.string().min(1),
   modelJudge: z.string().min(1),
+  /** Spec Compiler model. Separate from the judgment pass so Phase 2 spend is attributable. */
+  modelCompile: z.string().min(1),
+  /** Embedding model. `text-embedding-3-small` per the plan: pgvector is fine under ~1M vectors. */
+  modelEmbed: z.string().min(1),
   temperature: z.number().min(0).max(2),
   /** Null disables seeding. Set it in any run whose numbers you intend to compare. */
   seed: z.number().int().nullable(),
@@ -32,6 +36,8 @@ export function getConfig(): Config {
     openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() || undefined,
     modelExtract: process.env.OPENAI_MODEL_EXTRACT ?? 'gpt-4o-mini',
     modelJudge: process.env.OPENAI_MODEL_JUDGE ?? 'gpt-4o-mini',
+    modelCompile: process.env.OPENAI_MODEL_COMPILE ?? 'gpt-4o-mini',
+    modelEmbed: process.env.OPENAI_MODEL_EMBED ?? 'text-embedding-3-small',
     temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0),
     seed: process.env.OPENAI_SEED ? Number(process.env.OPENAI_SEED) : null,
     maxTicketInputTokens: Number(process.env.MAX_TICKET_INPUT_TOKENS ?? 8000),

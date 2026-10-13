@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@specfix/compiler": "*",
     "@specfix/core": "*",
     "@specfix/ingest": "*",
     "@specfix/shared": "*",

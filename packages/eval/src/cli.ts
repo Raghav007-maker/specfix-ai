@@ -16,7 +16,8 @@
  */
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { hasOpenAiCredentials } from '@specfix/core';
 import { findInconsistencies, loadGoldSet, GoldSetError } from './gold.ts';
 import { runPrompt, type RunArm } from './runner.ts';
@@ -31,6 +32,7 @@ import {
   reportPath,
   writeReport,
 } from './report.ts';
+import { buildGenerationReport, renderGenerationReport, runGeneration } from './generate-run.ts';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const GOLD_DIR = join(REPO_ROOT, 'fixtures', 'gold');
@@ -60,6 +62,15 @@ specfix eval
   compare --set <name> --a <prompt> --b <prompt>
       Diff two committed reports. Suffix a prompt name with "+deliberated" to name
       the Critic arm, e.g. --a single-shot-v1 --b single-shot-v1+deliberated.
+
+  generate --set <name> --prompt <name> [options]
+      Phase 2. Compile scenarios over the set's tickets and score the automatic
+      generation metrics: AC coverage, hallucinated-cover rate, scaffold validity.
+      (Scenario acceptance needs a human, so it is measured from review data, not here.)
+      --limit <n>          only the first n tickets
+      --model <id>         override the configured model
+      --concurrency <n>    parallel compilations (default 3)
+      --no-write           print the report without writing it
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -75,6 +86,8 @@ async function main(argv: string[]): Promise<number> {
       return show(flags);
     case 'compare':
       return compare(flags);
+    case 'generate':
+      return generate(flags);
     case undefined:
     case 'help':
     case '--help':
@@ -233,6 +246,54 @@ async function compare(flags: Flags): Promise<number> {
   process.stdout.write(renderReport(reportB));
   process.stdout.write(`\n  ${a} → ${b}\n${renderDiff(diffReports(reportA, reportB))}\n`);
   return 0;
+}
+
+async function generate(flags: Flags): Promise<number> {
+  const setName = required(flags, 'set');
+  const promptName = required(flags, 'prompt');
+
+  if (!hasOpenAiCredentials()) {
+    process.stderr.write('OPENAI_API_KEY is not set. `generate` makes real API calls.\n');
+    return 1;
+  }
+
+  const gold = await loadGoldSet(goldPath(setName));
+  const summary = await runGeneration({
+    gold,
+    promptName,
+    model: flags['model'],
+    limit: numeric(flags, 'limit'),
+    concurrency: numeric(flags, 'concurrency') ?? 3,
+    onProgress: (event) => {
+      const status = event.error ? `FAILED ${event.error}` : `${event.scenarioCount} scenarios`;
+      process.stderr.write(`  [${event.index}/${event.total}] ${event.externalId}  ${status}\n`);
+    },
+  });
+
+  const report = buildGenerationReport({
+    gold,
+    promptName,
+    summary,
+    generatedAt: new Date().toISOString(),
+  });
+
+  process.stdout.write(renderGenerationReport(report));
+  process.stderr.write(
+    `  wall-clock latency total: ${(summary.latencyMsTotal / 1000).toFixed(1)}s\n`
+  );
+
+  if (flags['no-write'] === undefined) {
+    const path = genReportPath(RUNS_DIR, gold.set.version, promptName);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    process.stdout.write(`\n  wrote ${path}\n`);
+  }
+
+  return 0;
+}
+
+function genReportPath(runsDir: string, goldVersion: string, promptName: string): string {
+  return join(runsDir, `${goldVersion}__${promptName}__generation.json`);
 }
 
 /** Resolves `single-shot-v1` or `single-shot-v1+deliberated` to a report path. */
