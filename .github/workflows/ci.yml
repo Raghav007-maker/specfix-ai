@@ -1,9 +1,14 @@
-# CI for Phase 1.
+# CI for Phase 1–2.
 #
 # The Postgres service exists so migrations and the tenant-isolation test actually
 # execute. Without it those tests skip, and a skipped isolation test is how you ship
 # a cross-tenant read. Supabase is not available in CI, so packages/db/test/auth-shim.sql
 # stands in for the `auth` schema and `auth.uid()`.
+#
+# The image is pgvector/pgvector:pg16 rather than plain postgres:16 because migration
+# 0003 enables the `vector` extension (Phase 2). Supabase ships pgvector in production;
+# this image is its CI equivalent. A plain postgres image would fail the migrate step on
+# `create extension vector`.
 #
 # What is deliberately NOT here: `npm run eval -- run`. It costs money per invocation
 # and needs a real key. `eval validate` is the part that belongs in CI — it catches a
@@ -25,7 +30,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: specfix_test

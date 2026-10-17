@@ -23,8 +23,10 @@
 import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { analyzeTicket, hasOpenAiCredentials } from '@specfix/core';
-import { FileSource } from '@specfix/ingest';
+import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
+import { FileSource, parseMarkdownTicket } from '@specfix/ingest';
 import { toAnalyzable, type NormalizedTicket } from '@specfix/shared';
 import {
   addMembership,
@@ -34,12 +36,15 @@ import {
   doubleLabeledVersions,
   findUserByEmail,
   ingestTicket,
+  latestVersion,
   listMembershipsForUser,
   listProjects,
   listRunsForTicket,
+  listTicketsForProject,
   precisionCounts,
   recallCounts,
   recordAnalysis,
+  recordCompilation,
   timeToReady,
   type TenantId,
 } from '@specfix/db';
@@ -66,6 +71,17 @@ specfix ops
 
   metrics --tenant <uuid|name> [--owner <email>] [--prompt <version>]
       Precision, recall, inter-rater coverage and time-to-ready, from the database.
+
+  compile --ticket <path> [options]
+      Phase 2. Compile Gherkin scenarios from a ticket's approved acceptance criteria
+      and print them. Costs money (one model call).
+      --flag "<question => answer>"   a resolved clarification to feed the compiler
+                                      (repeatable). The answer is what disambiguates.
+      --persist            also write the run and scenarios to a workspace
+      --owner <email>      owner whose workspace to persist into (with --persist)
+      --tenant <name>      workspace name (with --persist)
+      --scaffold           also emit and print a Playwright scaffold per scenario
+      --prompt <name>      compile prompt (default compile-gherkin-v1)
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -81,6 +97,8 @@ async function main(argv: string[]): Promise<number> {
       return invite(flags);
     case 'metrics':
       return metrics(flags);
+    case 'compile':
+      return compile(flags, rest);
     case undefined:
     case 'help':
     case '--help':
@@ -422,6 +440,232 @@ async function metrics(flags: Flags): Promise<number> {
   return 0;
 }
 
+// --- compile (Phase 2) -------------------------------------------------------
+
+/**
+ * Compile Gherkin scenarios from a ticket file's approved acceptance criteria.
+ *
+ * The "approved requirement" Phase 2 compiles from is the ticket version's AC plus the
+ * resolved clarifications. This CLI proves the core on a fixture before any UI exists,
+ * the same order Phase 1 used — a resolved flag is fed in as `--flag "question =>
+ * answer"`, where the answer is the disambiguating decision.
+ *
+ * `--persist` writes through the repository layer into a real workspace; without it the
+ * command prints and spends nothing beyond the one model call. Persisting requires a
+ * workspace and an ingested version, so it resolves them the same way `seed` does.
+ */
+async function compile(flags: Flags, rest: readonly string[]): Promise<number> {
+  // Fall back to the first bare positional so `ops compile <path>` works even when npm
+  // has stripped `--ticket` from the forwarded args (see `positionals`).
+  const ticketPath = flags['ticket'] ?? positionals(rest).find((p) => p !== 'compile');
+  if (ticketPath === undefined || ticketPath === '') {
+    throw new UsageError('--ticket <path> is required (or pass the ticket path as a positional)');
+  }
+
+  if (!hasOpenAiCredentials()) {
+    process.stderr.write('OPENAI_API_KEY is not set, and compile makes a real API call.\n');
+    return 1;
+  }
+
+  const raw = await readFile(resolve(ticketPath), 'utf8');
+  const parsed = parseMarkdownTicket(raw, ticketPath);
+  const requirement = {
+    externalKey: parsed.externalKey,
+    title: parsed.title,
+    acceptanceCriteriaText: parsed.acceptanceCriteriaText,
+    // Indexes are assigned here as the flags are listed, so a scenario's
+    // source_flag_indexes maps straight onto this array.
+    resolvedFlags: flagPairs(argvFlagValues()).map((pair, index) => ({
+      flagId: `flag-${index + 1}`,
+      category: 'missing_info',
+      questionForPm: pair.question,
+      answer: pair.answer,
+    })),
+  };
+
+  if (!requirement.acceptanceCriteriaText.trim()) {
+    process.stderr.write(
+      `${parsed.externalKey} has no acceptance criteria, so there is nothing to compile.\n`
+    );
+    return 1;
+  }
+
+  const promptName = flags['prompt'] || undefined;
+  const outcome = await compileScenarios(requirement, promptName ? { promptName } : {});
+
+  process.stdout.write(
+    [
+      '',
+      `${parsed.externalKey}  ${parsed.title}`,
+      `${outcome.scenarios.length} scenario(s)  ` +
+        `${outcome.meta.promptVersion}  ` +
+        `$${outcome.meta.costUsd.toFixed(4)}  ` +
+        `${outcome.meta.inputTokens}→${outcome.meta.outputTokens} tok`,
+    ].join('\n')
+  );
+  if (outcome.meta.unverifiedAc > 0) {
+    process.stdout.write(
+      `  ${outcome.meta.unverifiedAc} covers_ac value(s) did not occur in the AC and were cleared\n`
+    );
+  }
+  if (outcome.meta.trimmed > 0) {
+    process.stdout.write(`  ${outcome.meta.trimmed} scenario(s) trimmed past the 30 cap\n`);
+  }
+
+  for (const scenario of outcome.scenarios) {
+    process.stdout.write(`\n${scenario.gherkin}\n`);
+    if (scenario.rationale) process.stdout.write(`  rationale: ${scenario.rationale}\n`);
+    if (scenario.covers_ac) process.stdout.write(`  covers AC: "${scenario.covers_ac}"\n`);
+    if (flags['scaffold'] !== undefined) {
+      const scaffold = emitPlaywrightScaffold({
+        scenario,
+        externalKey: parsed.externalKey,
+        scenarioId: 'preview',
+      });
+      process.stdout.write(
+        `\n--- scaffold (${scaffold.selectorPlaceholders.length} placeholders) ---\n`
+      );
+      process.stdout.write(`${scaffold.code}\n`);
+    }
+  }
+
+  if (outcome.scenarios.length === 0) {
+    process.stdout.write(
+      '\nNo scenarios. Either the criteria are not yet testable, or the criteria were ' +
+        'already fully covered by the resolved clarifications.\n'
+    );
+  }
+
+  if (flags['persist'] === undefined) {
+    process.stdout.write(
+      '\nNot persisted. Re-run with --persist --owner <email> --tenant <name>.\n'
+    );
+    return 0;
+  }
+
+  return persistCompilation(flags, requirement, outcome);
+}
+
+/**
+ * Writes a compilation through the repository layer.
+ *
+ * The ticket must already be ingested into the workspace (via `seed`) so there is a
+ * ticket_version to attach to. We resolve the version the same tenant-scoped way ops
+ * always does — never a global lookup — and refuse if the ticket is not present.
+ */
+async function persistCompilation(
+  flags: Flags,
+  requirement: { externalKey: string; ticketVersionId?: string },
+  outcome: Awaited<ReturnType<typeof compileScenarios>>
+): Promise<number> {
+  const ownerEmail = required(flags, 'owner');
+  const tenantName = required(flags, 'tenant');
+
+  const owner = await findUserByEmail(ownerEmail);
+  if (!owner) {
+    process.stderr.write(`No account for ${ownerEmail}.\n`);
+    return 1;
+  }
+  const membership = (await listMembershipsForUser(owner.id)).find(
+    (m) => m.tenant_name === tenantName
+  );
+  if (!membership) {
+    process.stderr.write(`${ownerEmail} is not a member of "${tenantName}".\n`);
+    return 1;
+  }
+  const tenantId: TenantId = membership.tenant_id;
+
+  // Resolve the version from the database, not from the fixture, so we compile against
+  // exactly the AC the ticket was ingested with.
+  const projects = await listProjects(tenantId);
+  let target: { ticketId: string; versionId: string } | null = null;
+  for (const project of projects) {
+    const tickets = await listTicketsForProject(tenantId, project.id);
+    const match = tickets.find((t) => t.external_key === requirement.externalKey);
+    if (!match) continue;
+    const version = await latestVersion(tenantId, match.id);
+    if (version) target = { ticketId: match.id, versionId: version.id };
+    break;
+  }
+  if (!target) {
+    process.stderr.write(
+      `Ticket ${requirement.externalKey} is not ingested in "${tenantName}". Run \`seed\` first.\n`
+    );
+    return 1;
+  }
+
+  const recorded = await recordCompilation(tenantId, {
+    ticketId: target.ticketId,
+    ticketVersionId: target.versionId,
+    meta: {
+      promptVersion: outcome.meta.promptVersion,
+      model: outcome.meta.model,
+      temperature: outcome.meta.temperature,
+      seed: outcome.meta.seed,
+      truncated: outcome.meta.truncated,
+      inputTokens: outcome.meta.inputTokens,
+      outputTokens: outcome.meta.outputTokens,
+      costUsd: outcome.meta.costUsd,
+    },
+    // The CLI's --flag clarifications are a simulation, not real resolved flag rows, so
+    // they have no database id to link to (source_flag_ids is uuid[] with an FK on
+    // flags). Clear the linkage here; the real requirement->scenario trace is written by
+    // the Milestone B UI flow, which compiles from actual resolved flags.
+    scenarios: outcome.scenarios.map((scenario) => ({ ...scenario, sourceFlagIds: [] })),
+    calls: outcome.calls.map((call) => ({
+      purpose: 'compile_gherkin' as const,
+      promptVersion: call.promptVersion,
+      model: call.model,
+      request: call.request,
+      response: call.response,
+      latencyMs: call.latencyMs,
+      inputTokens: call.inputTokens,
+      outputTokens: call.outputTokens,
+      costUsd: call.costUsd,
+      error: call.error,
+    })),
+  });
+
+  process.stdout.write(
+    `\npersisted run ${recorded.run.id}: ${recorded.scenarioIds.length} scenario(s)` +
+      (recorded.scenariosSkipped > 0 ? `, ${recorded.scenariosSkipped} already present` : '') +
+      '\n'
+  );
+  return 0;
+}
+
+/**
+ * `--flag "question => answer"` pairs, in order. A bare value with no `=>` is treated
+ * as an answer with an auto-generated question, which is enough for a smoke compile.
+ */
+function flagPairs(raw: readonly string[]): { question: string; answer: string }[] {
+  return raw.map((value, index) => {
+    const separator = value.indexOf('=>');
+    if (separator === -1) {
+      return { question: `Clarification ${index + 1}`, answer: value.trim() };
+    }
+    return {
+      question: value.slice(0, separator).trim() || `Clarification ${index + 1}`,
+      answer: value.slice(separator + 2).trim(),
+    };
+  });
+}
+
+/** Collects every `--flag` value from argv, since the shared parser keeps only the last. */
+function argvFlagValues(): string[] {
+  const argv = process.argv.slice(2);
+  const values: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== '--flag') continue;
+    const next = argv[i + 1];
+    if (next !== undefined && !next.startsWith('--')) {
+      values.push(next);
+      i += 1;
+    }
+  }
+  return values;
+}
+
 // --- flags -------------------------------------------------------------------
 
 type Flags = Record<string, string | undefined>;
@@ -442,6 +686,30 @@ function parseFlags(argv: readonly string[]): Flags {
     }
   }
   return flags;
+}
+
+/**
+ * The non-flag arguments, in order. The counterpart of parseFlags: it skips `--key`
+ * tokens and the value each consumes, leaving the bare positionals.
+ *
+ * This exists because `npm run ops -- compile --ticket <path>` strips the `--flags`
+ * before they reach the script (npm re-parses forwarded args as its own config), which
+ * leaves the path as a bare positional. Reading it here means the natural command still
+ * works; `npx tsx scripts/ops.ts compile --ticket <path>` passes the flags through
+ * untouched and is the reliable form when a flag has no positional fallback.
+ */
+function positionals(argv: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i] as string;
+    if (token.startsWith('--')) {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('--')) i += 1;
+      continue;
+    }
+    out.push(token);
+  }
+  return out;
 }
 
 class UsageError extends Error {}

@@ -4,3 +4,5 @@ export * from './score.ts';
 export * from './control.ts';
 export * from './runner.ts';
 export * from './report.ts';
+export * from './generation.ts';
+export * from './generate-run.ts';

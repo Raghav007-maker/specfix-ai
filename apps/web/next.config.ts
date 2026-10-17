@@ -10,13 +10,16 @@ import { resolve } from 'node:path';
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 
 const nextConfig: NextConfig = {
-  // @specfix/db and @specfix/shared ship raw TypeScript from src/ with no build
-  // step, so Next has to compile them itself rather than treat them as opaque deps.
-  transpilePackages: ['@specfix/db', '@specfix/shared'],
+  // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
+  // has to compile them itself rather than treat them as opaque deps. @specfix/compiler
+  // and @specfix/core are here because the Specs tab's generate action calls the Spec
+  // Compiler inline (there is no worker yet).
+  transpilePackages: ['@specfix/db', '@specfix/shared', '@specfix/core', '@specfix/compiler'],
 
-  // pg uses dynamic requires and native-ish internals; bundling it breaks it. Keep
-  // it external and require it at runtime. It is only ever imported from server code.
-  serverExternalPackages: ['pg'],
+  // pg uses dynamic requires and native-ish internals; bundling it breaks it. openai
+  // ships its own runtime shims and is only ever reached from a server action (the
+  // generate path), so keep both external and require them at runtime.
+  serverExternalPackages: ['pg', 'openai'],
 
   // The Supabase URL and anon key are public by design (the anon key is meant to
   // ship to browsers). Bridge them from the root .env to the NEXT_PUBLIC_ names the
