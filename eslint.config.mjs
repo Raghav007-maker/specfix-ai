@@ -40,5 +40,25 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // The db package's runtime code must not depend on the API client: its types are
+    // shaped to accept @specfix/core records structurally instead. @specfix/core is a
+    // devDependency of @specfix/db only for packages/db/scripts (the embed backfill).
+    files: ['packages/db/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@specfix/core',
+              message:
+                'packages/db/src must not depend on the API client. Declare a structural type here instead.',
+            },
+          ],
+        },
+      ],
+    },
   }
 );

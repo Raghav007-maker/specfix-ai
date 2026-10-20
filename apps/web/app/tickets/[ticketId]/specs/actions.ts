@@ -19,10 +19,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   SCENARIO_REVIEW_DECISIONS,
+  isApprovedScenario,
   parseGherkin,
   type ScenarioReviewDecision,
 } from '@specfix/shared';
 import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
+import { refreshScenarioEmbedding } from '@/lib/embeddings';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
@@ -148,7 +150,17 @@ export async function generateScenarios(formData: FormData): Promise<void> {
   });
 }
 
-/** Accept / edit / dismiss / reopen a generated scenario. The human gate before scaffolds. */
+/**
+ * Accept / edit / dismiss / reopen a generated scenario. The human gate before scaffolds.
+ *
+ * An approve or edit then refreshes the scenario's embedding, so coverage reflects the
+ * reviewed wording. That happens after the decision commits and cannot undo it: the
+ * reviewer's verdict is the primary record and a vector is derived from it. If the
+ * refresh does not succeed, the action reports that the decision was saved and what
+ * happened to the embedding — through the same error banner as any other failure, so a
+ * partial result is never shown as a clean one. Dismiss and reopen embed nothing; the
+ * coverage queries only count approved and edited scenarios.
+ */
 export async function decideScenarioAction(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   const scenarioId = String(formData.get('scenarioId') ?? '');
@@ -160,13 +172,25 @@ export async function decideScenarioAction(formData: FormData): Promise<void> {
     if (!SCENARIO_REVIEW_DECISIONS.includes(decision as ScenarioReviewDecision)) {
       throw new Error(`unknown decision: ${decision}`);
     }
-    await decideScenario(ctx.tenantId, {
+    const updated = await decideScenario(ctx.tenantId, {
       scenarioId,
       userId: ctx.userId,
       decision: decision as ScenarioReviewDecision,
       editedText: editedText === '' ? undefined : editedText,
       resolutionNote: resolutionNote === '' ? undefined : resolutionNote,
     });
+
+    if (!isApprovedScenario(updated.status)) return;
+
+    let problem: string | null;
+    try {
+      problem = await refreshScenarioEmbedding(ctx.tenantId, updated.id);
+    } catch (error) {
+      problem = `its embedding was not updated (${error instanceof Error ? error.message : String(error)}). The next embedding backfill will pick it up.`;
+    }
+    if (problem) {
+      throw new Error(`Your decision was saved (scenario ${updated.status}), but ${problem}`);
+    }
   });
 }
 

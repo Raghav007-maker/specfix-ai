@@ -22,7 +22,7 @@
  */
 import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
 import { FileSource } from '@specfix/ingest';
-import { toAnalyzable, type NormalizedTicket } from '@specfix/shared';
+import { splitAcClauses, toAnalyzable, type NormalizedTicket } from '@specfix/shared';
 import type { LoadedGoldSet } from './gold.ts';
 import { formatRate, rate, type Rate } from './metrics.ts';
 import { acCoverage, isStructurallyValid } from './generation.ts';
@@ -295,17 +295,10 @@ function generationCaveats(
 }
 
 /**
- * Split acceptance-criteria text into clauses — one per bullet or non-empty line. Bullet
- * markers (`-`, `*`, `1.`) are stripped so a clause matches a scenario's `covers_ac`
- * regardless of list formatting.
+ * Clause splitting lives in @specfix/shared so the Specs tab's coverage view splits AC
+ * text exactly as this report does. Re-exported here for existing importers.
  */
-export function splitAcClauses(text: string): string[] {
-  return text
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim())
-    .filter((line) => line.length > 0);
-}
+export { splitAcClauses };
 
 export function renderGenerationReport(report: GenerationReport): string {
   const row = (label: string, value: string): string => `  ${label.padEnd(22)}${value}`;

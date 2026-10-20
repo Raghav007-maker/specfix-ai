@@ -11,5 +11,8 @@
   "dependencies": {
     "@specfix/shared": "*",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@specfix/core": "*"
   }
 }

@@ -21,8 +21,8 @@ export function getPool(): Pool {
     pool = new Pool({
       connectionString,
       max: Number(process.env.PGPOOL_MAX ?? 10),
-      // Supabase's pooler drops idle connections; fail fast rather than hang.
-      connectionTimeoutMillis: 10_000,
+      // Supabase's pooler drops idle connections; allow sufficient time for cold connections.
+      connectionTimeoutMillis: Number(process.env.PG_TIMEOUT_MS ?? 30_000),
       idleTimeoutMillis: 30_000,
       ssl: isRemote ? { rejectUnauthorized: false } : undefined,
     });

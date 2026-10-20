@@ -12,12 +12,16 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+  'gpt-5.4-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+  '5.4-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+  'gpt-5.6-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10 },
   'grok-2': { inputPerMillion: 2, outputPerMillion: 10 },
   'grok-beta': { inputPerMillion: 2, outputPerMillion: 10 },
   'openai/gpt-oss-120b': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'openai/gpt-oss-20b': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
+  'text-embedding-3-small': { inputPerMillion: 0.02, outputPerMillion: 0 },
 };
 
 const warned = new Set<string>();

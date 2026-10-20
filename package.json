@@ -21,6 +21,7 @@
     "format:check": "prettier --check .",
     "db:migrate": "tsx packages/db/scripts/migrate.ts",
     "db:reset": "tsx packages/db/scripts/migrate.ts --reset",
+    "embed:backfill": "tsx packages/db/scripts/embed-backfill.ts",
     "eval": "tsx packages/eval/src/cli.ts",
     "ops": "tsx scripts/ops.ts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test"

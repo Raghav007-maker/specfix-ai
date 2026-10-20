@@ -1,7 +1,14 @@
-import { FLAG_CATEGORY_LABELS } from '@specfix/shared';
+import {
+  FLAG_CATEGORY_LABELS,
+  driftVerdict,
+  type ClauseCoverageRow,
+  type ClauseCoverageStatus,
+  type DriftVerdict,
+} from '@specfix/shared';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '@/components/ui';
 import type {
   CoverageCounts,
+  DriftedScenario,
   ScaffoldRow,
   ScenarioRow,
   ScenarioReviewDetailRow,
@@ -480,13 +487,35 @@ export function SpecsAuditTrail({ reviews }: { reviews: ScenarioReviewDetailRow[
  * is not coverage. The untested list is the actionable half: resolved questions with no
  * scenario yet.
  */
+/**
+ * Whether embedding-based suggestions can be shown. `schema_missing`: migration 0006 is
+ * not applied. `not_embedded`: it is, but this version has no clause vectors yet.
+ * `error`: the query failed (logged server-side); exact coverage still renders.
+ */
+export type SemanticState = 'ready' | 'schema_missing' | 'not_embedded' | 'error';
+
+const SEMANTIC_NOTES: Record<Exclude<SemanticState, 'ready'>, string> = {
+  schema_missing:
+    'Similarity suggestions are off: the clause-embedding table (migration 0006) is not in this database yet.',
+  not_embedded:
+    'Similarity suggestions appear once this version’s clauses are embedded — re-ingest the ticket or run the embedding backfill.',
+  error: 'Similarity suggestions could not be loaded just now. Exact coverage above is unaffected.',
+};
+
 export function CoveragePanel({
   counts,
   untested,
+  clauses,
+  semanticState,
 }: {
   counts: CoverageCounts;
   untested: UntestedFlag[];
+  clauses: ClauseCoverageRow[];
+  semanticState: SemanticState;
 }) {
+  const coveredClauses = clauses.filter((row) => row.status === 'covered').length;
+  const suggested = clauses.filter((row) => row.status === 'likely').length;
+
   return (
     <Card>
       <CardHeader>
@@ -497,7 +526,8 @@ export function CoveragePanel({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <dl className="grid grid-cols-2 gap-3">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Stat label="AC clauses with a scenario" value={`${coveredClauses}/${clauses.length}`} />
           <Stat
             label="Resolved flags with a scenario"
             value={`${counts.flagsWithScenario}/${counts.resolvedFlags}`}
@@ -507,6 +537,37 @@ export function CoveragePanel({
             value={`${counts.scenariosWithScaffold}/${counts.acceptedScenarios}`}
           />
         </dl>
+
+        {clauses.length > 0 ? (
+          <div>
+            <p className="text-xs font-medium">Acceptance criteria, clause by clause</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              A clause counts as covered only when an accepted scenario quotes it. Similarity
+              suggestions{suggested > 0 ? ` (${suggested} likely)` : ''} are hints to confirm, not
+              coverage.
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {clauses.map((row) => (
+                <li key={row.index} className="flex items-start gap-2 text-xs">
+                  <Badge tone={clauseTone(row.status)}>{clauseLabel(row.status)}</Badge>
+                  <span className="flex-1">
+                    <span>{truncate(row.clause, 140)}</span>
+                    {row.scenario ? (
+                      <span className="block text-muted-foreground">
+                        {row.status === 'covered' ? 'Covered by ' : 'Closest scenario: '}
+                        {truncate(row.scenario.title, 80)}
+                        {row.similarity !== null ? ` · ${percent(row.similarity)} similar` : ''}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {semanticState !== 'ready' ? (
+              <p className="mt-2 text-xs text-muted-foreground">{SEMANTIC_NOTES[semanticState]}</p>
+            ) : null}
+          </div>
+        ) : null}
         {untested.length > 0 ? (
           <div>
             <p className="text-xs font-medium">
@@ -532,6 +593,77 @@ export function CoveragePanel({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * The drift signal: scenarios a reviewer accepted on an earlier version that went stale
+ * when the ticket changed, each set against the closest clause of the current text. It
+ * prioritizes re-review; it does not re-approve anything — a stale scenario stays stale
+ * until it is regenerated and reviewed again.
+ */
+export function DriftPanel({ drifted }: { drifted: DriftedScenario[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Drift: approved specs on an older version</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          These scenarios were accepted before the requirement changed. Each is compared with the
+          closest clause of the current text, so you can see which still fit and which may test
+          something that is gone.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {drifted.map((item) => {
+            const verdict = driftVerdict(item.similarity);
+            return (
+              <li key={item.scenarioId} className="flex items-start gap-2 text-xs">
+                <Badge tone={driftTone(verdict)}>{driftLabel(verdict)}</Badge>
+                <span className="flex-1">
+                  <span className="font-medium">{truncate(item.title, 100)}</span>
+                  <span className="block text-muted-foreground">
+                    {item.clauseContent !== null && item.similarity !== null
+                      ? `Closest current clause: “${truncate(item.clauseContent, 100)}” · ${percent(item.similarity)} similar`
+                      : 'No embedding to compare yet — re-review it against the current text.'}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function clauseLabel(status: ClauseCoverageStatus): string {
+  if (status === 'covered') return 'Covered';
+  if (status === 'likely') return 'Likely';
+  if (status === 'possible') return 'Possible';
+  return 'No scenario';
+}
+
+function clauseTone(status: ClauseCoverageStatus): 'success' | 'primary' | 'warning' | 'danger' {
+  if (status === 'covered') return 'success';
+  if (status === 'likely') return 'primary';
+  if (status === 'possible') return 'warning';
+  return 'danger';
+}
+
+function driftLabel(verdict: DriftVerdict): string {
+  if (verdict === 'likely_holds') return 'Likely still fits';
+  if (verdict === 'suspect') return 'Suspect';
+  return 'Unknown';
+}
+
+function driftTone(verdict: DriftVerdict): 'success' | 'danger' | 'muted' {
+  if (verdict === 'likely_holds') return 'success';
+  if (verdict === 'suspect') return 'danger';
+  return 'muted';
+}
+
+function percent(similarity: number): string {
+  return `${Math.round(similarity * 100)}%`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

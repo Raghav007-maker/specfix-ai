@@ -12,11 +12,16 @@ export default async function QueuePage({
   searchParams: Promise<{ project?: string }>;
 }) {
   const user = await requireUser();
-  const tenant = await requireTenant(user.id);
-  const memberships = await currentMemberships(user.id);
+
+  // One membership read, reused for both the tenant choice and the org switcher instead
+  // of querying the same table twice. searchParams is independent, so resolve it alongside.
+  const [memberships, { project: projectParam }] = await Promise.all([
+    currentMemberships(user.id),
+    searchParams,
+  ]);
+  const tenant = await requireTenant(user.id, memberships);
   const projects = await listProjects(tenant.tenant_id);
 
-  const { project: projectParam } = await searchParams;
   const activeProject = projects.find((p) => p.id === projectParam) ?? projects[0];
   const queue = activeProject ? await ticketQueue(tenant.tenant_id, activeProject.id) : [];
 

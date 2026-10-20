@@ -16,3 +16,7 @@ npm-debug.log*
 # Eval reports are committed on purpose (see fixtures/eval-runs/README.md).
 # Scratch runs are not.
 fixtures/eval-runs/scratch/
+
+# Embedding backfill spool (packages/db/scripts/embed-spool.ts): tenant ticket text,
+# vectors and call records from a run whose database write failed. Never commit.
+.embed-spool/

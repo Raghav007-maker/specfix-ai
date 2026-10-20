@@ -7,3 +7,5 @@ export * from './repositories/labeling.ts';
 export * from './repositories/scenarios.ts';
 export * from './repositories/scaffolds.ts';
 export * from './repositories/traceability.ts';
+export * from './repositories/embeddings.ts';
+export * from './embedding-sync.ts';
