@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-20T16:24:07.015Z",
+  "goldSet": {
+    "version": "gold-v1",
+    "frozen": false,
+    "tickets": 11
+  },
+  "prompt": {
+    "name": "compile-gherkin-v1",
+    "version": "compile-gherkin-v1@fe119d703a7f"
+  },
+  "model": {
+    "id": "gpt-5.4-mini-2026-03-17",
+    "temperature": 0,
+    "seed": 1337
+  },
+  "tickets": {
+    "analyzed": 11,
+    "failed": 0
+  },
+  "scenarios": {
+    "produced": 42,
+    "perTicket": 3.82
+  },
+  "acCoverage": {
+    "numerator": 44,
+    "denominator": 48,
+    "value": 0.9166666666666666,
+    "lower": 0.8044669820963272,
+    "upper": 0.9671162431819081
+  },
+  "hallucinatedCoverRate": {
+    "numerator": 1,
+    "denominator": 42,
+    "value": 0.023809523809523808,
+    "lower": 0.004215404134432499,
+    "upper": 0.12321201573766646
+  },
+  "scaffoldValidity": {
+    "numerator": 42,
+    "denominator": 42,
+    "value": 1,
+    "lower": 0.916201209134296,
+    "upper": 0.9999999999999999
+  },
+  "cost": {
+    "usd": 0.004402,
+    "usdPerTicket": 0.0004,
+    "inputTokens": 12677,
+    "outputTokens": 4168
+  },
+  "caveats": [
+    "gold-v1 is not frozen, so the ticket set behind these numbers can still change."
+  ],
+  "failures": []
+}
