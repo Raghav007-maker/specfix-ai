@@ -4,4 +4,5 @@ export * from './prompt.ts';
 export * from './schema.ts';
 export * from './openai.ts';
 export * from './analyze.ts';
+export * from './embeddings.ts';
 export * from './deliberate.ts';

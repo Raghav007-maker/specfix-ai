@@ -39,10 +39,13 @@ export default async function TicketPage({
   params: Promise<{ ticketId: string }>;
   searchParams: Promise<{ error?: string; edit?: string }>;
 }) {
-  const { ticketId } = await params;
-  const { error, edit } = await searchParams;
-
-  const user = await requireUser();
+  // params, searchParams and the user check are mutually independent, so resolve them
+  // together rather than in series.
+  const [{ ticketId }, { error, edit }, user] = await Promise.all([
+    params,
+    searchParams,
+    requireUser(),
+  ]);
   const tenant = await requireTenant(user.id);
 
   const ticket = await getTicket(tenant.tenant_id, ticketId);
@@ -60,18 +63,25 @@ export default async function TicketPage({
   let timeline: ReadinessTimelineRow[] = [];
   let analyzed = false;
 
-  if (session) {
-    gaps = await listGaps(tenant.tenant_id, session.id);
-  }
-
   if (session && locked) {
-    const revealed = await revealedFlags(tenant.tenant_id, session.id);
+    // All five reads depend only on ids already in hand (tenant, session, ticket), so
+    // they are independent of one another and run together. They stay inside the
+    // `locked` branch: the blind-first rule is that nothing on the pre-lock path even
+    // asks for a flag, and parallelising must not move a flag read earlier.
+    const [gapsResult, revealed, decisionsResult, timelineResult, runs] = await Promise.all([
+      listGaps(tenant.tenant_id, session.id),
+      revealedFlags(tenant.tenant_id, session.id),
+      listDecisionsForTicket(tenant.tenant_id, ticket.id),
+      readinessTimeline(tenant.tenant_id, ticket.id),
+      listRunsForTicket(tenant.tenant_id, ticket.id),
+    ]);
+    gaps = gapsResult;
     flags = revealed.flags;
-    decisions = await listDecisionsForTicket(tenant.tenant_id, ticket.id);
-    timeline = await readinessTimeline(tenant.tenant_id, ticket.id);
-
-    const runs = await listRunsForTicket(tenant.tenant_id, ticket.id);
+    decisions = decisionsResult;
+    timeline = timelineResult;
     analyzed = runs.some((r) => r.ticket_version_id === version?.id && r.status === 'succeeded');
+  } else if (session) {
+    gaps = await listGaps(tenant.tenant_id, session.id);
   }
 
   const openFlags = flags.filter((f) => f.status === 'open').length;

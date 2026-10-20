@@ -2,9 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
+import { buildClauseCoverage, isApprovedScenario, type ClauseCoverageRow } from '@specfix/shared';
 import {
+  clauseCoverage,
+  clauseEmbeddingsAvailable,
   countStaleScenariosForTicket,
   coverageCounts,
+  driftedScenarios,
   getTicket,
   latestVersion,
   listReadinessEvents,
@@ -13,6 +17,7 @@ import {
   listScenariosForVersion,
   untestedResolvedFlags,
   type CoverageCounts,
+  type DriftedScenario,
   type ScaffoldRow,
   type ScenarioReviewDetailRow,
   type ScenarioRow,
@@ -22,7 +27,14 @@ import { AppHeader } from '@/components/app-header';
 import { TicketTabs } from '@/components/ticket-tabs';
 import { Badge, Card, CardContent } from '@/components/ui';
 import { TicketText } from '../stages';
-import { CoveragePanel, GenerationPanel, ScenarioList, SpecsAuditTrail } from './specs';
+import {
+  CoveragePanel,
+  DriftPanel,
+  GenerationPanel,
+  ScenarioList,
+  SpecsAuditTrail,
+  type SemanticState,
+} from './specs';
 
 /**
  * The Specs tab: compile Gherkin scenarios from the approved requirement, then review
@@ -56,6 +68,9 @@ export default async function SpecsPage({
   let coverage: CoverageCounts | null = null;
   let untested: UntestedFlag[] = [];
   let staleSpecCount = 0;
+  let clauseRows: ClauseCoverageRow[] = [];
+  let semanticState: SemanticState = 'schema_missing';
+  let drift: DriftedScenario[] = [];
 
   if (version) {
     const events = await listReadinessEvents(tenant.tenant_id, ticket.id);
@@ -67,6 +82,35 @@ export default async function SpecsPage({
     untested = await untestedResolvedFlags(tenant.tenant_id, version.id);
     staleSpecCount = await countStaleScenariosForTicket(tenant.tenant_id, ticket.id);
     resolvedFlagCount = coverage.resolvedFlags;
+
+    // Clause coverage: the exact part needs nothing but the AC text and the accepted
+    // scenarios, so it always renders. The semantic part reads clause vectors
+    // (migration 0006); if those are unavailable or the query fails, the panel says so
+    // and the page still works.
+    const accepted = scenarios
+      .filter((s) => isApprovedScenario(s.status))
+      .map((s) => ({ id: s.id, title: s.title, coversAc: s.covers_ac }));
+    let semantic: Awaited<ReturnType<typeof clauseCoverage>> | null = null;
+    try {
+      if (await clauseEmbeddingsAvailable()) {
+        semantic = await clauseCoverage(tenant.tenant_id, version.id);
+        semanticState = semantic.length > 0 ? 'ready' : 'not_embedded';
+        if (staleSpecCount > 0) {
+          drift = await driftedScenarios(tenant.tenant_id, {
+            ticketId: ticket.id,
+            currentVersionId: version.id,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[coverage] semantic coverage unavailable', {
+        ticketId: ticket.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      semantic = null;
+      semanticState = 'error';
+    }
+    clauseRows = buildClauseCoverage(version.acceptance_criteria_text, accepted, semantic);
   }
 
   const liveScenarios = scenarios.filter((s) => s.status !== 'stale');
@@ -113,6 +157,12 @@ export default async function SpecsPage({
           </p>
         ) : null}
 
+        {version && drift.length > 0 ? (
+          <div className="mb-6">
+            <DriftPanel drifted={drift} />
+          </div>
+        ) : null}
+
         {!version ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -146,7 +196,12 @@ export default async function SpecsPage({
 
         {version && coverage ? (
           <div className="mt-6">
-            <CoveragePanel counts={coverage} untested={untested} />
+            <CoveragePanel
+              counts={coverage}
+              untested={untested}
+              clauses={clauseRows}
+              semanticState={semanticState}
+            />
           </div>
         ) : null}
 

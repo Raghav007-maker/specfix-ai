@@ -6,6 +6,7 @@
  *                          [--dir fixtures/tickets/sample] [--limit 10] [--analyze]
  *   npm run ops -- invite  --owner <email> --tenant "Acme" --email <email> [--role reviewer]
  *   npm run ops -- metrics --tenant <uuid|name> [--owner <email>] [--prompt <version>]
+ *                          [--compile-prompt <version>]
  *
  * This is the "seed fixtures" step the plan's local end-to-end verification calls for,
  * plus the two things around it that the Weeks 3-4 exit criterion needs: a reviewer who
@@ -19,12 +20,14 @@
  * `seed` is idempotent: ingestTicket upserts by external id, and a ticket whose text
  * has not changed does not create a new version. `--analyze` is opt-in because it
  * spends money, and it skips any version that already has a successful run.
+ * Requirement embedding runs by default when an API key is set (`--skip-embed` turns
+ * it off) and likewise skips any version whose stored vector already matches.
  */
 import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { analyzeTicket, hasOpenAiCredentials } from '@specfix/core';
+import { analyzeTicket, embedTextsTolerant, getConfig, hasOpenAiCredentials } from '@specfix/core';
 import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
 import { FileSource, parseMarkdownTicket } from '@specfix/ingest';
 import { toAnalyzable, type NormalizedTicket } from '@specfix/shared';
@@ -45,10 +48,14 @@ import {
   recallCounts,
   recordAnalysis,
   recordCompilation,
+  scenarioAcceptanceCounts,
+  syncClauseEmbeddings,
+  syncRequirementEmbeddings,
   timeToReady,
+  type EmbeddingSyncResult,
   type TenantId,
 } from '@specfix/db';
-import { formatRate, rate } from '@specfix/eval';
+import { formatRate, rate, scenarioAcceptance } from '@specfix/eval';
 
 const USAGE = `
 specfix ops
@@ -64,13 +71,19 @@ specfix ops
       --limit <n>          only the first n tickets
       --analyze            also run the model on newly ingested versions (costs money)
       --prompt <name>      prompt to analyze with (default single-shot-v1)
+      --skip-embed         do not embed requirement text. Otherwise, when an API key is
+                           set, each ingested version without a current vector is
+                           embedded (a small charge; unchanged versions cost nothing)
 
   invite --owner <email> --tenant <name> --email <email> [--role reviewer]
       Add an already-registered user to the workspace. They must sign up in the web
       app first, so Supabase owns their password.
 
   metrics --tenant <uuid|name> [--owner <email>] [--prompt <version>]
-      Precision, recall, inter-rater coverage and time-to-ready, from the database.
+          [--compile-prompt <version>]
+      Precision, recall, inter-rater coverage and time-to-ready, from the database,
+      plus scenario acceptance (clean vs after-edit) from the scenario review history.
+      --prompt scopes the flag rates; --compile-prompt scopes the scenario rates.
 
   compile --ticket <path> [options]
       Phase 2. Compile Gherkin scenarios from a ticket's approved acceptance criteria
@@ -240,12 +253,108 @@ async function seed(flags: Flags): Promise<number> {
 
   process.stdout.write(`\n${created} new version(s), ${unchanged} unchanged\n`);
 
+  // Embedding failure is reported and reflected in the exit code, but does not stop the
+  // analysis below: the two are independent, and the ingested versions are committed.
+  const embedStatus = await embedPending(tenantId, pending, flags['skip-embed'] !== undefined);
+
   if (!analyze) {
     process.stdout.write('\nNo analysis run. Re-run with --analyze to produce flags.\n');
+    return embedStatus;
+  }
+
+  return Math.max(embedStatus, await analyzePending(tenantId, pending, promptName));
+}
+
+/**
+ * Bring requirement vectors up to date for the versions just ingested.
+ *
+ * On by default when an API key is configured — embedding is the cheap end of model
+ * spend, and a version without a vector is invisible to fuzzy coverage — and skipped,
+ * with a notice, when one is not, so seeding still works without credentials.
+ * `--skip-embed` opts out. Versions already embedded with the same text and model make
+ * no API call, so re-running seed does not pay twice.
+ *
+ * Ingestion has already committed each ticket in its own transaction; nothing here can
+ * change or roll back ticket data. A failure leaves the version without a vector,
+ * which `npm run embed:backfill` picks up.
+ */
+async function embedPending(
+  tenantId: TenantId,
+  pending: readonly { versionId: string; ticket: NormalizedTicket }[],
+  skip: boolean
+): Promise<number> {
+  if (skip) {
+    process.stdout.write('\nEmbeddings skipped (--skip-embed).\n');
+    return 0;
+  }
+  if (!hasOpenAiCredentials()) {
+    process.stdout.write(
+      '\nEmbeddings skipped: no API key is configured. Run `npm run embed:backfill` once one is.\n'
+    );
     return 0;
   }
 
-  return analyzePending(tenantId, pending, promptName);
+  const deps = { embed: embedTextsTolerant, model: getConfig().modelEmbed };
+  const versionIds = pending.map((item) => item.versionId);
+  const keyFor = new Map(pending.map((item) => [item.versionId, item.ticket.externalKey]));
+
+  // Two passes, both deduplicated: the whole-requirement vector, then one per AC
+  // clause (the fuzzy-coverage unit). A failure in one does not skip the other.
+  process.stdout.write('\nembedding requirements\n');
+  const requirements = reportSync(
+    tenantId,
+    await syncRequirementEmbeddings(tenantId, versionIds, deps),
+    keyFor
+  );
+  process.stdout.write('\nembedding acceptance-criteria clauses\n');
+  const clauses = reportSync(
+    tenantId,
+    await syncClauseEmbeddings(tenantId, versionIds, deps),
+    keyFor
+  );
+
+  if (requirements + clauses > 0) {
+    process.stderr.write(
+      'Re-run seed, or run `npm run embed:backfill`, to retry the failed versions.\n'
+    );
+    return 1;
+  }
+  return 0;
+}
+
+/** Prints one sync's per-version outcomes and totals; returns how many failed. */
+function reportSync(
+  tenantId: TenantId,
+  result: EmbeddingSyncResult,
+  keyFor: ReadonlyMap<string, string>
+): number {
+  const tally = { embedded: 0, unchanged: 0, skipped: 0, failed: 0 };
+  for (const { id, outcome } of result.outcomes) {
+    const key = keyFor.get(id) ?? id;
+    tally[outcome.status] += 1;
+    if (outcome.status === 'embedded') process.stdout.write(`  + ${key}  embedded\n`);
+    else if (outcome.status === 'skipped') process.stdout.write(`  - ${key}  ${outcome.reason}\n`);
+    else if (outcome.status === 'failed') {
+      process.stderr.write(`  ! ${key}  ${outcome.stage}: ${outcome.error}\n`);
+    }
+  }
+
+  const tokens = result.calls.reduce((sum, call) => sum + call.inputTokens, 0);
+  const cost = result.calls.reduce((sum, call) => sum + call.costUsd, 0);
+  process.stdout.write(
+    `\n${tally.embedded} embedded, ${tally.unchanged} unchanged, ${tally.skipped} skipped, ` +
+      `${tally.failed} failed — ${result.calls.length} call(s), ${tokens} tokens, $${cost.toFixed(4)}\n`
+  );
+
+  if (result.callLogError !== null && result.calls.length > 0) {
+    // The only copy of these records: the database refused them.
+    process.stderr.write(
+      `\nllm_calls insert failed (${result.callLogError}); the vectors were not stored.\n` +
+        'Unlogged embedding call records follow as JSON — keep them:\n' +
+        `${JSON.stringify({ tenantId, calls: result.calls })}\n`
+    );
+  }
+  return tally.failed;
 }
 
 /**
@@ -396,6 +505,11 @@ async function metrics(flags: Flags): Promise<number> {
   const recall = await recallCounts(tenantId, promptVersion);
   const doubled = await doubleLabeledVersions(tenantId);
   const ready = await timeToReady(tenantId);
+  // --prompt names an analysis prompt for the flag rates; scenarios have their own
+  // compile prompt, so they get their own flag.
+  const compilePrompt = flags['compile-prompt'] || undefined;
+  const scenarioCounts = await scenarioAcceptanceCounts(tenantId, compilePrompt);
+  const acceptance = scenarioAcceptance(scenarioCounts);
 
   const lines = [
     '',
@@ -423,8 +537,26 @@ async function metrics(flags: Flags): Promise<number> {
     );
   }
 
+  lines.push(
+    '',
+    `scenarios  ${compilePrompt ?? 'all compile prompts'}`,
+    // The clean rate is the headline: an accept the reviewer had to rewrite is the
+    // reviewer's work, so it is reported beside the overall rate, never folded into it.
+    `clean acceptance  ${formatRate(acceptance.cleanAcceptanceRate)}`,
+    `                    approved as written, out of model scenarios with a verdict`,
+    `acceptance        ${formatRate(acceptance.acceptanceRate)}`,
+    `edit rate         ${formatRate(acceptance.editRate)}`,
+    `undecided         ${scenarioCounts.undecided}` +
+      (scenarioCounts.humanExcluded > 0
+        ? ` (+${scenarioCounts.humanExcluded} human-written, excluded)`
+        : '')
+  );
+
   // The exit criterion is that these are computable, so say plainly when they are not
   // rather than printing a confident-looking "n/a" and leaving the reason implicit.
+  if (acceptance.reviewed === 0) {
+    lines.push('', 'No scenario decisions recorded yet, so acceptance is undefined.');
+  }
   if (precision.reviewed === 0) {
     lines.push('', 'No flag decisions recorded yet, so precision is undefined.');
   }

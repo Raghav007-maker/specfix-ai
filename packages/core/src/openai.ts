@@ -10,7 +10,7 @@
  *    times mostly burns money; a persistent one is a prompt bug and should be
  *    visible as a failed run, not smoothed over.
  */
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import type { ChatCompletion, ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import type { z } from 'zod';
 import {
@@ -28,13 +28,24 @@ let client: OpenAI | undefined;
 export function getClient(): OpenAI {
   if (!client) {
     const config = getConfig();
-    client = new OpenAI({
-      apiKey: config.openaiApiKey,
-      baseURL: config.openaiBaseUrl,
-      timeout: config.requestTimeoutMs,
-      // Retries are handled here, not by the SDK, so every attempt is logged.
-      maxRetries: 0,
-    });
+    if (config.azureEndpoint) {
+      client = new AzureOpenAI({
+        endpoint: config.azureEndpoint,
+        apiKey: config.openaiApiKey,
+        apiVersion: config.azureApiVersion ?? '2024-10-21',
+        timeout: config.requestTimeoutMs,
+        // Retries are handled here, not by the SDK, so every attempt is logged.
+        maxRetries: 0,
+      });
+    } else {
+      client = new OpenAI({
+        apiKey: config.openaiApiKey,
+        baseURL: config.openaiBaseUrl,
+        timeout: config.requestTimeoutMs,
+        // Retries are handled here, not by the SDK, so every attempt is logged.
+        maxRetries: 0,
+      });
+    }
   }
   return client;
 }

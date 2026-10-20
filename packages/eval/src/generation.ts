@@ -20,6 +20,7 @@
  *  - Scaffold validity should be ~100% for a deterministic emitter; the metric exists
  *    to catch a regression that makes it emit something that would not parse.
  */
+import { coverMatchesClause, normalizeClauseText } from '@specfix/shared';
 import { rate, type Rate } from './metrics.ts';
 
 /**
@@ -100,21 +101,16 @@ export function scenarioAcceptance(input: AcceptanceInput): AcceptanceReport {
  * `covers_ac` string overlaps it in either direction (the clause contains the cover, or
  * the cover contains the clause), after whitespace normalization — so a scenario that
  * quotes part of a clause still credits that clause.
+ *
+ * The overlap rule is `coverMatchesClause` from @specfix/shared, the same one the Specs
+ * tab's coverage view uses, so the dashboard and this report measure the same thing.
  */
 export function acCoverage(clauses: readonly string[], acceptedCovers: readonly string[]): Rate {
-  const covers = acceptedCovers.map((c) => normalize(c)).filter((c) => c.length > 0);
-
-  let covered = 0;
-  for (const clause of clauses) {
-    const normalizedClause = normalize(clause);
-    if (normalizedClause.length === 0) continue;
-    const isCovered = covers.some(
-      (cover) => normalizedClause.includes(cover) || cover.includes(normalizedClause)
-    );
-    if (isCovered) covered += 1;
-  }
-
-  return rate(covered, clauses.filter((c) => normalize(c).length > 0).length);
+  const scored = clauses.filter((clause) => normalizeClauseText(clause).length > 0);
+  const covered = scored.filter((clause) =>
+    acceptedCovers.some((cover) => coverMatchesClause(cover, clause))
+  ).length;
+  return rate(covered, scored.length);
 }
 
 /**
@@ -155,9 +151,4 @@ function balanced(code: string, open: string, close: string): boolean {
     if (depth < 0) return false;
   }
   return depth === 0;
-}
-
-/** Collapse whitespace and lowercase, so cover/clause overlap is not defeated by layout. */
-function normalize(text: string): string {
-  return text.replace(/\s+/g, ' ').trim().toLowerCase();
 }

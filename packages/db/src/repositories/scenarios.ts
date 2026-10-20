@@ -148,8 +148,9 @@ export async function recordCompilation(
         client,
         `insert into scenarios (
            tenant_id, ticket_id, ticket_version_id, compile_run_id, title, gherkin_raw,
-           status, origin, source_flag_ids, covers_ac, rationale, dedupe_key
-         ) values ($1, $2, $3, $4, $5, $6, 'draft', $7, $8, $9, $10, $11)
+           gherkin_original, status, origin, source_flag_ids, covers_ac, rationale,
+           dedupe_key
+         ) values ($1, $2, $3, $4, $5, $6, $6, 'draft', $7, $8, $9, $10, $11)
          on conflict (tenant_id, ticket_version_id, dedupe_key) do nothing
          returning id`,
         [
@@ -328,7 +329,8 @@ export async function decideScenario(
 
     const [updated] = await rows<ScenarioRow>(
       client,
-      `update scenarios set status = $3, gherkin_raw = $4
+      `update scenarios
+       set status = $3, gherkin_raw = coalesce($4::text, gherkin_original, gherkin_raw)
        where tenant_id = $1 and id = $2
        returning ${SCENARIO_COLUMNS}`,
       [
@@ -336,9 +338,14 @@ export async function decideScenario(
         input.scenarioId,
         nextStatus,
         // An edit replaces the rendered Gherkin — that is the reviewed artifact. Reopen
-        // clears it back to the compiler's original so the UI does not show edited text
-        // on an undecided scenario.
-        input.decision === 'edited' ? (input.editedText as string) : existing.gherkin_raw,
+        // (null here) restores the compiler's original so the UI does not show edited
+        // text on an undecided scenario; a row edited before 0007 has no original
+        // stored and keeps its current text.
+        input.decision === 'edited'
+          ? (input.editedText as string)
+          : input.decision === 'reopened'
+            ? null
+            : existing.gherkin_raw,
       ]
     );
     if (!updated) throw new ScenarioDecisionError(`no such scenario: ${input.scenarioId}`);
@@ -408,6 +415,95 @@ export async function listScenarioReviewsForVersion(
      order by r.created_at`,
     [tenantId, ticketVersionId]
   );
+}
+
+/** Acceptance inputs straight from the review history, shaped for `scenarioAcceptance`. */
+export interface ScenarioAcceptanceCounts {
+  acceptedAsIs: number;
+  acceptedAfterEdit: number;
+  dismissed: number;
+  /** Model scenarios with no standing decision (never reviewed, or reopened since). */
+  undecided: number;
+  /** Human-authored scenarios in the same scope, excluded from the counts above. */
+  humanExcluded: number;
+}
+
+/**
+ * Scenario acceptance over model-generated scenarios, from `scenario_reviews`.
+ *
+ * Each scenario counts once, by its latest decision; a latest `reopened` means no
+ * standing verdict, so it is undecided rather than evidence either way. A scenario
+ * that was ever edited and is now accepted counts as accepted-after-edit even if its
+ * last click was "approve": the wording a reviewer rewrote is not the model's, which
+ * is the split `scenarioAcceptance` exists to keep honest.
+ *
+ * Stale scenarios keep their verdict: a decision made before the ticket changed is
+ * still a judgment of what the model produced. Only `origin = 'ai_agent'` rows enter
+ * the counts, for the same reason precisionCounts filters flags — a scenario a person
+ * wrote is accepted by construction.
+ *
+ * `promptVersion` matches the stored version exactly or by name, so both
+ * `compile-gherkin-v1` and `compile-gherkin-v1@<hash>` work; with it, hand-authored
+ * scenarios (no compile run) drop out of scope.
+ */
+export async function scenarioAcceptanceCounts(
+  tenantId: TenantId,
+  promptVersion?: string
+): Promise<ScenarioAcceptanceCounts> {
+  const [row] = await query<{
+    as_is: string;
+    after_edit: string;
+    dismissed: string;
+    undecided: string;
+    human: string;
+  }>(
+    `with scoped as (
+       select s.id, s.origin
+       from scenarios s
+       left join spec_compile_runs r on r.id = s.compile_run_id and r.tenant_id = s.tenant_id
+       where s.tenant_id = $1
+         and ($2::text is null or r.prompt_version = $2
+                              or left(r.prompt_version, length($2) + 1) = $2 || '@')
+     ),
+     latest as (
+       select distinct on (v.scenario_id) v.scenario_id, v.decision
+       from scenario_reviews v
+       join scoped on scoped.id = v.scenario_id
+       where v.tenant_id = $1
+       order by v.scenario_id, v.created_at desc, v.id desc
+     ),
+     ever_edited as (
+       select distinct v.scenario_id
+       from scenario_reviews v
+       join scoped on scoped.id = v.scenario_id
+       where v.tenant_id = $1 and v.decision = 'edited'
+     )
+     select
+       count(*) filter (
+         where s.origin = 'ai_agent' and l.decision = 'approved' and e.scenario_id is null
+       )::text as as_is,
+       count(*) filter (
+         where s.origin = 'ai_agent' and l.decision in ('approved', 'edited')
+           and e.scenario_id is not null
+       )::text as after_edit,
+       count(*) filter (where s.origin = 'ai_agent' and l.decision = 'dismissed')::text
+         as dismissed,
+       count(*) filter (
+         where s.origin = 'ai_agent' and (l.decision is null or l.decision = 'reopened')
+       )::text as undecided,
+       count(*) filter (where s.origin <> 'ai_agent')::text as human
+     from scoped s
+     left join latest l on l.scenario_id = s.id
+     left join ever_edited e on e.scenario_id = s.id`,
+    [tenantId, promptVersion ?? null]
+  );
+  return {
+    acceptedAsIs: Number(row?.as_is ?? 0),
+    acceptedAfterEdit: Number(row?.after_edit ?? 0),
+    dismissed: Number(row?.dismissed ?? 0),
+    undecided: Number(row?.undecided ?? 0),
+    humanExcluded: Number(row?.human ?? 0),
+  };
 }
 
 /** True when a scenario is in a state that counts as accepted. Re-exported for callers. */
