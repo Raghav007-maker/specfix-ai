@@ -6,6 +6,7 @@
  *                          [--dir fixtures/tickets/sample] [--limit 10] [--analyze]
  *   npm run ops -- invite  --owner <email> --tenant "Acme" --email <email> [--role reviewer]
  *   npm run ops -- metrics --tenant <uuid|name> [--owner <email>] [--prompt <version>]
+ *                          [--compile-prompt <version>]
  *
  * This is the "seed fixtures" step the plan's local end-to-end verification calls for,
  * plus the two things around it that the Weeks 3-4 exit criterion needs: a reviewer who
@@ -47,13 +48,14 @@ import {
   recallCounts,
   recordAnalysis,
   recordCompilation,
+  scenarioAcceptanceCounts,
   syncClauseEmbeddings,
   syncRequirementEmbeddings,
   timeToReady,
   type EmbeddingSyncResult,
   type TenantId,
 } from '@specfix/db';
-import { formatRate, rate } from '@specfix/eval';
+import { formatRate, rate, scenarioAcceptance } from '@specfix/eval';
 
 const USAGE = `
 specfix ops
@@ -78,7 +80,10 @@ specfix ops
       app first, so Supabase owns their password.
 
   metrics --tenant <uuid|name> [--owner <email>] [--prompt <version>]
-      Precision, recall, inter-rater coverage and time-to-ready, from the database.
+          [--compile-prompt <version>]
+      Precision, recall, inter-rater coverage and time-to-ready, from the database,
+      plus scenario acceptance (clean vs after-edit) from the scenario review history.
+      --prompt scopes the flag rates; --compile-prompt scopes the scenario rates.
 
   compile --ticket <path> [options]
       Phase 2. Compile Gherkin scenarios from a ticket's approved acceptance criteria
@@ -500,6 +505,11 @@ async function metrics(flags: Flags): Promise<number> {
   const recall = await recallCounts(tenantId, promptVersion);
   const doubled = await doubleLabeledVersions(tenantId);
   const ready = await timeToReady(tenantId);
+  // --prompt names an analysis prompt for the flag rates; scenarios have their own
+  // compile prompt, so they get their own flag.
+  const compilePrompt = flags['compile-prompt'] || undefined;
+  const scenarioCounts = await scenarioAcceptanceCounts(tenantId, compilePrompt);
+  const acceptance = scenarioAcceptance(scenarioCounts);
 
   const lines = [
     '',
@@ -527,8 +537,26 @@ async function metrics(flags: Flags): Promise<number> {
     );
   }
 
+  lines.push(
+    '',
+    `scenarios  ${compilePrompt ?? 'all compile prompts'}`,
+    // The clean rate is the headline: an accept the reviewer had to rewrite is the
+    // reviewer's work, so it is reported beside the overall rate, never folded into it.
+    `clean acceptance  ${formatRate(acceptance.cleanAcceptanceRate)}`,
+    `                    approved as written, out of model scenarios with a verdict`,
+    `acceptance        ${formatRate(acceptance.acceptanceRate)}`,
+    `edit rate         ${formatRate(acceptance.editRate)}`,
+    `undecided         ${scenarioCounts.undecided}` +
+      (scenarioCounts.humanExcluded > 0
+        ? ` (+${scenarioCounts.humanExcluded} human-written, excluded)`
+        : '')
+  );
+
   // The exit criterion is that these are computable, so say plainly when they are not
   // rather than printing a confident-looking "n/a" and leaving the reason implicit.
+  if (acceptance.reviewed === 0) {
+    lines.push('', 'No scenario decisions recorded yet, so acceptance is undefined.');
+  }
   if (precision.reviewed === 0) {
     lines.push('', 'No flag decisions recorded yet, so precision is undefined.');
   }
