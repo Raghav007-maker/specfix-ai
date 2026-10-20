@@ -148,8 +148,9 @@ export async function recordCompilation(
         client,
         `insert into scenarios (
            tenant_id, ticket_id, ticket_version_id, compile_run_id, title, gherkin_raw,
-           status, origin, source_flag_ids, covers_ac, rationale, dedupe_key
-         ) values ($1, $2, $3, $4, $5, $6, 'draft', $7, $8, $9, $10, $11)
+           gherkin_original, status, origin, source_flag_ids, covers_ac, rationale,
+           dedupe_key
+         ) values ($1, $2, $3, $4, $5, $6, $6, 'draft', $7, $8, $9, $10, $11)
          on conflict (tenant_id, ticket_version_id, dedupe_key) do nothing
          returning id`,
         [
@@ -328,7 +329,8 @@ export async function decideScenario(
 
     const [updated] = await rows<ScenarioRow>(
       client,
-      `update scenarios set status = $3, gherkin_raw = $4
+      `update scenarios
+       set status = $3, gherkin_raw = coalesce($4::text, gherkin_original, gherkin_raw)
        where tenant_id = $1 and id = $2
        returning ${SCENARIO_COLUMNS}`,
       [
@@ -336,9 +338,14 @@ export async function decideScenario(
         input.scenarioId,
         nextStatus,
         // An edit replaces the rendered Gherkin — that is the reviewed artifact. Reopen
-        // clears it back to the compiler's original so the UI does not show edited text
-        // on an undecided scenario.
-        input.decision === 'edited' ? (input.editedText as string) : existing.gherkin_raw,
+        // (null here) restores the compiler's original so the UI does not show edited
+        // text on an undecided scenario; a row edited before 0007 has no original
+        // stored and keeps its current text.
+        input.decision === 'edited'
+          ? (input.editedText as string)
+          : input.decision === 'reopened'
+            ? null
+            : existing.gherkin_raw,
       ]
     );
     if (!updated) throw new ScenarioDecisionError(`no such scenario: ${input.scenarioId}`);
