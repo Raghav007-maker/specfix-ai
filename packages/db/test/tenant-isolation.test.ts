@@ -46,6 +46,8 @@ import {
   markReady,
   listReadinessEvents,
   timeToReady,
+  flagBreakdown,
+  weeklyActivity,
 } from '../src/index.ts';
 import type { NormalizedTicket } from '@specfix/shared';
 
@@ -212,6 +214,19 @@ describe.skipIf(!hasDatabase)('cross-tenant isolation', () => {
     it('reports time-to-ready only for its own tickets', async () => {
       const rows = await timeToReady(a.tenantId);
       expect(rows.every((r) => r.ticketId !== b.ticketId)).toBe(true);
+    });
+
+    it('counts only its own flags in the analytics breakdown', async () => {
+      // Each world has exactly one open high-severity missing_info flag.
+      const breakdown = await flagBreakdown(a.tenantId);
+      expect(breakdown.openBySeverity).toEqual({ high: 1, medium: 0, low: 0 });
+      expect(breakdown.openByCategory).toEqual([{ category: 'missing_info', count: 1 }]);
+    });
+
+    it('reports weekly activity only for its own tenant', async () => {
+      const weeks = await weeklyActivity(a.tenantId, 4);
+      expect(weeks).toHaveLength(4);
+      expect(weeks.reduce((s, w) => s + w.decisions + w.markedReady, 0)).toBe(0);
     });
   });
 
