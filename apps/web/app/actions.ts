@@ -23,11 +23,15 @@ export async function switchTenant(formData: FormData): Promise<void> {
   redirect('/');
 }
 
-/** Add a project to the current tenant. */
+/** Add a project to the current tenant. Owners and admins only. */
 export async function createProjectForCurrentTenant(formData: FormData): Promise<void> {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
   const name = String(formData.get('name') ?? '').trim();
+
+  if (tenant.role === 'reviewer') {
+    redirect('/?error=' + encodeURIComponent('Only owners and admins can create projects.'));
+  }
 
   if (!name) {
     redirect('/?error=' + encodeURIComponent('A project name is required.'));
