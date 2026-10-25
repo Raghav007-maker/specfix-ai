@@ -147,6 +147,23 @@ export function Badge({
   );
 }
 
+type Role = 'owner' | 'admin' | 'reviewer';
+
+const ROLE_TONES: Record<Role, PillTone> = {
+  owner: 'accent',
+  admin: 'positive',
+  reviewer: 'neutral',
+};
+
+/** A workspace role as a pill; the word carries the meaning. */
+export function RoleBadge({ role, className }: { role: Role; className?: string }) {
+  return (
+    <Pill tone={ROLE_TONES[role]} className={cn('capitalize', className)}>
+      {role}
+    </Pill>
+  );
+}
+
 type NoticeTone = 'error' | 'warning' | 'info' | 'success';
 
 const NOTICE_TONES: Record<NoticeTone, string> = {

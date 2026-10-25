@@ -1,0 +1,185 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SpecFix Project Report</title><style>@page {
+  size: A4;
+  margin: 26mm 22mm 24mm 30mm;
+}
+@page body {
+  @top-right {
+    content: "SpecFix – AI-Driven Requirement Ambiguity Detection and Test Specification";
+    font: italic 10pt 'Times New Roman', serif; color: #444;
+    border-bottom: 0.7pt solid #222; vertical-align: bottom; padding-bottom: 3pt; margin-bottom: 8mm;
+  }
+  @bottom-left {
+    content: "Dept. of CEA, GLAU, Mathura";
+    font: italic 10pt 'Times New Roman', serif; color: #222;
+    border-top: 0.7pt solid #222; vertical-align: top; padding-top: 3pt; margin-top: 7mm;
+  }
+  @bottom-right {
+    content: counter(page);
+    font: 10pt 'Times New Roman', serif; color: #222;
+    border-top: 0.7pt solid #222; vertical-align: top; padding-top: 3pt; margin-top: 7mm;
+  }
+}
+@page front {
+  @bottom-center { content: counter(page, lower-roman); font: 11pt 'Times New Roman', serif; margin-top: 7mm; vertical-align: top; }
+}
+@page cover { margin: 18mm 20mm; }
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0; background: white; color: #111;
+  font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5;
+  text-align: justify; hyphens: auto;
+}
+.bodypages { page: body; }
+.frontpage { page: front; break-before: page; }
+.coverpage { page: cover; }
+
+/* ---------- cover ---------- */
+.cover-frame { border: 1.6pt solid #111; height: 255mm; box-sizing: border-box; padding: 16mm 12mm 10mm; text-align: center; line-height: 1.3; display: flex; flex-direction: column; align-items: center; }
+.cover-title { font-size: 21pt; font-weight: bold; margin-bottom: 1mm; }
+.cover-sub { font-size: 15pt; font-weight: bold; margin-bottom: 7mm; }
+.cover-italic { font-style: italic; font-weight: bold; font-size: 12pt; margin-bottom: 6mm; }
+.cover-degree { font-size: 22pt; font-weight: bold; margin: 0 0 1mm; }
+.cover-cse { font-size: 15pt; font-weight: bold; margin: 2mm 0 8mm; line-height: 1.35; }
+.cover-by { font-weight: bold; margin-bottom: 3mm; }
+.cover-names { font-weight: bold; font-size: 12.5pt; margin-bottom: 6mm; line-height: 1.45; }
+.cover-plain { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; margin-bottom: 2mm; }
+.cover-inst { font-size: 15pt; font-weight: bold; margin-bottom: 6mm; }
+.cover-logo { margin: 2mm 0 5mm; }
+.cover-univ { font-size: 14pt; font-weight: bold; line-height: 1.45; margin-top: auto; }
+.fill { background: #FFF3B0; padding: 0 2pt; }
+
+/* ---------- front matter ---------- */
+.fm-title { text-align: center; font-size: 16pt; font-weight: bold; text-decoration: underline; margin: 4mm 0 8mm; letter-spacing: 0.3pt; }
+.sign-block { margin-top: 14mm; line-height: 1.7; }
+.sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm 14mm; margin-top: 16mm; line-height: 1.45; text-align: left; }
+.toc { width: 100%; border-collapse: collapse; font-size: 11pt; line-height: 1.16; }
+.toc td { padding: 0.6pt 0; vertical-align: top; text-align: left; }
+.toc td.pg { text-align: right; width: 14mm; }
+.toc tr.ch td { font-weight: bold; padding-top: 5pt; }
+.toc tr.s2 td.t { padding-left: 5mm; }
+.toc tr.s3 td.t { padding-left: 11mm; }
+.lst { width: 100%; border-collapse: collapse; font-size: 11.5pt; line-height: 1.45; }
+.lst td { padding: 1pt 0; text-align: left; vertical-align: top; }
+.lst td.no { width: 24mm; font-weight: bold; }
+.lst td.pg { text-align: right; width: 12mm; }
+
+/* ---------- chapters ---------- */
+.chapter { break-before: page; }
+.chapter.nb { break-before: auto; margin-top: 10mm; }
+.chap-head { text-align: right; border-bottom: 1.2pt solid #2E74B5; padding-bottom: 4mm; margin: 6mm 0 9mm; }
+.chap-num { font-size: 24pt; font-weight: bold; line-height: 1.15; }
+.chap-title { font-size: 24pt; font-weight: bold; line-height: 1.15; }
+h2 { font-size: 16pt; margin: 9mm 0 3mm; line-height: 1.3; break-after: avoid; text-align: left; }
+h3 { font-size: 13.5pt; margin: 7mm 0 2mm; line-height: 1.3; break-after: avoid; text-align: left; }
+h4 { font-size: 12pt; margin: 5mm 0 1mm; text-decoration: underline; break-after: avoid; text-align: left; }
+p { margin: 0 0 3mm; orphans: 3; widows: 3; }
+ul, ol { margin: 0 0 3mm; padding-left: 9mm; }
+li { margin-bottom: 1.2mm; }
+code, .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10.5pt; }
+b.k { font-weight: bold; }
+
+/* ---------- tables ---------- */
+table.t { width: 100%; border-collapse: collapse; margin: 3mm 0 2mm; font-size: 10.5pt; line-height: 1.3; text-align: left; }
+table.t th { background: #1F4E79; color: white; font-weight: bold; padding: 5pt 5pt; border: 0.75pt solid #6b7d90; text-align: center; vertical-align: middle; }
+table.t td { padding: 4pt 5pt; border: 0.75pt solid #8a99a8; vertical-align: top; }
+table.t tr:nth-child(even) td { background: #F3F7FB; }
+table.t td.b, table.t td:first-child.b { font-weight: bold; }
+table.t tr { break-inside: avoid; }
+table.t thead { display: table-header-group; }
+.tcap { text-align: center; font-weight: bold; font-style: italic; font-size: 11pt; margin: 2mm 0 5mm; break-before: avoid; }
+.tcap-top { text-align: center; font-weight: bold; font-style: italic; font-size: 11pt; margin: 4mm 0 1mm; break-after: avoid; }
+
+/* ---------- figures ---------- */
+figure { margin: 4mm 0 5mm; break-inside: avoid; text-align: center; }
+figure .art { margin: 0 auto; }
+figcaption { font-weight: bold; font-style: italic; font-size: 11pt; margin-top: 3mm; text-align: center; }
+pre.code { text-align: left; background: #1E2430; color: #DCE4EE; border-radius: 4pt; padding: 8pt 10pt; font-family: Consolas, 'Courier New', monospace; font-size: 9pt; line-height: 1.38; white-space: pre-wrap; margin: 0; }
+pre.code .c { color: #8fa3b8; }
+pre.code .k { color: #c792ea; }
+pre.code .s { color: #b5d99c; }
+pre.term { text-align: left; background: #0C0C0C; color: #E6E6E6; border-radius: 4pt; padding: 8pt 10pt; font-family: Consolas, 'Courier New', monospace; font-size: 9pt; line-height: 1.38; white-space: pre-wrap; margin: 0; }
+pre.term .g { color: #4ec96b; } pre.term .y { color: #e5c04b; } pre.term .d { color: #8a8a8a; }
+.note { border-left: 3pt solid #2E74B5; background: #F3F7FB; padding: 3mm 4mm; margin: 3mm 0 4mm; font-size: 11pt; }
+.keep { break-inside: avoid; }
+.pb { break-before: page; }
+</style></head><body><div class="coverpage">
+<div class="cover-frame">
+  <div class="cover-title">SPECFIX – AI-Driven Requirement</div>
+  <div class="cover-sub">Ambiguity Detection and Test Specification System</div>
+  <div class="cover-italic">A Phase 1 (60%) Progress Report submitted in partial fulfilment of the<br>requirements for the award of the degree of</div>
+  <div class="cover-degree">Bachelor of Technology</div>
+  <div>in</div>
+  <div class="cover-cse">Computer Science and Engineering<br>Specialization in<br>Artificial Intelligence and Machine Learning</div>
+  <div class="cover-by">By</div>
+  <div class="cover-names">
+    Shrikant Sharma (2415500449)<br>
+    Raghav Bansal (2415500377)<br>
+    Udit Bhatt (2415500484)
+  </div>
+  <div class="cover-plain">Group No. 138</div>
+  <div class="cover-plain" style="margin-top:3mm">Under the Guidance of</div>
+  <div class="cover-plain" style="margin-bottom:6mm">Mr. Preshit Mangesh Desai</div>
+  <div class="cover-plain">Department of Computer Engineering &amp; Applications</div>
+  <div class="cover-inst">Institute of Engineering &amp; Technology</div>
+  <div class="cover-logo"><img src="logo_0_Image6.jpg" style="height:28mm" alt="GLA University"></div>
+  <div class="cover-univ">GLA University<br>Mathura- 281406, INDIA<br>October, 2026</div>
+</div>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">DECLARATION</div>
+<p>We hereby declare that the work which is being presented in the B.Tech. Project <b>“SpecFix – AI-Driven Requirement Ambiguity Detection and Test Specification System”</b>, in partial fulfilment of the requirements for the award of the Bachelor of Technology in Computer Science and Engineering Specialization in Artificial Intelligence and Machine Learning and submitted to the Department of Computer Engineering and Applications of GLA University, Mathura, is an authentic record of our own work carried out under the supervision of Mr. Preshit Mangesh Desai, Technical Trainer.</p>
+<p>The contents of this project report, in full or in parts, have not been submitted to any other Institute or University for the award of any degree.</p>
+<div class="sign-grid">
+  <div>Sign:<br>Name of Candidate: Shrikant Sharma<br>Univ. Roll No.: 2415500449<br>Course: B.Tech. CSE (AIML)</div>
+  <div>Sign:<br>Name of Candidate: Raghav Bansal<br>Univ. Roll No.: 2415500377<br>Course: B.Tech. CSE (AIML)</div>
+  <div>Sign:<br>Name of Candidate: Udit Bhatt<br>Univ. Roll No.: 2415500484<br>Course: B.Tech. CSE (AIML)</div>
+</div>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">CERTIFICATE</div>
+<p>This is to certify that the above statements made by the candidates are correct to the best of my/our knowledge and belief.</p>
+<div style="margin-top:22mm; line-height:1.45; text-align:left">
+  Supervisor<br>(Mr. Preshit Mangesh Desai)<br>Technical Trainer<br>Dept. of Computer Engg. &amp; App.
+</div>
+<div class="sign-grid" style="margin-top:28mm">
+  <div>Project Co-ordinator<br>(Dr. Mayank Srivastava)<br>Associate Professor<br>Dept. of Computer Engg. &amp; App.</div>
+  <div>Program Co-ordinator<br>(Dr. Nikhil Govil)<br>Associate Professor<br>Dept. of Computer Engg. &amp; App.</div>
+</div>
+<p style="margin-top:20mm">Date: 21 October, 2026</p>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">ACKNOWLEDGEMENT</div>
+<p>We would like to express our sincere gratitude to everyone who supported and guided us throughout this project. First and foremost, we extend our heartfelt thanks to our respected guide, Mr. Preshit Mangesh Desai (Technical Trainer), for his continuous encouragement, valuable feedback and insightful suggestions at every stage of the project titled <b>“SpecFix – AI-Driven Requirement Ambiguity Detection and Test Specification System”</b>. His guidance has been fundamental in shaping both the direction and the discipline of this work.</p>
+<p>We are deeply thankful to the Department of Computer Engineering and Applications and to our institution for providing a supportive learning environment, access to essential resources and the facilities that enabled the smooth execution of this project. Building SpecFix has significantly strengthened our knowledge of large language models, database design, web engineering and software testing, as well as our teamwork and problem-solving skills.</p>
+<p>We would also like to thank the Head of the Department, Mr. Ashok Bhansali, for his constant support and motivation. We are grateful to all faculty members of the department for their guidance, and to our classmates and friends for their cooperation and suggestions. Lastly, we owe our deepest appreciation to our families, who have been a continuous source of strength, patience and motivation.</p>
+<div class="sign-grid" style="margin-top:14mm">
+  <div>Shrikant Sharma<br>2415500449</div>
+  <div>Raghav Bansal<br>2415500377</div>
+  <div>Udit Bhatt<br>2415500484</div>
+</div>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">ABSTRACT</div>
+<p>Software requirements are usually written as short tickets or user stories in tools such as Jira. These tickets are frequently ambiguous or incomplete: a word such as “quickly” hides a decision, an acceptance criterion cannot be tested, or an edge case is never mentioned. Developers fill the gaps with assumptions, and the mismatch with business intent is discovered late — in QA or after release — when it is most expensive to fix.</p>
+<p><b>SpecFix</b> is an AI-assisted requirements-quality platform that catches these gaps before development starts. A ticket goes in; structured <i>flags</i> come out, each with a category (missing information, vague language, contradiction, unhandled edge case, security/compliance gap or untestable criterion), the exact text it refers to, why it matters, and a question for the product manager. An <i>Extractor</i> language-model call proposes candidate flags and an <i>Adversarial Critic</i> call removes false alarms. A human reviewer then accepts, edits or dismisses every flag in a web dashboard, with an append-only audit trail and no automatic resolution path.</p>
+<p>Once a ticket is approved, the <i>Spec Compiler</i> turns its acceptance criteria into Gherkin scenarios, and a deterministic generator turns each approved scenario into a Playwright test scaffold with marked placeholder selectors. A traceability graph backed by pgvector embeddings shows clause-level coverage and detects scenarios that drift when a ticket changes.</p>
+<p>The system is a TypeScript monorepo (Next.js 15, Supabase PostgreSQL with Row-Level Security and pgvector, Azure OpenAI / OpenAI, zod, Vitest). Every model output is schema-validated, ticket text is always treated as data, every model call is logged with its cost, and the Critic’s precision is only reported next to a random-pruning control. On an 11-ticket gold set the Spec Compiler covered 91.7% of acceptance-criteria clauses, made one unsupported coverage claim in 42 scenarios (2.4%), and produced 42 of 42 valid scaffolds at about US$0.0004 per ticket.</p>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">TABLE OF CONTENTS</div>
+<table class="toc"><tr><td class="t">Declaration</td><td class="pg">ii</td></tr><tr><td class="t">Certificate</td><td class="pg">iii</td></tr><tr><td class="t">Acknowledgement</td><td class="pg">iv</td></tr><tr><td class="t">Abstract</td><td class="pg">v</td></tr><tr><td class="t">Table of Contents</td><td class="pg">vi</td></tr><tr><td class="t">List of Tables</td><td class="pg">vii</td></tr><tr><td class="t">List of Figures</td><td class="pg">vii</td></tr><tr class="ch"><td class="t">CHAPTER 1: INTRODUCTION</td><td class="pg">1</td></tr><tr class="s2"><td class="t">1.1 Overview and Motivation</td><td class="pg">1</td></tr><tr class="s2"><td class="t">1.2 Objectives</td><td class="pg">2</td></tr><tr class="s2"><td class="t">1.3 Summary of Similar Applications</td><td class="pg">3</td></tr><tr class="s2"><td class="t">1.4 Organization of the Project Report</td><td class="pg">3</td></tr><tr class="ch"><td class="t">CHAPTER 2: SOFTWARE REQUIREMENT ANALYSIS</td><td class="pg">3</td></tr><tr class="s2"><td class="t">2.1 Introduction to Requirement Analysis</td><td class="pg">4</td></tr><tr class="s2"><td class="t">2.2 Feasibility Study</td><td class="pg">4</td></tr><tr class="s2"><td class="t">2.3 Functional Requirements</td><td class="pg">5</td></tr><tr class="s2"><td class="t">2.4 Non-Functional Requirements</td><td class="pg">5</td></tr><tr class="s2"><td class="t">2.5 Use Case Descriptions</td><td class="pg">6</td></tr><tr class="s2"><td class="t">2.6 Module Descriptions</td><td class="pg">6</td></tr><tr class="ch"><td class="t">CHAPTER 3: SOFTWARE DESIGN</td><td class="pg">7</td></tr><tr class="s2"><td class="t">3.1 System Architecture Overview</td><td class="pg">7</td></tr><tr class="s2"><td class="t">3.2 Data Flow Diagrams</td><td class="pg">7</td></tr><tr class="s2"><td class="t">3.3 UML Diagrams</td><td class="pg">9</td></tr><tr class="s2"><td class="t">3.4 Database Design</td><td class="pg">12</td></tr><tr class="ch"><td class="t">CHAPTER 4: IMPLEMENTATION AND USER INTERFACE</td><td class="pg">13</td></tr><tr class="s2"><td class="t">4.1 Technology Stack Used</td><td class="pg">13</td></tr><tr class="s2"><td class="t">4.2 AI Architecture</td><td class="pg">13</td></tr><tr class="s2"><td class="t">4.3 Frontend Implementation</td><td class="pg">15</td></tr><tr class="ch"><td class="t">CHAPTER 5: SOFTWARE TESTING</td><td class="pg">18</td></tr><tr class="s2"><td class="t">5.1 Testing Approach</td><td class="pg">18</td></tr><tr class="s2"><td class="t">5.2 Unit Testing</td><td class="pg">18</td></tr><tr class="s2"><td class="t">5.3 Test Case Specifications</td><td class="pg">18</td></tr><tr class="s2"><td class="t">5.4 Multi-Tenant Isolation Testing</td><td class="pg">19</td></tr><tr class="s2"><td class="t">5.5 Evaluation Results</td><td class="pg">19</td></tr><tr class="ch"><td class="t">CHAPTER 6: CONCLUSION</td><td class="pg">20</td></tr><tr class="s2"><td class="t">6.1 Current Status &amp; Future Work</td><td class="pg">20</td></tr><tr class="ch"><td class="t">CHAPTER 7: SUMMARY</td><td class="pg">21</td></tr><tr class="s2"><td class="t">7.1 Summary</td><td class="pg">21</td></tr><tr class="ch"><td class="t">REFERENCES</td><td class="pg">22</td></tr><tr class="ch"><td class="t">APPENDIX A: ABBREVIATIONS</td><td class="pg">23</td></tr><tr class="ch"><td class="t">APPENDIX B: SAMPLE COMMANDS</td><td class="pg">23</td></tr></table>
+</div>
+
+<div class="frontpage">
+<div class="fm-title">LIST OF TABLES</div>
+<table class="lst"><tr><td class="no">Table 1.1</td><td>Comparison with Existing Tools and Approaches</td><td class="pg">3</td></tr><tr><td class="no">Table 2.1</td><td>Feasibility Study Summary</td><td class="pg">4</td></tr><tr><td class="no">Table 2.2</td><td>Functional Requirements of SpecFix</td><td class="pg">5</td></tr><tr><td class="no">Table 2.3</td><td>Non-Functional Requirements of SpecFix</td><td class="pg">5</td></tr><tr><td class="no">Table 2.4</td><td>Main Use Cases</td><td class="pg">6</td></tr><tr><td class="no">Table 2.5</td><td>Modules of SpecFix</td><td class="pg">6</td></tr><tr><td class="no">Table 3.1</td><td>Principal Database Tables</td><td class="pg">12</td></tr><tr><td class="no">Table 4.1</td><td>Technology Stack Summary</td><td class="pg">13</td></tr><tr><td class="no">Table 5.1</td><td>Unit Testing Summary by Package (offline run)</td><td class="pg">18</td></tr><tr><td class="no">Table 5.2</td><td>Black Box and White Box Test Cases</td><td class="pg">18</td></tr><tr><td class="no">Table 5.3</td><td>Generation Evaluation Results (gold-v1)</td><td class="pg">19</td></tr><tr><td class="no">Table 6.1</td><td>Project Status by Milestone</td><td class="pg">20</td></tr></table>
+<div class="fm-title" style="margin-top:12mm">LIST OF FIGURES</div>
+<table class="lst"><tr><td class="no">Figure 1.1</td><td>System Architecture of SpecFix</td><td class="pg">2</td></tr><tr><td class="no">Figure 3.1</td><td>Level 0 DFD – Context Diagram</td><td class="pg">8</td></tr><tr><td class="no">Figure 3.2</td><td>Level 1 DFD – Main Data Flow</td><td class="pg">8</td></tr><tr><td class="no">Figure 3.3</td><td>Use Case Diagram of SpecFix</td><td class="pg">9</td></tr><tr><td class="no">Figure 3.4</td><td>Class Diagram of the Core Domain</td><td class="pg">10</td></tr><tr><td class="no">Figure 3.5</td><td>Sequence Diagram – Extractor and Critic Analysis</td><td class="pg">11</td></tr><tr><td class="no">Figure 3.6</td><td>Entity Relationship Diagram</td><td class="pg">12</td></tr><tr><td class="no">Figure 4.1</td><td>Two-Pass Analysis Pipeline and Human Review Gate</td><td class="pg">14</td></tr><tr><td class="no">Figure 4.2</td><td>Spec Compiler Pipeline with Two Human Gates</td><td class="pg">15</td></tr><tr><td class="no">Figure 4.3</td><td>Review Queue Page</td><td class="pg">16</td></tr><tr><td class="no">Figure 4.4</td><td>Ticket Review Page with Flag Cards</td><td class="pg">16</td></tr><tr><td class="no">Figure 4.5</td><td>Specs Tab: Scenario Review, Coverage and Scaffold</td><td class="pg">17</td></tr></table>
+</div>
+</body></html>

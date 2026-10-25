@@ -7,6 +7,7 @@ import {
 } from '@specfix/shared';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
+import { CodeBlock, GherkinBlock } from '@/components/code';
 import type {
   CoverageCounts,
   DriftedScenario,
@@ -201,9 +202,7 @@ function ScenarioCard({
         </form>
       ) : (
         <>
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-            {scenario.gherkin_raw}
-          </pre>
+          <GherkinBlock source={scenario.gherkin_raw} className="mt-3" />
           {scenario.covers_ac ? (
             <blockquote className="mt-3 border-l-2 border-border pl-3 text-xs text-muted-foreground">
               covers AC: {scenario.covers_ac}
@@ -358,9 +357,7 @@ function ScaffoldSection({
         </form>
       ) : (
         <>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-            {scaffold.code}
-          </pre>
+          <CodeBlock code={scaffold.code} highlight={/PLACEHOLDER_[A-Z0-9_]+/g} />
 
           {scaffold.selector_placeholders.length > 0 ? (
             <div>

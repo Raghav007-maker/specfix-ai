@@ -117,7 +117,7 @@ export default async function QueuePage({
       ) : null}
 
       {projects.length === 0 ? (
-        <NoProjects />
+        <NoProjects canCreate={tenant.role !== 'reviewer'} />
       ) : queue.length === 0 ? (
         <EmptyQueue projectName={activeProject?.name ?? ''} />
       ) : (
@@ -302,7 +302,8 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-function NoProjects() {
+/** Owners and admins can create a project here; reviewers are told who can. */
+function NoProjects({ canCreate }: { canCreate: boolean }) {
   return (
     <section
       aria-labelledby="no-projects-h"
@@ -312,19 +313,23 @@ function NoProjects() {
         No projects yet
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Create a project, then ingest tickets into it to start reviewing.
+        {canCreate
+          ? 'Create a project, then ingest tickets into it to start reviewing.'
+          : 'Ask an owner or admin of this workspace to create a project.'}
       </p>
-      <form action={createProjectForCurrentTenant} className="mt-4 flex gap-2">
-        <Input
-          name="name"
-          aria-label="Project name"
-          placeholder="Project name"
-          autoComplete="off"
-          required
-          className="max-w-xs"
-        />
-        <Button type="submit">Create project</Button>
-      </form>
+      {canCreate ? (
+        <form action={createProjectForCurrentTenant} className="mt-4 flex gap-2">
+          <Input
+            name="name"
+            aria-label="Project name"
+            placeholder="Project name"
+            autoComplete="off"
+            required
+            className="max-w-xs"
+          />
+          <Button type="submit">Create project</Button>
+        </form>
+      ) : null}
     </section>
   );
 }
