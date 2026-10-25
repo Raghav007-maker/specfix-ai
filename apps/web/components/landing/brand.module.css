@@ -1,0 +1,35 @@
+/* Public-page brand tokens, shared by the landing and sign-in pages through `composes`.
+   The signed-in app keeps its own tokens in globals.css. */
+.brand {
+  --ground: #0d0a10;
+  --ground-2: #110d15;
+  --surface: #16121b;
+  --ink: #f2ece2;
+  --ink-2: #cfc7d3;
+  --muted: #a39aab;
+  --faint: #857c8e;
+  --gold: #c8a35e;
+  --gold-tint: rgba(200, 163, 94, 0.16);
+  --violet: #6b56d9;
+  --violet-ink: #b2a6ff;
+  --violet-tint: rgba(124, 106, 242, 0.14);
+  --high: #e8798a;
+  --high-bg: rgba(122, 34, 56, 0.32);
+  --accepted-bg: rgba(124, 197, 154, 0.12);
+  --line: rgba(242, 236, 226, 0.16);
+  --line-2: rgba(242, 236, 226, 0.14);
+  --display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --text: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --mono: var(--font-mono), ui-monospace, monospace;
+
+  background: var(--ground);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+.brand a { color: inherit; text-decoration: none; }
+.brand :focus-visible { outline: 2px solid var(--violet-ink); outline-offset: 3px; }
+
+/* the logo + tracked wordmark */
+.word { display: inline-flex; align-items: center; gap: 14px; font: 600 16px/1 var(--display); letter-spacing: 0.34em; padding-right: 0.1em; color: #ece6dc; }
+.word b { font-weight: 600; color: var(--gold); }
+.word span { color: var(--ink); }
