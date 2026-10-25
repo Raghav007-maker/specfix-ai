@@ -15,7 +15,8 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
   secondary: 'bg-muted text-foreground hover:bg-muted/70',
   destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-  outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+  outline:
+    'border border-primary/40 bg-background text-primary hover:bg-accent hover:text-accent-foreground',
   ghost: 'hover:bg-accent hover:text-accent-foreground',
 };
 
@@ -86,15 +87,28 @@ export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   );
 }
 
+export function Select({ className, ...props }: ComponentProps<'select'>) {
+  return (
+    <select
+      className={cn(
+        'h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
 export function Label({ className, ...props }: ComponentProps<'label'>) {
   return <label className={cn('text-sm font-medium leading-none', className)} {...props} />;
 }
 
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'muted';
+type BadgeTone = 'neutral' | 'primary' | 'info' | 'success' | 'warning' | 'danger' | 'muted';
 
 const BADGE_TONES: Record<BadgeTone, string> = {
   neutral: 'border-transparent bg-muted text-muted-foreground',
   primary: 'border-transparent bg-primary text-primary-foreground',
+  info: 'border-transparent bg-sky-100 text-sky-900',
   success: 'border-transparent bg-emerald-100 text-emerald-800',
   warning: 'border-transparent bg-amber-100 text-amber-900',
   danger: 'border-transparent bg-red-100 text-red-800',
@@ -115,5 +129,52 @@ export function Badge({
       )}
       {...props}
     />
+  );
+}
+
+type Role = 'owner' | 'admin' | 'reviewer';
+
+const ROLE_TONES: Record<Role, BadgeTone> = {
+  owner: 'primary',
+  admin: 'info',
+  reviewer: 'neutral',
+};
+
+export function RoleBadge({ role, className }: { role: Role; className?: string }) {
+  return (
+    <Badge tone={ROLE_TONES[role]} className={cn('capitalize', className)}>
+      {role}
+    </Badge>
+  );
+}
+
+/** A labelled number, as in the report's coverage panel. */
+export function Stat({
+  label,
+  value,
+  hint,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string | undefined;
+  className?: string | undefined;
+}) {
+  return (
+    <div className={cn('rounded-lg border bg-card p-4', className)}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-2xl font-semibold tabular-nums text-primary">{value}</dd>
+      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+/** Red banner for a server action's ?error= message. */
+export function ErrorBanner({ message }: { message: string | undefined }) {
+  if (!message) return null;
+  return (
+    <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+      {message}
+    </p>
   );
 }

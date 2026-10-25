@@ -5,7 +5,18 @@ import {
   type ClauseCoverageStatus,
   type DriftVerdict,
 } from '@specfix/shared';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Stat,
+  Textarea,
+  buttonClasses,
+} from '@/components/ui';
+import { CodeBlock, GherkinBlock } from '@/components/code';
 import type {
   CoverageCounts,
   DriftedScenario,
@@ -53,26 +64,24 @@ export function GenerationPanel({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {hasScenarios ? 'Generate more scenarios' : 'Generate scenarios'}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Compiles Gherkin from the acceptance criteria and {resolvedFlagCount} resolved{' '}
-          {resolvedFlagCount === 1 ? 'clarification' : 'clarifications'}. Every scenario is a draft
-          until you accept it — nothing becomes a test on its own.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Generate Gherkin scenarios</p>
+          <p className="text-sm text-muted-foreground">
+            From the approved acceptance criteria and {resolvedFlagCount} resolved{' '}
+            {resolvedFlagCount === 1 ? 'clarification' : 'clarifications'}. Every scenario is a
+            draft until you accept it.
+          </p>
+          {hasScenarios ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Re-running keeps scenarios you have already decided; only new ones are added.
+            </p>
+          ) : null}
+        </div>
         <form action={generateScenarios}>
           <input type="hidden" name="ticketId" value={ticketId} />
           <Button type="submit">{hasScenarios ? 'Generate again' : 'Generate scenarios'}</Button>
         </form>
-        {hasScenarios ? (
-          <p className="text-xs text-muted-foreground">
-            Re-running keeps scenarios you have already decided; only new ones are added.
-          </p>
-        ) : null}
       </CardContent>
     </Card>
   );
@@ -120,11 +129,12 @@ export function ScenarioList({
             No scenarios yet. Generate them from the approved requirement above.
           </p>
         ) : (
-          live.map((scenario) => (
+          live.map((scenario, index) => (
             <ScenarioCard
               key={scenario.id}
               ticketId={ticketId}
               scenario={scenario}
+              position={`${index + 1} of ${live.length}`}
               editing={editingScenarioId === scenario.id}
               scaffold={scaffoldByScenario.get(scenario.id)}
               editingScaffold={
@@ -149,24 +159,37 @@ export function ScenarioList({
 function ScenarioCard({
   ticketId,
   scenario,
+  position,
   editing,
   scaffold,
   editingScaffold,
 }: {
   ticketId: string;
   scenario: ScenarioRow;
+  position: string;
   editing: boolean;
   scaffold: ScaffoldRow | undefined;
   editingScaffold: boolean;
 }) {
   return (
-    <div className="rounded-lg border p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Badge tone={statusTone(scenario.status)}>{scenario.status}</Badge>
-        {scenario.origin === 'human' ? <Badge tone="muted">human-authored</Badge> : null}
+    <div
+      className={
+        scenario.status === 'draft'
+          ? 'rounded-lg border border-l-4 border-l-primary/60 bg-card p-4 shadow-sm'
+          : 'rounded-lg border bg-card p-4'
+      }
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="font-semibold leading-snug text-primary">
+          Scenario {position} — {scenario.title}
+        </p>
+        <div className="flex items-center gap-1.5">
+          {scenario.origin === 'human' ? <Badge tone="muted">human-authored</Badge> : null}
+          <Badge tone={statusTone(scenario.status)} className="capitalize">
+            {scenario.status}
+          </Badge>
+        </div>
       </div>
-
-      <p className="font-medium leading-snug">{scenario.title}</p>
       {scenario.rationale ? (
         <p className="mt-1 text-sm text-muted-foreground">{scenario.rationale}</p>
       ) : null}
@@ -198,13 +221,11 @@ function ScenarioCard({
         </form>
       ) : (
         <>
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-            {scenario.gherkin_raw}
-          </pre>
+          <GherkinBlock source={scenario.gherkin_raw} className="mt-3" />
           {scenario.covers_ac ? (
-            <blockquote className="mt-3 border-l-2 border-border pl-3 text-xs text-muted-foreground">
-              covers AC: {scenario.covers_ac}
-            </blockquote>
+            <p className="mt-2 text-xs italic text-muted-foreground">
+              covers AC: &ldquo;{scenario.covers_ac}&rdquo;
+            </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {scenario.status === 'draft' ? (
@@ -214,10 +235,11 @@ function ScenarioCard({
                   scenarioId={scenario.id}
                   decision="approved"
                   label="Accept"
+                  variant="default"
                 />
                 <a
                   href={`/tickets/${ticketId}/specs?edit=${scenario.id}`}
-                  className="inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium hover:bg-accent"
+                  className={buttonClasses('outline', 'sm')}
                 >
                   Edit
                 </a>
@@ -226,7 +248,7 @@ function ScenarioCard({
                   scenarioId={scenario.id}
                   decision="dismissed"
                   label="Dismiss"
-                  variant="ghost"
+                  variant="outline"
                 />
               </>
             ) : (
@@ -313,19 +335,18 @@ function ScaffoldSection({
   }
 
   return (
-    <div className="mt-4 space-y-2 border-t pt-3">
+    <div className="mt-4 space-y-3 border-t pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Playwright scaffold
+        <span className="text-sm font-semibold text-primary">
+          Playwright scaffold{' '}
+          <span className="font-normal text-muted-foreground">
+            — placeholder selectors (human must fill)
+          </span>
         </span>
-        <Badge tone={statusTone(scaffold.status)}>{scaffold.status}</Badge>
         <span className="flex-1" />
-        <a
-          href={`/tickets/${ticketId}/specs/download/${scaffold.id}`}
-          className="text-xs text-muted-foreground underline"
-        >
-          Download .spec.ts
-        </a>
+        <Badge tone={statusTone(scaffold.status)} className="capitalize">
+          {scaffold.status}
+        </Badge>
       </div>
 
       {editing ? (
@@ -355,9 +376,7 @@ function ScaffoldSection({
         </form>
       ) : (
         <>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-            {scaffold.code}
-          </pre>
+          <CodeBlock code={scaffold.code} highlight={/PLACEHOLDER_[A-Z0-9_]+/g} />
 
           {scaffold.selector_placeholders.length > 0 ? (
             <div>
@@ -379,7 +398,7 @@ function ScaffoldSection({
             <p className="text-xs text-muted-foreground">No selectors to fill in.</p>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {scaffold.status === 'draft' ? (
               <>
                 <ScaffoldButton
@@ -387,10 +406,11 @@ function ScaffoldSection({
                   scaffoldId={scaffold.id}
                   status="approved"
                   label="Accept scaffold"
+                  variant="default"
                 />
                 <a
                   href={`/tickets/${ticketId}/specs?editScaffold=${scaffold.id}`}
-                  className="inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium hover:bg-accent"
+                  className={buttonClasses('outline', 'sm')}
                 >
                   Fill in selectors
                 </a>
@@ -399,7 +419,7 @@ function ScaffoldSection({
                   scaffoldId={scaffold.id}
                   status="dismissed"
                   label="Dismiss"
-                  variant="ghost"
+                  variant="outline"
                 />
               </>
             ) : scaffold.status === 'dismissed' ? (
@@ -415,6 +435,12 @@ function ScaffoldSection({
                 Accepted — download it and commit it to your test suite.
               </span>
             )}
+            <a
+              href={`/tickets/${ticketId}/specs/download/${scaffold.id}`}
+              className={buttonClasses('outline', 'sm')}
+            >
+              Download
+            </a>
           </div>
         </>
       )}
@@ -515,18 +541,22 @@ export function CoveragePanel({
 }) {
   const coveredClauses = clauses.filter((row) => row.status === 'covered').length;
   const suggested = clauses.filter((row) => row.status === 'likely').length;
+  const best = clauses.reduce<number | null>(
+    (max, row) =>
+      row.similarity !== null && (max === null || row.similarity > max) ? row.similarity : max,
+    null
+  );
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Coverage</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          How much of the approved requirement is backed by downstream artifacts. Only accepted
-          scenarios and emitted scaffolds count toward these numbers.
+        <p className="text-xs text-muted-foreground">
+          Only accepted scenarios and emitted scaffolds count.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-1">
           <Stat label="AC clauses with a scenario" value={`${coveredClauses}/${clauses.length}`} />
           <Stat
             label="Resolved flags with a scenario"
@@ -537,6 +567,19 @@ export function CoveragePanel({
             value={`${counts.scenariosWithScaffold}/${counts.acceptedScenarios}`}
           />
         </dl>
+
+        {best !== null ? (
+          <div>
+            <p className="text-xs text-muted-foreground">Clause match (cosine)</p>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-emerald-600"
+                style={{ width: `${Math.max(0, Math.min(1, best)) * 100}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{best.toFixed(2)} best match</p>
+          </div>
+        ) : null}
 
         {clauses.length > 0 ? (
           <div>
@@ -643,9 +686,9 @@ function clauseLabel(status: ClauseCoverageStatus): string {
   return 'No scenario';
 }
 
-function clauseTone(status: ClauseCoverageStatus): 'success' | 'primary' | 'warning' | 'danger' {
+function clauseTone(status: ClauseCoverageStatus): 'success' | 'info' | 'warning' | 'danger' {
   if (status === 'covered') return 'success';
-  if (status === 'likely') return 'primary';
+  if (status === 'likely') return 'info';
   if (status === 'possible') return 'warning';
   return 'danger';
 }
@@ -666,29 +709,20 @@ function percent(similarity: number): string {
   return `${Math.round(similarity * 100)}%`;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd>
-    </div>
-  );
-}
-
 function categoryLabel(category: string): string {
   return (FLAG_CATEGORY_LABELS as Record<string, string>)[category] ?? category;
 }
 
-function statusTone(status: string): 'neutral' | 'success' | 'primary' | 'muted' {
+function statusTone(status: string): 'neutral' | 'success' | 'info' | 'muted' {
   if (status === 'approved') return 'success';
-  if (status === 'edited') return 'primary';
+  if (status === 'edited') return 'info';
   if (status === 'draft') return 'neutral';
   return 'muted';
 }
 
-function decisionTone(decision: string): 'success' | 'primary' | 'muted' | 'neutral' {
+function decisionTone(decision: string): 'success' | 'info' | 'muted' | 'neutral' {
   if (decision === 'approved') return 'success';
-  if (decision === 'edited') return 'primary';
+  if (decision === 'edited') return 'info';
   if (decision === 'dismissed') return 'muted';
   return 'neutral';
 }

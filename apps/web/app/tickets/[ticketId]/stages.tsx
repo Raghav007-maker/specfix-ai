@@ -8,7 +8,16 @@ import type {
   TicketDecisionRow,
   TicketVersionDetail,
 } from '@/lib/repos';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Textarea,
+  buttonClasses,
+} from '@/components/ui';
 import {
   addGapAction,
   completeSessionAction,
@@ -30,7 +39,7 @@ export function TicketText({ version }: { version: TicketVersionDetail }) {
         <Field label="Title">{version.title}</Field>
         <Field label="Description">{version.description_text || '(none provided)'}</Field>
         <Field label="Acceptance criteria">
-          {version.acceptance_criteria_text || '(none provided)'}
+          <CriteriaList text={version.acceptance_criteria_text} />
         </Field>
       </CardContent>
     </Card>
@@ -40,11 +49,32 @@ export function TicketText({ version }: { version: TicketVersionDetail }) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-primary/70">
         {label}
       </p>
-      <p className="whitespace-pre-wrap leading-relaxed">{children}</p>
+      <div className="whitespace-pre-wrap leading-relaxed">{children}</div>
     </div>
+  );
+}
+
+/** One bullet per criterion when the text is a list; the raw text otherwise. */
+function CriteriaList({ text }: { text: string }) {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const bullet = /^([-*•]|\d+[.)])\s+/;
+  if (lines.length === 0) return <>(none provided)</>;
+  if (!lines.every((line) => bullet.test(line))) return <>{text}</>;
+  return (
+    <ul className="space-y-1.5 whitespace-normal">
+      {lines.map((line, index) => (
+        <li key={index} className="flex gap-2">
+          <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/50" />
+          <span>{line.replace(bullet, '')}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -286,32 +316,52 @@ function FlagCard({
   editing: boolean;
 }) {
   const question = flag.edited_question ?? flag.question_for_pm;
+  const decided = flag.status !== 'open';
 
   return (
-    <div className="rounded-lg border p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Badge tone={severityTone(flag.severity)}>{flag.severity}</Badge>
-        <Badge tone="muted">{categoryLabel(flag.category)}</Badge>
-        <span className="flex-1" />
-        <Badge tone={statusTone(flag.status)}>{flag.status}</Badge>
+    <div
+      className={
+        decided
+          ? 'rounded-lg border bg-muted/30 p-4'
+          : 'rounded-lg border border-l-4 border-l-primary/60 bg-card p-4 shadow-sm'
+      }
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-semibold text-primary">{categoryLabel(flag.category)}</p>
+        <Badge tone={severityTone(flag.severity)} className="capitalize">
+          {flag.severity}
+        </Badge>
       </div>
-
-      <p className="font-medium leading-snug">{flag.what_unclear}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{flag.why_it_matters}</p>
 
       {flag.quoted_span ? (
-        <blockquote className="mt-3 border-l-2 border-border pl-3 font-mono text-xs text-muted-foreground">
-          {flag.quoted_span}
-        </blockquote>
+        <p className="mt-1 text-xs italic text-muted-foreground">
+          quoted: &ldquo;{flag.quoted_span}&rdquo;
+        </p>
       ) : null}
 
-      <div className="mt-3 rounded-md bg-muted/60 p-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Question for the PM
-          {flag.edited_question ? ' · edited by reviewer' : ''}
-        </p>
-        <p className="mt-1 text-sm">{question}</p>
-      </div>
+      <p className="mt-2 text-sm leading-relaxed">
+        {question}
+        {flag.edited_question ? (
+          <span className="ml-2 text-xs text-muted-foreground">(edited by reviewer)</span>
+        ) : null}
+      </p>
+
+      <details className="group mt-2">
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+          <span className="group-open:hidden">Why this was flagged ▸</span>
+          <span className="hidden group-open:inline">Why this was flagged ▾</span>
+        </summary>
+        <div className="mt-2 space-y-1 rounded-md bg-muted/60 p-3 text-xs">
+          <p>
+            <span className="font-medium">Unclear: </span>
+            {flag.what_unclear}
+          </p>
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">Why it matters: </span>
+            {flag.why_it_matters}
+          </p>
+        </div>
+      </details>
 
       {editing ? (
         <form action={decideFlagAction} className="mt-3 space-y-2">
@@ -335,7 +385,7 @@ function FlagCard({
           </div>
         </form>
       ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {flag.status === 'open' ? (
             <>
               <DecisionButton
@@ -343,19 +393,20 @@ function FlagCard({
                 flagId={flag.id}
                 decision="accepted"
                 label="Accept"
+                variant="default"
               />
               <a
                 href={`/tickets/${ticketId}?edit=${flag.id}`}
-                className="inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium hover:bg-accent"
+                className={buttonClasses('outline', 'sm')}
               >
-                Edit wording
+                Edit
               </a>
               <DecisionButton
                 ticketId={ticketId}
                 flagId={flag.id}
                 decision="dismissed"
                 label="Dismiss"
-                variant="ghost"
+                variant="outline"
               />
             </>
           ) : flag.status === 'stale' ? (
@@ -363,13 +414,18 @@ function FlagCard({
               Raised against an older version of this ticket.
             </p>
           ) : (
-            <DecisionButton
-              ticketId={ticketId}
-              flagId={flag.id}
-              decision="reopened"
-              label="Reopen"
-              variant="outline"
-            />
+            <>
+              <Badge tone={statusTone(flag.status)} className="capitalize">
+                {flag.status}
+              </Badge>
+              <DecisionButton
+                ticketId={ticketId}
+                flagId={flag.id}
+                decision="reopened"
+                label="Reopen"
+                variant="outline"
+              />
+            </>
           )}
         </div>
       )}
@@ -535,15 +591,15 @@ export function MarkReady({
   ready: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+    <Card className={ready ? 'border-emerald-200 bg-emerald-50/60' : 'bg-muted/40'}>
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
         <div className="text-sm">
-          <p className="font-medium">Ready for development</p>
+          <p className="font-semibold">Mark ready for development</p>
           <p className="text-muted-foreground">
             {ready
               ? 'This version has been marked ready.'
               : openFlags > 0
-                ? `${openFlags} flag${openFlags === 1 ? '' : 's'} still open — resolve them first.`
+                ? 'Every flag must be accepted, edited or dismissed first.'
                 : 'Every flag on this version has been resolved.'}
           </p>
         </div>
@@ -553,7 +609,9 @@ export function MarkReady({
           <form action={markReadyAction}>
             <input type="hidden" name="ticketId" value={ticketId} />
             <Button type="submit" disabled={openFlags > 0}>
-              Mark ready for development
+              {openFlags > 0
+                ? `${openFlags} ${openFlags === 1 ? 'flag' : 'flags'} still open`
+                : 'Mark ready for development'}
             </Button>
           </form>
         )}
@@ -572,16 +630,16 @@ function severityTone(severity: string): 'danger' | 'warning' | 'muted' {
   return 'muted';
 }
 
-function statusTone(status: string): 'neutral' | 'success' | 'primary' | 'muted' {
+function statusTone(status: string): 'neutral' | 'success' | 'info' | 'muted' {
   if (status === 'accepted') return 'success';
-  if (status === 'edited') return 'primary';
+  if (status === 'edited') return 'info';
   if (status === 'open') return 'neutral';
   return 'muted';
 }
 
-function decisionTone(decision: string): 'success' | 'primary' | 'muted' | 'neutral' {
+function decisionTone(decision: string): 'success' | 'info' | 'muted' | 'neutral' {
   if (decision === 'accepted') return 'success';
-  if (decision === 'edited') return 'primary';
+  if (decision === 'edited') return 'info';
   if (decision === 'dismissed') return 'muted';
   return 'neutral';
 }

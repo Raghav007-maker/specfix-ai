@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
-import { requireTenant } from '@/lib/tenant';
+import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   findSession,
   getTicket,
@@ -11,14 +10,23 @@ import {
   listRunsForTicket,
   readinessTimeline,
   revealedFlags,
+  type AnalysisRunRow,
   type FlagRow,
   type ReadinessTimelineRow,
   type ReviewerGapRow,
   type TicketDecisionRow,
 } from '@/lib/repos';
 import { AppHeader } from '@/components/app-header';
-import { TicketTabs } from '@/components/ticket-tabs';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
+import { TicketHeader } from '@/components/ticket-tabs';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ErrorBanner,
+} from '@/components/ui';
 import { beginReview } from './actions';
 import { AuditTrail, BlindGapStage, MarkReady, ReviewStage, TicketText } from './stages';
 
@@ -46,7 +54,8 @@ export default async function TicketPage({
     searchParams,
     requireUser(),
   ]);
-  const tenant = await requireTenant(user.id);
+  const memberships = await currentMemberships(user.id);
+  const tenant = await requireTenant(user.id, memberships);
 
   const ticket = await getTicket(tenant.tenant_id, ticketId);
   if (!ticket) notFound();
@@ -62,6 +71,7 @@ export default async function TicketPage({
   let decisions: TicketDecisionRow[] = [];
   let timeline: ReadinessTimelineRow[] = [];
   let analyzed = false;
+  let run: AnalysisRunRow | undefined;
 
   if (session && locked) {
     // All five reads depend only on ids already in hand (tenant, session, ticket), so
@@ -79,7 +89,8 @@ export default async function TicketPage({
     flags = revealed.flags;
     decisions = decisionsResult;
     timeline = timelineResult;
-    analyzed = runs.some((r) => r.ticket_version_id === version?.id && r.status === 'succeeded');
+    run = runs.find((r) => r.ticket_version_id === version?.id && r.status === 'succeeded');
+    analyzed = run !== undefined;
   } else if (session) {
     gaps = await listGaps(tenant.tenant_id, session.id);
   }
@@ -89,48 +100,51 @@ export default async function TicketPage({
     (e) => e.event === 'marked_ready' && e.ticket_version_id === version?.id
   );
 
+  const meta = [
+    version ? `Version captured ${capturedOn(version.captured_at)}` : 'No captured version',
+    locked && run ? `analysis: ${promptName(run.prompt_version)} · ${run.model}` : null,
+    locked && flags.length > 0 ? `${openFlags} open of ${flags.length}` : null,
+    !locked && version ? 'flags hidden until your gap list is locked' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <>
-      <AppHeader user={user} tenant={tenant} />
+      <AppHeader user={user} tenant={tenant} memberships={memberships} active="queue" />
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <nav className="mb-4 text-sm text-muted-foreground">
-          <Link href={`/?project=${ticket.project_id}`} className="hover:text-foreground">
-            {ticket.project_name}
-          </Link>
-          <span className="mx-2">/</span>
-          <span className="font-mono text-xs">{ticket.external_key}</span>
-        </nav>
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <TicketHeader
+          ticketId={ticket.id}
+          projectId={ticket.project_id}
+          projectName={ticket.project_name}
+          externalKey={ticket.external_key}
+          title={version?.title ?? ticket.title}
+          meta={meta}
+          active="review"
+          badges={
+            locked ? (
+              <>
+                {ready ? <Badge tone="success">Ready for dev</Badge> : null}
+                {openFlags > 0 ? (
+                  <Badge tone="warning">
+                    {openFlags} open {openFlags === 1 ? 'flag' : 'flags'}
+                  </Badge>
+                ) : null}
+              </>
+            ) : (
+              <Badge tone="neutral">Blind review</Badge>
+            )
+          }
+        />
 
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {version?.title ?? ticket.title}
-          </h1>
-          {locked ? (
-            <div className="flex items-center gap-2">
-              {ready ? <Badge tone="success">Ready for dev</Badge> : null}
-              {openFlags > 0 ? (
-                <Badge tone="warning">
-                  {openFlags} open {openFlags === 1 ? 'flag' : 'flags'}
-                </Badge>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-
-        <TicketTabs ticketId={ticket.id} active="review" />
-
-        {error ? (
-          <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        <ErrorBanner message={error} />
 
         {!version ? (
           <NoVersion />
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div className="lg:sticky lg:top-6 lg:self-start">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="lg:sticky lg:top-20 lg:self-start">
               <TicketText version={version} />
             </div>
 
@@ -199,4 +213,17 @@ function NoVersion() {
       </CardContent>
     </Card>
   );
+}
+
+function capturedOn(value: Date | string): string {
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
+}
+
+/** "single-shot-v1@abc123" → "single-shot-v1": the hash is for the audit, not the eye. */
+function promptName(promptVersion: string): string {
+  return promptVersion.split('@')[0] ?? promptVersion;
 }

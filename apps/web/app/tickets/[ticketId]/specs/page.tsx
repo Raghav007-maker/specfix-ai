@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
-import { requireTenant } from '@/lib/tenant';
+import { currentMemberships, requireTenant } from '@/lib/tenant';
 import { buildClauseCoverage, isApprovedScenario, type ClauseCoverageRow } from '@specfix/shared';
 import {
   clauseCoverage,
@@ -24,8 +23,8 @@ import {
   type UntestedFlag,
 } from '@/lib/repos';
 import { AppHeader } from '@/components/app-header';
-import { TicketTabs } from '@/components/ticket-tabs';
-import { Badge, Card, CardContent } from '@/components/ui';
+import { TicketHeader } from '@/components/ticket-tabs';
+import { Badge, Card, CardContent, ErrorBanner } from '@/components/ui';
 import { TicketText } from '../stages';
 import {
   CoveragePanel,
@@ -53,7 +52,8 @@ export default async function SpecsPage({
   const { error, edit, editScaffold } = await searchParams;
 
   const user = await requireUser();
-  const tenant = await requireTenant(user.id);
+  const memberships = await currentMemberships(user.id);
+  const tenant = await requireTenant(user.id, memberships);
 
   const ticket = await getTicket(tenant.tenant_id, ticketId);
   if (!ticket) notFound();
@@ -115,39 +115,40 @@ export default async function SpecsPage({
 
   const liveScenarios = scenarios.filter((s) => s.status !== 'stale');
 
+  const approvedCount = liveScenarios.filter((s) => isApprovedScenario(s.status)).length;
+  const meta = version
+    ? [
+        ready ? 'Signed off for development' : 'Not signed off yet',
+        `${liveScenarios.length} ${liveScenarios.length === 1 ? 'scenario' : 'scenarios'}`,
+        `${approvedCount} accepted`,
+      ].join(' · ')
+    : 'No captured version';
+
   return (
     <>
-      <AppHeader user={user} tenant={tenant} />
+      <AppHeader user={user} tenant={tenant} memberships={memberships} active="queue" />
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <nav className="mb-4 text-sm text-muted-foreground">
-          <Link href={`/?project=${ticket.project_id}`} className="hover:text-foreground">
-            {ticket.project_name}
-          </Link>
-          <span className="mx-2">/</span>
-          <span className="font-mono text-xs">{ticket.external_key}</span>
-        </nav>
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <TicketHeader
+          ticketId={ticket.id}
+          projectId={ticket.project_id}
+          projectName={ticket.project_name}
+          externalKey={ticket.external_key}
+          title={version?.title ?? ticket.title}
+          meta={meta}
+          active="specs"
+          badges={
+            version ? (
+              ready ? (
+                <Badge tone="success">Ready for dev</Badge>
+              ) : (
+                <Badge tone="muted">Not signed off</Badge>
+              )
+            ) : null
+          }
+        />
 
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {version?.title ?? ticket.title}
-          </h1>
-          {version ? (
-            ready ? (
-              <Badge tone="success">Ready for dev</Badge>
-            ) : (
-              <Badge tone="muted">Not signed off</Badge>
-            )
-          ) : null}
-        </div>
-
-        <TicketTabs ticketId={ticket.id} active="specs" />
-
-        {error ? (
-          <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        <ErrorBanner message={error} />
 
         {version && staleSpecCount > 0 ? (
           <p className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -171,18 +172,15 @@ export default async function SpecsPage({
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div className="lg:sticky lg:top-6 lg:self-start">
-              <TicketText version={version} />
-            </div>
+          <div className="space-y-6">
+            <GenerationPanel
+              ticketId={ticket.id}
+              ready={ready}
+              hasScenarios={liveScenarios.length > 0}
+              resolvedFlagCount={resolvedFlagCount}
+            />
 
-            <div className="space-y-6">
-              <GenerationPanel
-                ticketId={ticket.id}
-                ready={ready}
-                hasScenarios={liveScenarios.length > 0}
-                resolvedFlagCount={resolvedFlagCount}
-              />
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <ScenarioList
                 ticketId={ticket.id}
                 scenarios={scenarios}
@@ -190,26 +188,22 @@ export default async function SpecsPage({
                 scaffolds={scaffolds}
                 editingScaffoldId={editScaffold}
               />
+              <div className="space-y-6 lg:sticky lg:top-20 lg:self-start">
+                {coverage ? (
+                  <CoveragePanel
+                    counts={coverage}
+                    untested={untested}
+                    clauses={clauseRows}
+                    semanticState={semanticState}
+                  />
+                ) : null}
+                <TicketText version={version} />
+              </div>
             </div>
+
+            {reviews.length > 0 ? <SpecsAuditTrail reviews={reviews} /> : null}
           </div>
         )}
-
-        {version && coverage ? (
-          <div className="mt-6">
-            <CoveragePanel
-              counts={coverage}
-              untested={untested}
-              clauses={clauseRows}
-              semanticState={semanticState}
-            />
-          </div>
-        ) : null}
-
-        {version && reviews.length > 0 ? (
-          <div className="mt-6">
-            <SpecsAuditTrail reviews={reviews} />
-          </div>
-        ) : null}
       </main>
     </>
   );

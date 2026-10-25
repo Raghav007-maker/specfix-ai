@@ -2,23 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Navy-on-paper palette from the report's page layouts (Figures 4.3–4.5). */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
+  --background: 216 33% 97%;
+  --foreground: 216 40% 13%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --primary: 222 47% 11%;
+  --card-foreground: 216 40% 13%;
+  --muted: 214 33% 95%;
+  --muted-foreground: 215 14% 43%;
+  --primary: 212 50% 24%;
   --primary-foreground: 210 40% 98%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 72% 51%;
+  --accent: 214 40% 94%;
+  --accent-foreground: 212 50% 24%;
+  --destructive: 0 72% 46%;
   --destructive-foreground: 210 40% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 222 47% 11%;
+  --border: 214 28% 87%;
+  --input: 214 24% 80%;
+  --ring: 212 50% 34%;
   --radius: 0.5rem;
+  /* Header bar and the dark code block. */
+  --nav: 212 50% 24%;
+  --code: 218 30% 16%;
+  --code-foreground: 214 32% 91%;
 }
 
 * {
@@ -31,4 +36,12 @@ body {
   font-feature-settings:
     'rlig' 1,
     'calt' 1;
+}
+
+/* The workspace menu is a <details>; hide the default disclosure triangle. */
+summary::-webkit-details-marker {
+  display: none;
+}
+summary {
+  list-style: none;
 }
