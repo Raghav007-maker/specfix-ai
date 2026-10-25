@@ -10,11 +10,12 @@ export function TicketTabs({ ticketId, active }: { ticketId: string; active: 're
   const tab = (href: string, key: 'review' | 'specs', label: string) => (
     <Link
       href={href}
+      aria-current={active === key ? 'page' : undefined}
       className={cn(
-        'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+        '-mb-px inline-flex h-10 items-center border-b-2 px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal',
         active === key
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          ? 'border-text font-medium text-text'
+          : 'border-transparent text-muted-foreground hover:text-text'
       )}
     >
       {label}
@@ -22,9 +23,9 @@ export function TicketTabs({ ticketId, active }: { ticketId: string; active: 're
   );
 
   return (
-    <div className="mb-6 inline-flex gap-1 rounded-lg border bg-card p-1">
+    <nav aria-label="Ticket views" className="mb-6 flex gap-2 border-b border-border">
       {tab(`/tickets/${ticketId}`, 'review', 'Review')}
       {tab(`/tickets/${ticketId}/specs`, 'specs', 'Specs')}
-    </div>
+    </nav>
   );
 }

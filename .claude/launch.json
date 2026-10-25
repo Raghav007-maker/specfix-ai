@@ -6,6 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "@specfix/web"],
       "port": 3000
+    },
+    {
+      "name": "web-system-ca",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@specfix/web"],
+      "env": { "NODE_OPTIONS": "--use-system-ca" },
+      "port": 3000
     }
   ]
 }

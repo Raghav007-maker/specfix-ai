@@ -6,6 +6,7 @@ import {
   type DriftVerdict,
 } from '@specfix/shared';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '@/components/ui';
+import { SubmitButton } from '@/components/submit-button';
 import type {
   CoverageCounts,
   DriftedScenario,
@@ -66,7 +67,9 @@ export function GenerationPanel({
       <CardContent className="space-y-2">
         <form action={generateScenarios}>
           <input type="hidden" name="ticketId" value={ticketId} />
-          <Button type="submit">{hasScenarios ? 'Generate again' : 'Generate scenarios'}</Button>
+          <SubmitButton pendingLabel="Compiling scenarios…">
+            {hasScenarios ? 'Generate again' : 'Generate scenarios'}
+          </SubmitButton>
         </form>
         {hasScenarios ? (
           <p className="text-xs text-muted-foreground">

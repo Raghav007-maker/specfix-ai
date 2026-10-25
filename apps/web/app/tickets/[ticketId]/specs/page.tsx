@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
@@ -11,6 +10,7 @@ import {
   driftedScenarios,
   getTicket,
   latestVersion,
+  listProjects,
   listReadinessEvents,
   listScaffoldsForVersion,
   listScenarioReviewsForVersion,
@@ -23,9 +23,9 @@ import {
   type ScenarioRow,
   type UntestedFlag,
 } from '@/lib/repos';
-import { AppHeader } from '@/components/app-header';
+import { AppShell, Breadcrumb } from '@/components/app-shell';
 import { TicketTabs } from '@/components/ticket-tabs';
-import { Badge, Card, CardContent } from '@/components/ui';
+import { Badge, Card, CardContent, Notice } from '@/components/ui';
 import { TicketText } from '../stages';
 import {
   CoveragePanel,
@@ -55,7 +55,11 @@ export default async function SpecsPage({
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
 
-  const ticket = await getTicket(tenant.tenant_id, ticketId);
+  // The project list feeds the sidebar; it reads no ticket data.
+  const [ticket, projects] = await Promise.all([
+    getTicket(tenant.tenant_id, ticketId),
+    listProjects(tenant.tenant_id),
+  ]);
   if (!ticket) notFound();
 
   const version = await latestVersion(tenant.tenant_id, ticket.id);
@@ -116,20 +120,21 @@ export default async function SpecsPage({
   const liveScenarios = scenarios.filter((s) => s.status !== 'stale');
 
   return (
-    <>
-      <AppHeader user={user} tenant={tenant} />
-
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <nav className="mb-4 text-sm text-muted-foreground">
-          <Link href={`/?project=${ticket.project_id}`} className="hover:text-foreground">
-            {ticket.project_name}
-          </Link>
-          <span className="mx-2">/</span>
-          <span className="font-mono text-xs">{ticket.external_key}</span>
-        </nav>
+    <AppShell
+      user={user}
+      tenant={tenant}
+      projects={projects}
+      activeProjectId={ticket.project_id}
+      breadcrumb={
+        <Breadcrumb
+          parent={{ href: `/?project=${ticket.project_id}`, label: ticket.project_name }}
+          current={ticket.external_key}
+        />
+      }
+    >
 
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-[-0.012em]">
             {version?.title ?? ticket.title}
           </h1>
           {version ? (
@@ -144,17 +149,17 @@ export default async function SpecsPage({
         <TicketTabs ticketId={ticket.id} active="specs" />
 
         {error ? (
-          <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <Notice tone="error" className="mb-6">
             {error}
-          </p>
+          </Notice>
         ) : null}
 
         {version && staleSpecCount > 0 ? (
-          <p className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <Notice tone="warning" className="mb-6">
             This ticket changed after specs were approved on an earlier version. {staleSpecCount}{' '}
             scenario{staleSpecCount === 1 ? '' : 's'} went stale — regenerate and re-review so the
             specs match the current requirement.
-          </p>
+          </Notice>
         ) : null}
 
         {version && drift.length > 0 ? (
@@ -210,7 +215,6 @@ export default async function SpecsPage({
             <SpecsAuditTrail reviews={reviews} />
           </div>
         ) : null}
-      </main>
-    </>
+    </AppShell>
   );
 }
