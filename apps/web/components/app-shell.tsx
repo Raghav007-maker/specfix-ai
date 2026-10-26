@@ -6,10 +6,11 @@ import { signOut } from '@/app/(auth)/actions';
 import type { MembershipRow } from '@/lib/tenant';
 import type { ProjectRow } from '@/lib/repos';
 import { cn } from '@/lib/cn';
-import { LogoMark } from '@/components/brand';
+import { LogoMark, LogoWordmark } from '@/components/brand';
 
 /**
- * The workspace frame: sidebar and top bar on the near-black ground around one graphite sheet.
+ * The workspace frame: a white sidebar and top bar on the light grey ground around one white sheet,
+ * matching the dashboard.
  * Below 1024px the frame folds into a 48px bar with a menu. It shows only the product, the
  * workspace, its projects and the account — never ticket or flag data, so it is safe on the
  * blind-first path.
@@ -44,7 +45,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-frame lg:grid lg:grid-cols-[228px_minmax(0,1fr)] lg:grid-rows-[48px_minmax(0,1fr)]">
-      <aside className="flex flex-col px-3 pb-4 pt-3 max-lg:hidden lg:sticky lg:top-0 lg:row-span-2 lg:h-screen">
+      <aside className="flex flex-col border-r border-border bg-sheet px-3 pb-4 pt-4 max-lg:hidden lg:sticky lg:top-0 lg:row-span-2 lg:h-screen">
         {nav}
       </aside>
 
@@ -68,7 +69,7 @@ export function AppShell({
 
       <main
         id="main"
-        className="app-sheet min-w-0 px-4 pb-12 pt-5 md:px-6 lg:mb-2 lg:mr-2 lg:min-h-[calc(100vh-56px)] lg:rounded-sheet lg:border lg:border-border lg:pt-6"
+        className="app-sheet min-w-0 px-4 pb-12 pt-5 md:px-6 lg:mb-3 lg:ml-3 lg:mr-3 lg:min-h-[calc(100vh-60px)] lg:rounded-sheet lg:border lg:border-border lg:pt-6"
       >
         <div className="page-enter">{children}</div>
       </main>
@@ -95,9 +96,10 @@ function Nav({
         href="/"
         className="flex h-9 items-center gap-2 rounded-md px-2 text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
         translate="no"
+        aria-label="SpecFix home"
       >
-        <LogoMark size={22} className="flex-none text-[#ece6dc]" />
-        SpecFix
+        <LogoMark size={26} className="flex-none text-text" />
+        <LogoWordmark height={17} className="text-text" />
       </Link>
 
       <div className="mt-3 px-2">
@@ -109,21 +111,21 @@ function Nav({
         <NavLink
           href="/"
           active={current === 'queue'}
-          icon={<ListChecks aria-hidden size={16} strokeWidth={1.5} />}
+          icon={<ListChecks aria-hidden size={18} strokeWidth={1.6} />}
         >
-          Review queue
+          Home
         </NavLink>
         <NavLink
           href="/analytics"
           active={current === 'analytics'}
-          icon={<BarChart3 aria-hidden size={16} strokeWidth={1.5} />}
+          icon={<BarChart3 aria-hidden size={18} strokeWidth={1.6} />}
         >
           Ticket analytics
         </NavLink>
         <NavLink
           href="/team"
           active={current === 'team'}
-          icon={<Users aria-hidden size={16} strokeWidth={1.5} />}
+          icon={<Users aria-hidden size={18} strokeWidth={1.6} />}
         >
           Team
         </NavLink>
@@ -136,7 +138,7 @@ function Nav({
                 key={project.id}
                 href={`/?project=${project.id}`}
                 active={project.id === activeProjectId}
-                icon={<Folder aria-hidden size={16} strokeWidth={1.5} />}
+                icon={<Folder aria-hidden size={18} strokeWidth={1.6} />}
               >
                 {project.name}
               </NavLink>
@@ -152,9 +154,9 @@ function Nav({
         <form action={signOut} className="mt-1">
           <button
             type="submit"
-            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11"
+            className="flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11"
           >
-            <LogOut aria-hidden size={16} strokeWidth={1.5} />
+            <LogOut aria-hidden size={18} strokeWidth={1.6} />
             Sign out
           </button>
         </form>
@@ -179,9 +181,9 @@ function NavLink({
       href={href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
+        'flex h-10 items-center gap-3 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
         active
-          ? 'bg-active text-text shadow-[inset_0_1px_0_rgb(255_255_255/0.04),0_0_0_1px_rgb(var(--border))]'
+          ? 'bg-active font-medium text-text shadow-[0_0_0_1px_rgb(var(--border))]'
           : 'text-muted-foreground hover:bg-raised hover:text-text'
       )}
     >

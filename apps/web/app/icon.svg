@@ -1,8 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#211c26"/><stop offset="1" stop-color="#0f0c13"/></linearGradient></defs>
-  <rect x="1" y="1" width="62" height="62" rx="14" fill="url(#g)" stroke="#342d3a" stroke-width="1"/>
-  <g transform="translate(9.6 9.6) scale(.7) skewX(-14) translate(9 0)" stroke="#ece6dc" stroke-width="8.5" stroke-linejoin="round">
-    <path d="M32 14H20a8 8 0 0 0 0 16h5a8 8 0 0 1 0 16H9"/>
-    <path d="M41 50V14h16M41 31h12"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><radialGradient id="g" cx="0.3" cy="0.15" r="1.1"><stop offset="0" stop-color="#2a2a2a"/><stop offset="0.7" stop-color="#111111"/></radialGradient></defs>
+  <rect width="64" height="64" rx="14.4" fill="url(#g)"/>
+  <path transform="translate(14.08 19.77) scale(0.1896)" fill="#efe9dc" fill-rule="evenodd" d="M170.6 62.7L170.2 62.3L130.8 62.3L129 62.8L127.1 64.3L126.2 67L126.2 87.8L125.8 88.7L105.5 88.6L100.1 88.8L99.6 89.5L99.6 128.8L126 128.8L126.2 88.8L127.7 88.6L162.3 88.5L163 87.7L163.8 85.3L170 64.8L170.6 63.5ZM185 15.8L184.3 15.3L130.5 15.3L126.1 15.6L120 16.3L112 18.2L104.6 21L97 25L91.1 29.1L85.3 34.1L82.1 37.6L77.3 43.8L73.2 50.5L70 57L68.2 61L64 72.7L60.7 79.6L58.7 83L55.6 87L51.6 90.7L47 93.7L42.3 95.7L38.7 96.7L31.8 97.6L12.3 97.6L11.8 97.8L11.2 98.6L9.7 104.2L7.1 111.6L3.7 122.8L3.7 123.6L4.6 124.1L33.7 124L38.1 123.6L43.2 122.8L48 121.7L53.7 119.7L60 116.7L64.6 113.7L69.7 109.6L74.1 105.3L79.6 98.3L82.8 93.1L85.7 87.5L89.6 78.2L93 69L96 62.8L99.1 58.1L101.8 54.6L104.2 52.1L106.5 50.2L111.5 46.8L115.7 44.8L121.8 43L127 42.1L132.1 41.8L176.5 41.8L177.2 41.2L177.7 40.1L180 32.1L184.8 17.2ZM72 4.2L71.6 4L68 4.2L58.8 6.2L52.7 8.3L46.6 11.3L40.7 15.2L35.7 19.3L32.3 22.8L28.3 27.8L24.2 34.5L22.2 38.8L20.1 45.3L19 51.1L18.5 56.6L18.6 63.7L19.1 68L20.1 73L21 75.7L21.6 76.3L49.6 76.5L50.1 76.2L50.1 75.6L48 72.1L47 69.8L46 66.7L45.2 62.6L45.1 57.5L46.1 51.8L48 46.8L49.8 43.6L52.5 40.2L55.6 37.2L58.7 35.1L62.8 33L65.5 32L69 31.1L71.1 31L72 30.5Z"/>
 </svg>

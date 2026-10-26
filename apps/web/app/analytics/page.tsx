@@ -97,7 +97,7 @@ export default async function AnalyticsPage({
         {projects.length > 1 ? (
           <nav
             aria-label="Scope"
-            className="inline-flex max-w-full overflow-x-auto rounded-lg bg-frame p-[3px] shadow-[inset_0_1px_2px_rgb(0_0_0/0.5),0_0_0_1px_rgb(var(--border))]"
+            className="inline-flex max-w-full overflow-x-auto rounded-lg bg-frame p-[3px] shadow-[inset_0_1px_2px_rgb(15_23_42/0.06),0_0_0_1px_rgb(var(--border))]"
           >
             <ScopeLink href="/analytics" active={!scoped}>
               All projects
@@ -119,7 +119,7 @@ export default async function AnalyticsPage({
       ) : (
         <>
           {/* summary: one instrument strip */}
-          <dl className="mt-6 grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-raised/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_24px_48px_-24px_rgb(0_0_0/0.7)] md:grid-cols-5">
+          <dl className="mt-6 grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-raised/60 shadow-[0_1px_2px_rgb(15_23_42/0.05),0_24px_48px_-28px_rgb(15_23_42/0.16)] md:grid-cols-5">
             <Figure label="Tickets" value={rows.length} />
             <Figure label="Need decisions" value={count.need} note={`${openFlags} open ${openFlags === 1 ? 'flag' : 'flags'}`} />
             <Figure label="Not analysed" value={count.waiting} note="Waiting on the worker" />
@@ -281,7 +281,7 @@ function ScopeLink({ href, active, children }: { href: string; active: boolean; 
       className={cn(
         'inline-flex h-7 items-center whitespace-nowrap rounded-md px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-sm:h-10',
         active
-          ? 'bg-active text-text shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_0_0_1px_rgb(var(--control))]'
+          ? 'bg-sheet text-text shadow-[0_1px_2px_rgb(15_23_42/0.08),0_0_0_1px_rgb(var(--border))]'
           : 'text-muted-foreground hover:text-text'
       )}
     >
@@ -302,7 +302,7 @@ function Figure({ label, value, note, wide }: { label: string; value: number | s
 
 function Panel({ title, note, className, children }: { title: string; note?: string; className?: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className={cn('min-w-0 rounded-xl border border-border bg-frame/50 p-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.03)]', className)}>
+    <section aria-label={title} className={cn('min-w-0 rounded-xl border border-border bg-sheet p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]', className)}>
       <h2 className="text-[14.5px] font-semibold">{title}</h2>
       {note ? <p className="mt-0.5 text-xs text-muted-foreground">{note}</p> : null}
       {children}

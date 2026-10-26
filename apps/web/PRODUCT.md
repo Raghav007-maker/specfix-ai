@@ -106,7 +106,6 @@ What it does differently:
 - Sample and adversarial tickets in `fixtures/tickets/` are test material, not customer data.
 - The landing page's rate-limiting ticket and its flags are an illustrative demo, not a customer
   case.
-- Earth imagery on the landing page is NASA Blue Marble, self-hosted in `public/earth/`.
 - No real customers, design partners, testimonials, logos, pricing, or quotable metrics.
   Committed eval reports in `fixtures/eval-runs/` are not cleared to cite as product evidence.
   Future work must not fabricate any of these.

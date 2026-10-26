@@ -3,42 +3,43 @@
 @tailwind utilities;
 
 /*
- * Graphite workspace tokens for the signed-in app: near-black surfaces, warm off-white text, warm
- * silver for the one primary action, champagne for quoted evidence and focus. Channels are
- * space-separated RGB so Tailwind can apply opacity (`bg-text/5`). The public landing and
- * sign-in pages carry their own palette (components/landing/brand.module.css).
+ * Light workspace tokens for the signed-in app, matching the dashboard ("Soft workspace"): a cool
+ * grey frame, white sheets, near-black text, one blue for the primary action and focus, and a
+ * pale marker yellow for quoted evidence. Channels are space-separated RGB so Tailwind can apply
+ * opacity (`bg-text/5`). The public landing and sign-in pages carry their own palette
+ * (components/playground/playground.module.css).
  */
 :root {
-  --frame: 9 9 9;
-  --sheet: 15 15 15;
-  --raised: 22 22 22;
-  --active: 28 28 28;
-  --border: 39 39 39;
-  --rule: 30 30 30;
-  --control: 58 58 58;
-  --field: 104 104 104;
-  --text: 242 240 236;
-  --muted: 146 146 146;
-  --primary: 230 226 218;
-  --accent: 191 174 136;
-  --accent-ink: 222 206 170;
-  --mark: 44 39 30;
-  --mark-selected: 70 61 42;
-  --accent-tag: 36 32 25;
-  --positive: 156 195 166;
-  --negative: 222 138 128;
-  --warning: 207 164 99;
-  --positive-bg: 22 36 28;
-  --positive-ink: 163 205 174;
-  --negative-bg: 48 24 24;
-  --negative-ink: 238 164 154;
-  --warning-bg: 40 31 17;
-  --warning-ink: 222 182 116;
-  --warning-line: 92 72 36;
-  --neutral-bg: 30 30 30;
-  --neutral-ink: 200 197 191;
+  --frame: 243 244 246;
+  --sheet: 255 255 255;
+  --raised: 247 248 250;
+  --active: 238 240 244;
+  --border: 227 229 234;
+  --rule: 236 238 242;
+  --control: 209 213 219;
+  --field: 160 166 178;
+  --text: 22 24 29;
+  --muted: 93 99 113;
+  --primary: 43 95 217;
+  --accent: 43 95 217;
+  --accent-ink: 30 64 160;
+  --mark: 254 240 190;
+  --mark-selected: 252 222 130;
+  --accent-tag: 232 239 253;
+  --positive: 46 125 80;
+  --negative: 186 52 40;
+  --warning: 163 106 0;
+  --positive-bg: 228 242 233;
+  --positive-ink: 30 98 60;
+  --negative-bg: 251 233 230;
+  --negative-ink: 160 40 30;
+  --warning-bg: 252 242 220;
+  --warning-ink: 128 82 0;
+  --warning-line: 232 204 150;
+  --neutral-bg: 238 240 244;
+  --neutral-ink: 68 72 82;
 
-  --float: 0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(var(--border));
+  --float: 0 16px 40px rgb(15 23 42 / 0.12), 0 0 0 1px rgb(var(--border));
 
   /* Legacy shadcn-style names used by pages not yet on the Review desk design. */
   --background: var(--frame);
@@ -59,7 +60,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
   -webkit-text-size-adjust: 100%;
   /* Taps get feedback from the focus ring and pressed state instead of the grey flash. */
   -webkit-tap-highlight-color: transparent;
@@ -103,8 +104,8 @@ dialog[open] {
   }
 }
 
-/* The workspace sheet: graphite with a faint overhead light, a one-pixel top highlight and a
-   long low shadow. The light drifts a few percent over two minutes (still under reduced motion). */
+/* The workspace sheet: white with a faint blue overhead light and a soft low shadow. The light
+   drifts a few percent over two minutes (still under reduced motion). */
 .app-sheet {
   position: relative;
   isolation: isolate;
@@ -118,7 +119,7 @@ dialog[open] {
   inset: 0 0 auto;
   height: 520px;
   pointer-events: none;
-  background: radial-gradient(60% 70% at 50% 0%, rgb(255 250 240 / 0.035), rgb(255 250 240 / 0) 70%);
+  background: radial-gradient(60% 70% at 50% 0%, rgb(43 95 217 / 0.035), rgb(43 95 217 / 0) 70%);
   animation: sheet-light 120s ease-in-out infinite alternate;
 }
 
@@ -135,8 +136,8 @@ dialog[open] {
   .app-sheet {
     overflow: clip;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.05),
-      0 30px 60px -20px rgb(0 0 0 / 0.7);
+      0 1px 2px rgb(15 23 42 / 0.05),
+      0 24px 48px -28px rgb(15 23 42 / 0.18);
   }
 }
 
