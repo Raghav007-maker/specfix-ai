@@ -19,6 +19,8 @@ export async function GET(
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
 
+  // A malformed id would make Postgres throw on the uuid column; it is simply not found.
+  if (!UUID.test(scaffoldId)) return new Response('Not found', { status: 404 });
   const scaffold = await getScaffold(tenant.tenant_id, scaffoldId);
   if (!scaffold) return new Response('Not found', { status: 404 });
 
@@ -33,6 +35,8 @@ export async function GET(
     },
   });
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function slug(value: string): string {
   const cleaned = value

@@ -28,6 +28,7 @@ import { refreshScenarioEmbedding } from '@/lib/embeddings';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
+  ScenarioDecisionError,
   decideScaffold,
   decideScenario,
   getScenario,
@@ -39,6 +40,9 @@ import {
   resolvedFlagsForVersion,
   saveScaffold,
 } from '@/lib/repos';
+
+/** A refusal these actions word for the reviewer themselves. */
+class ActionError extends Error {}
 
 interface Context {
   userId: string;
@@ -57,12 +61,18 @@ async function context(formData: FormData): Promise<Context> {
   return { userId: user.id, tenantId: tenant.tenant_id, ticketId: ticket.id };
 }
 
+/** As the Review tab's settle: reviewer-worded refusals are shown, anything else is logged. */
 async function settle(ticketId: string, work: () => Promise<void>): Promise<never> {
   let message: string | null = null;
   try {
     await work();
   } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
+    if (error instanceof ActionError || error instanceof ScenarioDecisionError) {
+      message = error.message;
+    } else {
+      console.error('[specs] action failed', error);
+      message = 'That did not work. Reload the page and try again.';
+    }
   }
 
   revalidatePath(`/tickets/${ticketId}/specs`);
@@ -86,27 +96,27 @@ export async function generateScenarios(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   await settle(ctx.ticketId, async () => {
     const ticket = await getTicket(ctx.tenantId, ctx.ticketId);
-    if (!ticket) throw new Error('Ticket not found.');
+    if (!ticket) throw new ActionError('Ticket not found.');
 
     const version = await latestVersion(ctx.tenantId, ctx.ticketId);
-    if (!version) throw new Error('This ticket has no analyzable version yet.');
+    if (!version) throw new ActionError('This ticket has no analyzable version yet.');
 
     const events = await listReadinessEvents(ctx.tenantId, ctx.ticketId);
     const ready = events.some(
       (e) => e.event === 'marked_ready' && e.ticket_version_id === version.id
     );
     if (!ready) {
-      throw new Error(
+      throw new ActionError(
         'Mark this ticket ready for development first — generation compiles from the approved requirement, so every flag has to be resolved and the ticket signed off.'
       );
     }
 
     if (!version.acceptance_criteria_text.trim()) {
-      throw new Error('This version has no acceptance criteria to compile scenarios from.');
+      throw new ActionError('This version has no acceptance criteria to compile scenarios from.');
     }
 
     if (await isOverTokenCap(ctx.tenantId)) {
-      throw new Error(
+      throw new ActionError(
         'This workspace is over its monthly token cap, so generation is paused until the cap resets.'
       );
     }
@@ -170,7 +180,7 @@ export async function decideScenarioAction(formData: FormData): Promise<void> {
 
   await settle(ctx.ticketId, async () => {
     if (!SCENARIO_REVIEW_DECISIONS.includes(decision as ScenarioReviewDecision)) {
-      throw new Error(`unknown decision: ${decision}`);
+      throw new ActionError(`unknown decision: ${decision}`);
     }
     const updated = await decideScenario(ctx.tenantId, {
       scenarioId,
@@ -186,10 +196,11 @@ export async function decideScenarioAction(formData: FormData): Promise<void> {
     try {
       problem = await refreshScenarioEmbedding(ctx.tenantId, updated.id);
     } catch (error) {
-      problem = `its embedding was not updated (${error instanceof Error ? error.message : String(error)}). The next embedding backfill will pick it up.`;
+      console.error('[specs] embedding refresh failed', error);
+      problem = 'its embedding was not updated. The next embedding backfill will pick it up.';
     }
     if (problem) {
-      throw new Error(`Your decision was saved (scenario ${updated.status}), but ${problem}`);
+      throw new ActionError(`Your decision was saved (scenario ${updated.status}), but ${problem}`);
     }
   });
 }
@@ -209,13 +220,13 @@ export async function emitScaffoldAction(formData: FormData): Promise<void> {
 
   await settle(ctx.ticketId, async () => {
     const scenario = await getScenario(ctx.tenantId, scenarioId);
-    if (!scenario) throw new Error('Scenario not found.');
+    if (!scenario) throw new ActionError('Scenario not found.');
     if (scenario.status !== 'approved' && scenario.status !== 'edited') {
-      throw new Error('Accept the scenario before emitting a scaffold from it.');
+      throw new ActionError('Accept the scenario before emitting a scaffold from it.');
     }
 
     const ticket = await getTicket(ctx.tenantId, ctx.ticketId);
-    if (!ticket) throw new Error('Ticket not found.');
+    if (!ticket) throw new ActionError('Ticket not found.');
 
     const parsed = parseGherkin(scenario.gherkin_raw);
     const emitted = emitPlaywrightScaffold({
@@ -247,10 +258,10 @@ export async function decideScaffoldAction(formData: FormData): Promise<void> {
 
   await settle(ctx.ticketId, async () => {
     if (status !== 'approved' && status !== 'edited' && status !== 'dismissed') {
-      throw new Error(`unknown scaffold status: ${status}`);
+      throw new ActionError(`unknown scaffold status: ${status}`);
     }
     if (status === 'edited' && !code.trim()) {
-      throw new Error('An edited scaffold needs the filled-in code.');
+      throw new ActionError('An edited scaffold needs the filled-in code.');
     }
     await decideScaffold(ctx.tenantId, {
       scaffoldId,

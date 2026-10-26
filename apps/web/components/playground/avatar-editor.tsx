@@ -49,8 +49,9 @@ export function AvatarEditor({ url }: { url: string | null }) {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
       if (!user) throw new Error('Your session has ended. Sign in again to change your photo.');
-      const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
-      const path = `${user.id}/avatar.${ext}`;
+      // One fixed name, so a new photo of another type replaces the old file instead of
+      // leaving it behind; the stored content type tells browsers what it is.
+      const path = `${user.id}/avatar`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
         .upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' });

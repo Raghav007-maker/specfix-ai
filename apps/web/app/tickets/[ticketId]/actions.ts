@@ -16,6 +16,9 @@ import { REVIEW_DECISIONS, type ReviewDecision } from '@specfix/shared';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
+  FlagDecisionError,
+  LabelingOrderError,
+  ReadinessError,
   addGap,
   completeSession,
   decideFlag,
@@ -28,6 +31,9 @@ import {
   removeGap,
   startSession,
 } from '@/lib/repos';
+
+/** A refusal these actions word for the reviewer themselves. */
+class ActionError extends Error {}
 
 interface Context {
   userId: string;
@@ -54,14 +60,25 @@ async function context(formData: FormData): Promise<Context> {
  * Run a mutation and return to the ticket, carrying any failure as a message rather
  * than an error page. The repositories throw typed errors for the rules that matter
  * (LabelingOrderError, FlagDecisionError, ReadinessError) and their messages are
- * written to be read by a reviewer, so they are shown as-is.
+ * written to be read by a reviewer, so they are shown as-is. Anything else is a bug
+ * whose raw text (SQL, connection details) does not belong in a URL.
  */
 async function settle(ticketId: string, work: () => Promise<void>): Promise<never> {
   let message: string | null = null;
   try {
     await work();
   } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
+    if (
+      error instanceof ActionError ||
+      error instanceof LabelingOrderError ||
+      error instanceof FlagDecisionError ||
+      error instanceof ReadinessError
+    ) {
+      message = error.message;
+    } else {
+      console.error('[ticket] action failed', error);
+      message = 'That did not work. Reload the page and try again.';
+    }
   }
 
   revalidatePath(`/tickets/${ticketId}`);
@@ -75,7 +92,7 @@ export async function beginReview(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   await settle(ctx.ticketId, async () => {
     const version = await latestVersion(ctx.tenantId, ctx.ticketId);
-    if (!version) throw new Error('This ticket has no analyzable version yet.');
+    if (!version) throw new ActionError('This ticket has no analyzable version yet.');
     await startSession(ctx.tenantId, version.id, ctx.userId);
   });
 }
@@ -146,7 +163,7 @@ export async function decideFlagAction(formData: FormData): Promise<void> {
 
   await settle(ctx.ticketId, async () => {
     if (!REVIEW_DECISIONS.includes(decision as ReviewDecision)) {
-      throw new Error(`unknown decision: ${decision}`);
+      throw new ActionError(`unknown decision: ${decision}`);
     }
     await decideFlag(ctx.tenantId, {
       flagId,
