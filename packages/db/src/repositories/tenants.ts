@@ -71,6 +71,36 @@ export async function createProject(
   return project;
 }
 
+/**
+ * First-run setup: a new tenant, the user as its owner, and one file-sourced project, in one
+ * transaction. A failure part-way leaves nothing behind, so a retry cannot pile up ownerless
+ * tenants.
+ */
+export async function createWorkspace(
+  userId: string,
+  input: { tenantName: string; projectName: string }
+): Promise<TenantRow> {
+  return tx(async (client) => {
+    const {
+      rows: [tenant],
+    } = await client.query<TenantRow>(
+      `insert into tenants (name) values ($1)
+       returning id, name, monthly_token_cap`,
+      [input.tenantName]
+    );
+    if (!tenant) throw new Error('tenants insert returned no row');
+    await client.query(
+      `insert into memberships (user_id, tenant_id, role) values ($1, $2, 'owner')`,
+      [userId, tenant.id]
+    );
+    await client.query(
+      `insert into projects (tenant_id, name, source_type) values ($1, $2, 'file')`,
+      [tenant.id, input.projectName]
+    );
+    return tenant;
+  });
+}
+
 export async function listProjects(tenantId: TenantId): Promise<ProjectRow[]> {
   return query<ProjectRow>(
     `select id, tenant_id, name, source_type, jira_cloud_id, jira_project_key
@@ -210,19 +240,21 @@ export interface ReadinessTimelineRow extends ReadinessEventRow {
  * The join reaches into Supabase's auth.users. That is identity, not tenant data, and
  * the ids being resolved came out of rows already scoped to this tenant — so no
  * membership check is needed here and none is implied.
+ *
+ * Takes one ticket id, or several to read them all in one query.
  */
 export async function readinessTimeline(
   tenantId: TenantId,
-  ticketId: string
+  ticketId: string | readonly string[]
 ): Promise<ReadinessTimelineRow[]> {
   return query<ReadinessTimelineRow>(
     `select e.id, e.ticket_id, e.ticket_version_id, e.event, e.user_id,
             e.backfilled, e.occurred_at, u.email as user_email
      from readiness_events e
      left join auth.users u on u.id = e.user_id
-     where e.tenant_id = $1 and e.ticket_id = $2
+     where e.tenant_id = $1 and e.ticket_id = any($2::uuid[])
      order by e.occurred_at`,
-    [tenantId, ticketId]
+    [tenantId, [ticketId].flat()]
   );
 }
 

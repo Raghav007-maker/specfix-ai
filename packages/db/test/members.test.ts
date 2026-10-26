@@ -13,7 +13,9 @@ import {
   changeMemberRole,
   closePool,
   createTenant,
+  createWorkspace,
   listMembers,
+  listProjects,
   query,
   removeMember,
 } from '../src/index.ts';
@@ -123,5 +125,35 @@ describe.skipIf(!hasDatabase)('workspace members', () => {
     await expect(removeMember(tenantId, users.owner.id, users.admin.id)).rejects.toThrow(
       /cannot remove/
     );
+  });
+});
+
+describe.skipIf(!hasDatabase)('createWorkspace', () => {
+  it('creates the tenant, its owner and a project together', async () => {
+    const label = `workspace-${Date.now()}`;
+    const [user] = await query<{ id: string }>(
+      `insert into auth.users (email) values ($1) returning id`,
+      [`${label}@example.test`]
+    );
+    if (!user) throw new Error('could not create test user');
+
+    const tenant = await createWorkspace(user.id, { tenantName: label, projectName: 'First' });
+
+    const members = await listMembers(tenant.id);
+    expect(members.map((m) => [m.user_id, m.role])).toEqual([[user.id, 'owner']]);
+    expect((await listProjects(tenant.id)).map((p) => p.name)).toEqual(['First']);
+  });
+
+  it('leaves no tenant behind when a later insert fails', async () => {
+    const label = `workspace-orphan-${Date.now()}`;
+    // No such user, so the membership insert breaks its foreign key after the tenant insert.
+    await expect(
+      createWorkspace('00000000-0000-0000-0000-000000000000', {
+        tenantName: label,
+        projectName: 'First',
+      })
+    ).rejects.toThrow();
+    const left = await query(`select 1 from tenants where name = $1`, [label]);
+    expect(left).toHaveLength(0);
   });
 });

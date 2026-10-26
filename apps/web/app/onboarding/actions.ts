@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
-import { createTenant, addMembership, createProject } from '@/lib/repos';
+import { createWorkspace } from '@/lib/repos';
 import { TENANT_COOKIE } from '@/lib/tenant';
 
 /**
@@ -20,9 +20,7 @@ export async function createTenantAndProject(formData: FormData): Promise<void> 
     redirect('/onboarding?error=' + encodeURIComponent('A workspace name is required.'));
   }
 
-  const tenant = await createTenant(tenantName);
-  await addMembership(tenant.id, user.id, 'owner');
-  await createProject(tenant.id, { name: projectName, sourceType: 'file' });
+  const tenant = await createWorkspace(user.id, { tenantName, projectName });
 
   const cookieStore = await cookies();
   cookieStore.set(TENANT_COOKIE, tenant.id, { httpOnly: true, sameSite: 'lax', path: '/' });

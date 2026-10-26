@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Client } from 'pg';
 import 'dotenv/config';
+import { sslFor } from '../src/client.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, '..', 'migrations');
@@ -29,7 +30,7 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL is not set. Copy .env.example to .env first.');
   }
 
-  const client = new Client({ connectionString });
+  const client = new Client({ connectionString, ssl: sslFor(connectionString) });
   await client.connect();
 
   try {

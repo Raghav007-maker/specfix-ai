@@ -109,37 +109,37 @@ const READINESS_KIND: Record<string, HistoryEvent['kind']> = {
 
 /**
  * Every recorded change to the listed tickets, for the calendar: each ticket's readiness timeline
- * and its flag-decision trail, read through the existing per-ticket repositories. Decisions keep
+ * and its flag-decision trail, read for all listed tickets in one query each. Decisions keep
  * only their action and author, never the flag's category or question.
  */
 async function loadHistory(tenantId: string, queue: QueueItem[]): Promise<HistoryEvent[]> {
-  const tickets = queue.slice(0, 60);
-  const per = await Promise.all(
-    tickets.map(async (row) => {
-      const [timeline, decisions] = await Promise.all([
-        readinessTimeline(tenantId, row.id),
-        listDecisionsForTicket(tenantId, row.id),
-      ]);
-      const base = { ticketId: row.id, key: row.key, title: row.title };
-      return [
-        ...timeline
-          .filter((e) => !e.backfilled && READINESS_KIND[e.event])
-          .map((e) => ({
-            ...base,
-            at: new Date(e.occurred_at).toISOString(),
-            kind: READINESS_KIND[e.event]!,
-            by: e.user_email,
-          })),
-        ...decisions.map((d) => ({
-          ...base,
-          at: new Date(d.created_at).toISOString(),
-          kind: d.decision as HistoryEvent['kind'],
-          by: d.user_email,
-        })),
-      ];
-    })
-  );
-  return per.flat().sort((a, b) => b.at.localeCompare(a.at));
+  const tickets = new Map(queue.slice(0, 60).map((r) => [r.id, r]));
+  if (tickets.size === 0) return [];
+  const ids = [...tickets.keys()];
+  const [timeline, decisions] = await Promise.all([
+    readinessTimeline(tenantId, ids),
+    listDecisionsForTicket(tenantId, ids),
+  ]);
+  const base = (ticketId: string) => {
+    const row = tickets.get(ticketId)!;
+    return { ticketId, key: row.key, title: row.title };
+  };
+  return [
+    ...timeline
+      .filter((e) => !e.backfilled && READINESS_KIND[e.event])
+      .map((e) => ({
+        ...base(e.ticket_id),
+        at: new Date(e.occurred_at).toISOString(),
+        kind: READINESS_KIND[e.event]!,
+        by: e.user_email,
+      })),
+    ...decisions.map((d) => ({
+      ...base(d.ticket_id),
+      at: new Date(d.created_at).toISOString(),
+      kind: d.decision as HistoryEvent['kind'],
+      by: d.user_email,
+    })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
 }
 
 /**

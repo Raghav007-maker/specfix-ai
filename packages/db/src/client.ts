@@ -8,8 +8,20 @@
  * packages/db/test/tenant-isolation.test.ts.
  */
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import { SUPABASE_ROOT_CA } from './supabase-ca.ts';
 
 let pool: Pool | undefined;
+
+/**
+ * TLS settings for a connection string: none locally, and for a remote database a verified
+ * certificate, so nobody on the network can pose as the database.
+ * shortcut: trusts only Supabase's root, so a non-Supabase remote host fails to connect;
+ * add its CA here if the database ever moves.
+ */
+export function sslFor(connectionString: string): { ca: string } | undefined {
+  const isRemote = !/localhost|127\.0\.0\.1/.test(connectionString);
+  return isRemote ? { ca: SUPABASE_ROOT_CA } : undefined;
+}
 
 export function getPool(): Pool {
   if (!pool) {
@@ -17,14 +29,13 @@ export function getPool(): Pool {
     if (!connectionString) {
       throw new Error('DATABASE_URL is not set.');
     }
-    const isRemote = !/localhost|127\.0\.0\.1/.test(connectionString);
     pool = new Pool({
       connectionString,
       max: Number(process.env.PGPOOL_MAX ?? 10),
       // Supabase's pooler drops idle connections; allow sufficient time for cold connections.
       connectionTimeoutMillis: Number(process.env.PG_TIMEOUT_MS ?? 30_000),
       idleTimeoutMillis: 30_000,
-      ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+      ssl: sslFor(connectionString),
     });
   }
   return pool;
