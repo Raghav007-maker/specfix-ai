@@ -62,7 +62,7 @@ export interface FlagInput {
 
 /** Shaped to accept `LlmCallRecord` from @specfix/core. */
 export interface LlmCallInput {
-  purpose: 'extract' | 'critic' | 'judge' | 'single_shot' | 'compile_gherkin';
+  purpose: 'extract' | 'critic' | 'judge' | 'single_shot' | 'compile_gherkin' | 'agent_turn';
   promptVersion: string;
   model: string;
   request: unknown;

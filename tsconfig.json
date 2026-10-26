@@ -28,7 +28,8 @@
       "@specfix/db": ["packages/db/src/index.ts"],
       "@specfix/ingest": ["packages/ingest/src/index.ts"],
       "@specfix/eval": ["packages/eval/src/index.ts"],
-      "@specfix/compiler": ["packages/compiler/src/index.ts"]
+      "@specfix/compiler": ["packages/compiler/src/index.ts"],
+      "@specfix/agent": ["packages/agent/src/index.ts"]
     }
   },
   "include": [

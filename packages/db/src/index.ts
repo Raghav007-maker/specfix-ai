@@ -11,3 +11,4 @@ export * from './repositories/traceability.ts';
 export * from './repositories/embeddings.ts';
 export * from './repositories/analytics.ts';
 export * from './embedding-sync.ts';
+export * from './repositories/agent.ts';

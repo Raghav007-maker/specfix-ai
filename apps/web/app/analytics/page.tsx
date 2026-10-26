@@ -4,14 +4,18 @@ import { FLAG_CATEGORY_LABELS } from '@specfix/shared';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
+  agentTablesAvailable,
   flagBreakdown,
   listProjects,
+  resolutionArmMetrics,
   ticketQueue,
   timeToReady,
   weeklyActivity,
+  type ResolutionArmMetrics,
   type TicketQueueRow,
   type WeeklyActivity,
 } from '@/lib/repos';
+import { resolutionAgentEnabled } from '@/lib/agent';
 import { AppShell } from '@/components/app-shell';
 import { cn } from '@/lib/cn';
 
@@ -47,11 +51,15 @@ export default async function AnalyticsPage({
   const tenant = await requireTenant(user.id);
   const projects = await listProjects(tenant.tenant_id);
 
-  const [queues, breakdown, weeks, ttr] = await Promise.all([
+  const [queues, breakdown, weeks, ttr, arms] = await Promise.all([
     Promise.all(projects.map((p) => ticketQueue(tenant.tenant_id, p.id))),
     flagBreakdown(tenant.tenant_id),
     weeklyActivity(tenant.tenant_id, 12),
     timeToReady(tenant.tenant_id),
+    // Only with the agent on and its tables migrated; workspace-wide, not per project.
+    resolutionAgentEnabled()
+      ? agentTablesAvailable().then((ok) => (ok ? resolutionArmMetrics(tenant.tenant_id) : null))
+      : Promise.resolve(null),
   ]);
   const byProject = projects.map((p, i) => ({ project: p, rows: queues[i] ?? [] }));
   const scoped = byProject.find((x) => x.project.id === projectParam);
@@ -238,6 +246,16 @@ export default async function AnalyticsPage({
                 />
               </div>
             </Panel>
+
+            {arms ? (
+              <Panel
+                title="Form vs conversation"
+                note="Workspace-wide, both arms measured from flag reveal to the last flag resolved"
+                className="xl:col-span-12"
+              >
+                <ResolutionArms metrics={arms} />
+              </Panel>
+            ) : null}
           </div>
         </>
       )}
@@ -336,6 +354,65 @@ function Outcomes({ decided }: { decided: { accepted: number; edited: number; di
           ))}
         </tbody>
       </table>
+    </>
+  );
+}
+
+/**
+ * The resolution agent's A/B measures (Phase 2 plan §6): time to resolve in each arm, and
+ * for the agent its completion rate, messages per conversation and cost.
+ */
+function ResolutionArms({ metrics }: { metrics: ResolutionArmMetrics }) {
+  const { agent, form } = metrics;
+  const minutes = (m: number | null) => (m === null ? '—' : hoursLabel(m / 60));
+  const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+  const items: { label: string; value: string; note?: string }[] = [
+    {
+      label: 'Median time to resolve, form',
+      value: minutes(form.medianMinutesToResolve),
+      note: plural(form.versionsResolved, 'version'),
+    },
+    {
+      label: 'Median time to resolve, conversation',
+      value: minutes(agent.medianMinutesToResolve),
+      note: plural(agent.versionsResolved, 'version'),
+    },
+    {
+      label: 'Conversations completed',
+      value: agent.conversations ? `${pct(agent.completed, agent.conversations)}%` : '—',
+      note: `${agent.completed} of ${agent.conversations}`,
+    },
+    {
+      label: 'Your messages per conversation',
+      value:
+        agent.pmMessagesPerConversation === null ? '—' : agent.pmMessagesPerConversation.toFixed(1),
+      note: `${plural(agent.flagsDecidedByAgentDraft, 'flag')} decided from a draft`,
+    },
+    {
+      label: 'Agent cost per conversation',
+      value:
+        agent.costPerConversationUsd === null ? '—' : `$${agent.costPerConversationUsd.toFixed(4)}`,
+      note: `$${agent.costUsd.toFixed(4)} in total`,
+    },
+  ];
+  return (
+    <>
+      <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-4">
+        {items.map((item) => (
+          <div key={item.label}>
+            <dt className="text-[12.5px] text-muted-foreground">{item.label}</dt>
+            <dd className="mt-1.5 text-2xl font-medium tabular-nums">{item.value}</dd>
+            {item.note ? (
+              <dd className="mt-0.5 text-xs tabular-nums text-muted-foreground">{item.note}</dd>
+            ) : null}
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs text-muted-foreground">
+        A version counts toward the conversation arm when at least one of its flags was decided
+        from an agent draft. Reviewers choose the tab themselves, so this is an observational
+        comparison, not a randomized A/B; read it only once both arms have enough versions.
+      </p>
     </>
   );
 }

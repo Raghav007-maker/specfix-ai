@@ -56,7 +56,7 @@ export function resetClient(): void {
 
 /** One recorded call, ready to be written to the llm_calls table. */
 export interface LlmCallRecord {
-  purpose: 'extract' | 'critic' | 'judge' | 'single_shot' | 'compile_gherkin';
+  purpose: 'extract' | 'critic' | 'judge' | 'single_shot' | 'compile_gherkin' | 'agent_turn';
   promptVersion: string;
   model: string;
   request: { messages: ChatCompletionMessageParam[]; temperature: number; seed: number | null };
@@ -68,10 +68,29 @@ export interface LlmCallRecord {
   error: string | null;
 }
 
+const ATTEMPTS_KEY = Symbol.for('specfix.llmCallAttempts');
+
+/**
+ * The attempts a failed structured call made before it failed, for logging. A schema
+ * failure carries them on `SchemaValidationError.calls`; a transport failure after an
+ * earlier billed attempt carries them on the original error, unchanged otherwise, so
+ * callers that inspect `status` or `name` see the error they always did.
+ */
+export function callsFromError(error: unknown): readonly LlmCallRecord[] {
+  if (error instanceof SchemaValidationError) return error.calls;
+  if (error !== null && typeof error === 'object') {
+    const attached = (error as Record<symbol, unknown>)[ATTEMPTS_KEY];
+    if (Array.isArray(attached)) return attached as LlmCallRecord[];
+  }
+  return [];
+}
+
 export class SchemaValidationError extends Error {
   constructor(
     message: string,
-    readonly rawContent: string
+    readonly rawContent: string,
+    /** Every attempt that was made, so a caller can still log the billable failures. */
+    readonly calls: readonly LlmCallRecord[] = []
   ) {
     super(message);
     this.name = 'SchemaValidationError';
@@ -84,6 +103,13 @@ export interface StructuredCallOptions {
   model: string;
   systemMessage: string;
   userMessage: string;
+  /**
+   * Per-call overrides of OPENAI_TIMEOUT_MS and OPENAI_MAX_RETRIES. The batch passes
+   * leave them unset; the conversational agent sets them because a person is waiting
+   * on the reply, and two minutes times four attempts is not an answer to a chat turn.
+   */
+  timeoutMs?: number;
+  maxTransportRetries?: number;
 }
 
 export interface StructuredCallOutcome {
@@ -154,15 +180,27 @@ async function callStructured<T>(
   let schemaRepairUsed = false;
 
   for (;;) {
-    const completion = await withTransportRetries(() =>
-      getClient().chat.completions.create({
-        model: options.model,
-        messages,
-        temperature: config.temperature,
-        ...(config.seed === null ? {} : { seed: config.seed }),
-        response_format: format,
-      })
-    );
+    const completion = await withTransportRetries(
+      () =>
+        getClient().chat.completions.create(
+          {
+            model: options.model,
+            messages,
+            temperature: config.temperature,
+            ...(config.seed === null ? {} : { seed: config.seed }),
+            response_format: format,
+          },
+          options.timeoutMs === undefined ? undefined : { timeout: options.timeoutMs }
+        ),
+      options.maxTransportRetries
+    ).catch((error: unknown) => {
+      // A transport failure on the repair attempt still leaves the first, billed attempt
+      // behind. Carry it on the error so the caller can log it (see callsFromError).
+      if (calls.length > 0 && error !== null && typeof error === 'object') {
+        Object.defineProperty(error, ATTEMPTS_KEY, { value: [...calls], enumerable: false });
+      }
+      throw error;
+    });
 
     const record = toRecord(options, messages, config, completion);
     calls.push(record);
@@ -179,7 +217,8 @@ async function callStructured<T>(
     if (schemaRepairUsed) {
       throw new SchemaValidationError(
         `model output failed schema validation twice: ${validated.error}`,
-        content
+        content,
+        calls
       );
     }
 
@@ -248,8 +287,11 @@ function toRecord(
 
 const RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
 
-async function withTransportRetries<T extends object>(fn: () => Promise<T>): Promise<T> {
-  const { maxTransportRetries } = getConfig();
+async function withTransportRetries<T extends object>(
+  fn: () => Promise<T>,
+  maxRetriesOverride?: number
+): Promise<T> {
+  const maxTransportRetries = maxRetriesOverride ?? getConfig().maxTransportRetries;
   let attempt = 0;
 
   for (;;) {

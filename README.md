@@ -42,6 +42,33 @@ autonomous or multi-agent workflows, non-English tickets, attachments and images
 comments as analysis input, compliance certification. Writing to Jira is limited to a single
 event; see rule 3 below.
 
+## Conversational resolution agent (Phase 2, Milestone F — optional)
+
+An alternative to the Review tab's form for deciding flags, behind a feature flag and off by
+default. On a ticket's **Conversation** tab the agent asks about one open flag at a time; once
+the reviewer has answered, it drafts the decision (accept with a resolution, reword the
+question, or dismiss). Nothing changes until the reviewer applies the draft, and applying it
+goes through the same `decideFlag` path as the form, so the audit trail and readiness events
+are the same. The blind-first rule holds: the tab shows nothing until the reviewer's own gap
+list is locked.
+
+- Code: `packages/agent` (prompt `resolve-flag-v1`, one structured call per message, no tools),
+  `packages/db/src/repositories/agent.ts`, `apps/web/app/tickets/[ticketId]/conversation`.
+- Database: migration `0008_resolution_agent.sql` (conversations, messages, `agent_turn` calls).
+- Configuration (`.env`):
+
+  ```
+  SPECFIX_RESOLUTION_AGENT=on      # shows the Conversation tab
+  OPENAI_MODEL_AGENT=              # optional; defaults to OPENAI_MODEL_JUDGE
+  AGENT_TIMEOUT_MS=30000           # per HTTP attempt
+  AGENT_MAX_RETRIES=1              # transport retries per attempt
+  AGENT_COST_CEILING_USD=0.25      # per conversation; the agent stops there
+  ```
+
+- Measures: the analytics page's "Form vs conversation" panel reports time to resolve per arm,
+  completion rate, messages per conversation and cost. Reviewers choose the tab themselves, so
+  this is observational; the randomized, pre-registered A/B the plan describes is not built.
+
 ## Layout
 
 ```
@@ -50,6 +77,8 @@ packages/shared   zod schemas and shared types (Ticket, Flag, CriticReview, Anal
 packages/core     prompts, OpenAI client, analyze(), deliberate(), cost accounting
 packages/compiler Spec Compiler: Gherkin generation (LLM) + deterministic Playwright scaffold
                   emitter. Returns data only, like core.
+packages/agent    Conversational resolution agent (optional): one turn of a chat about one
+                  flag. Returns data only, like core.
 packages/db       SQL migrations and the tenant-scoped repository layer
 packages/ingest   TicketSource interface, FileSource, (later) JiraSource + ADF normalizer
 packages/eval     CLI: gold sets, flag matching, precision/recall, the random-pruning
