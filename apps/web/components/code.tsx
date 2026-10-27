@@ -45,9 +45,7 @@ function GherkinLine({ line }: { line: string }) {
   }
   return (
     <div className="flex gap-3">
-      <span className="w-[3.75rem] shrink-0 text-right font-semibold text-teal">
-        {keyword}
-      </span>
+      <span className="w-[3.75rem] shrink-0 text-right font-semibold text-teal">{keyword}</span>
       <span className="whitespace-pre-wrap">{rest}</span>
     </div>
   );

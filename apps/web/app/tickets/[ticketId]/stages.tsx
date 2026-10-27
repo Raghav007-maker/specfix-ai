@@ -415,8 +415,8 @@ function EmptyFlags({ analyzed }: { analyzed: boolean }) {
     </EmptyNote>
   ) : (
     <Notice tone="warning" title="This version hasn’t been analyzed yet">
-      There are no flags to compare against. Don&rsquo;t complete this session: it would record
-      your gaps as misses against a model that never ran.
+      There are no flags to compare against. Don&rsquo;t complete this session: it would record your
+      gaps as misses against a model that never ran.
     </Notice>
   );
 }

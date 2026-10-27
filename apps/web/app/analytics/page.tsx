@@ -103,7 +103,11 @@ export default async function AnalyticsPage({
               All projects
             </ScopeLink>
             {projects.map((p) => (
-              <ScopeLink key={p.id} href={`/analytics?project=${p.id}`} active={scoped?.project.id === p.id}>
+              <ScopeLink
+                key={p.id}
+                href={`/analytics?project=${p.id}`}
+                active={scoped?.project.id === p.id}
+              >
                 {p.name}
               </ScopeLink>
             ))}
@@ -121,22 +125,40 @@ export default async function AnalyticsPage({
           {/* summary: one instrument strip */}
           <dl className="mt-6 grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-raised/60 shadow-[0_1px_2px_rgb(15_23_42/0.05),0_24px_48px_-28px_rgb(15_23_42/0.16)] md:grid-cols-5">
             <Figure label="Tickets" value={rows.length} />
-            <Figure label="Need decisions" value={count.need} note={`${openFlags} open ${openFlags === 1 ? 'flag' : 'flags'}`} />
+            <Figure
+              label="Need decisions"
+              value={count.need}
+              note={`${openFlags} open ${openFlags === 1 ? 'flag' : 'flags'}`}
+            />
             <Figure label="Not analysed" value={count.waiting} note="Waiting on the worker" />
-            <Figure label="Ready for development" value={count.ready} note={`${pct(count.ready, rows.length)}% of tickets`} />
+            <Figure
+              label="Ready for development"
+              value={count.ready}
+              note={`${pct(count.ready, rows.length)}% of tickets`}
+            />
             <Figure
               label="Flags decided"
               value={totalFlags ? `${pct(decidedFlags, totalFlags)}%` : '—'}
-              note={totalFlags ? `${decidedFlags} of ${totalFlags} on latest versions` : 'No flags yet'}
+              note={
+                totalFlags ? `${decidedFlags} of ${totalFlags} on latest versions` : 'No flags yet'
+              }
               wide
             />
           </dl>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-12">
             <Panel title="Tickets by review status" className="xl:col-span-5">
-              <div role="img" aria-label={(Object.keys(STATUS) as Status[]).map((k) => `${STATUS[k].label} ${count[k]}`).join(', ')} className="mt-4 flex h-3 gap-0.5 overflow-hidden rounded-[3px]">
+              <div
+                role="img"
+                aria-label={(Object.keys(STATUS) as Status[])
+                  .map((k) => `${STATUS[k].label} ${count[k]}`)
+                  .join(', ')}
+                className="mt-4 flex h-3 gap-0.5 overflow-hidden rounded-[3px]"
+              >
                 {(Object.keys(STATUS) as Status[]).map((k) =>
-                  count[k] ? <span key={k} className={STATUS[k].swatch} style={{ flex: count[k] }} /> : null
+                  count[k] ? (
+                    <span key={k} className={STATUS[k].swatch} style={{ flex: count[k] }} />
+                  ) : null
                 )}
               </div>
               <table className="mt-3 w-full text-[13.5px]">
@@ -144,25 +166,39 @@ export default async function AnalyticsPage({
                   {(Object.keys(STATUS) as Status[]).map((k) => (
                     <tr key={k} className="border-t border-rule">
                       <td className="py-2">
-                        <span aria-hidden className={cn('mr-2.5 inline-block h-[9px] w-[9px] rounded-[2px] align-[-1px]', STATUS[k].swatch)} />
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'mr-2.5 inline-block h-[9px] w-[9px] rounded-[2px] align-[-1px]',
+                            STATUS[k].swatch
+                          )}
+                        />
                         {STATUS[k].label}
                       </td>
                       <td className="py-2 text-right tabular-nums">{count[k]}</td>
-                      <td className="w-14 py-2 text-right tabular-nums text-muted-foreground">{pct(count[k], rows.length)}%</td>
+                      <td className="w-14 py-2 text-right tabular-nums text-muted-foreground">
+                        {pct(count[k], rows.length)}%
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </Panel>
 
-            <Panel title="By project" note="Select a project to open its queue" className="xl:col-span-7">
+            <Panel
+              title="By project"
+              note="Select a project to open its queue"
+              className="xl:col-span-7"
+            >
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-[13.5px] tabular-nums">
                   <thead>
                     <tr className="text-xs text-muted-foreground">
                       <th className="py-2 pr-3 text-left font-normal">Project</th>
                       <th className="px-3 py-2 text-right font-normal">Tickets</th>
-                      <th className="px-3 py-2 text-right font-normal max-sm:hidden">Not analysed</th>
+                      <th className="px-3 py-2 text-right font-normal max-sm:hidden">
+                        Not analysed
+                      </th>
                       <th className="px-3 py-2 text-right font-normal">Need decisions</th>
                       <th className="px-3 py-2 text-right font-normal">Ready</th>
                       <th className="py-2 pl-3 text-right font-normal">Decided</th>
@@ -177,7 +213,10 @@ export default async function AnalyticsPage({
                       return (
                         <tr key={project.id} className="border-t border-rule">
                           <td className="py-2.5 pr-3">
-                            <Link href={`/?project=${project.id}`} className="rounded-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal">
+                            <Link
+                              href={`/?project=${project.id}`}
+                              className="rounded-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                            >
                               {project.name}
                             </Link>
                           </td>
@@ -190,8 +229,14 @@ export default async function AnalyticsPage({
                               <span className="text-muted-foreground">—</span>
                             ) : (
                               <span className="inline-flex items-center gap-2.5">
-                                <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-active max-sm:hidden">
-                                  <span className="block h-full bg-text/70" style={{ width: `${d}%` }} />
+                                <span
+                                  aria-hidden
+                                  className="h-1 w-16 overflow-hidden rounded-full bg-active max-sm:hidden"
+                                >
+                                  <span
+                                    className="block h-full bg-text/70"
+                                    style={{ width: `${d}%` }}
+                                  />
                                 </span>
                                 {d}%
                               </span>
@@ -205,7 +250,11 @@ export default async function AnalyticsPage({
               </div>
             </Panel>
 
-            <Panel title="Open findings" note="Across the workspace, latest versions" className="xl:col-span-6">
+            <Panel
+              title="Open findings"
+              note="Across the workspace, latest versions"
+              className="xl:col-span-6"
+            >
               {breakdown.openByCategory.length === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">No open flags right now.</p>
               ) : (
@@ -213,14 +262,23 @@ export default async function AnalyticsPage({
                   <Bars
                     rows={[
                       { label: 'High', value: breakdown.openBySeverity.high, tone: 'bg-negative' },
-                      { label: 'Medium', value: breakdown.openBySeverity.medium, tone: 'bg-warning' },
-                      { label: 'Low', value: breakdown.openBySeverity.low, tone: 'bg-muted-foreground' },
+                      {
+                        label: 'Medium',
+                        value: breakdown.openBySeverity.medium,
+                        tone: 'bg-warning',
+                      },
+                      {
+                        label: 'Low',
+                        value: breakdown.openBySeverity.low,
+                        tone: 'bg-muted-foreground',
+                      },
                     ]}
                   />
                   <p className="mt-4 text-[12.5px] text-muted-foreground">By category</p>
                   <Bars
                     rows={breakdown.openByCategory.map((c) => ({
-                      label: (FLAG_CATEGORY_LABELS as Record<string, string>)[c.category] ?? c.category,
+                      label:
+                        (FLAG_CATEGORY_LABELS as Record<string, string>)[c.category] ?? c.category,
                       value: c.count,
                       tone: 'bg-control',
                     }))}
@@ -229,14 +287,27 @@ export default async function AnalyticsPage({
               )}
             </Panel>
 
-            <Panel title="How reviewers decided" note="Decided flags on latest versions" className="xl:col-span-6">
+            <Panel
+              title="How reviewers decided"
+              note="Decided flags on latest versions"
+              className="xl:col-span-6"
+            >
               <Outcomes decided={breakdown.decided} />
               <TimeToReadyFigures rows={ttr} />
             </Panel>
 
-            <Panel title="Review activity, last 12 weeks" note="Weeks start on Monday, UTC" className="xl:col-span-12">
+            <Panel
+              title="Review activity, last 12 weeks"
+              note="Weeks start on Monday, UTC"
+              className="xl:col-span-12"
+            >
               <div className="mt-4 grid gap-8 md:grid-cols-2">
-                <WeekColumns weeks={weeks} pick={(w) => w.decisions} tone="bg-text/70" legend="Flag decisions" />
+                <WeekColumns
+                  weeks={weeks}
+                  pick={(w) => w.decisions}
+                  tone="bg-text/70"
+                  legend="Flag decisions"
+                />
                 <WeekColumns
                   weeks={weeks}
                   pick={(w) => w.markedReady}
@@ -273,7 +344,15 @@ function pct(part: number, whole: number): number {
   return whole ? Math.round((part / whole) * 100) : 0;
 }
 
-function ScopeLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+function ScopeLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
@@ -290,19 +369,52 @@ function ScopeLink({ href, active, children }: { href: string; active: boolean; 
   );
 }
 
-function Figure({ label, value, note, wide }: { label: string; value: number | string; note?: string; wide?: boolean }) {
+function Figure({
+  label,
+  value,
+  note,
+  wide,
+}: {
+  label: string;
+  value: number | string;
+  note?: string;
+  wide?: boolean;
+}) {
   return (
-    <div className={cn('border-rule px-4 py-4 [&:not(:first-child)]:border-l max-md:border-t max-md:[&:nth-child(odd)]:border-l-0', wide && 'max-md:col-span-2')}>
+    <div
+      className={cn(
+        'border-rule px-4 py-4 [&:not(:first-child)]:border-l max-md:border-t max-md:[&:nth-child(odd)]:border-l-0',
+        wide && 'max-md:col-span-2'
+      )}
+    >
       <dt className="text-[12.5px] text-muted-foreground">{label}</dt>
-      <dd className="mt-2 text-[26px] font-medium leading-none tracking-[-0.02em] tabular-nums">{value}</dd>
+      <dd className="mt-2 text-[26px] font-medium leading-none tracking-[-0.02em] tabular-nums">
+        {value}
+      </dd>
       {note ? <p className="mt-1.5 text-xs text-muted-foreground">{note}</p> : null}
     </div>
   );
 }
 
-function Panel({ title, note, className, children }: { title: string; note?: string; className?: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  note,
+  className,
+  children,
+}: {
+  title: string;
+  note?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section aria-label={title} className={cn('min-w-0 rounded-xl border border-border bg-sheet p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]', className)}>
+    <section
+      aria-label={title}
+      className={cn(
+        'min-w-0 rounded-xl border border-border bg-sheet p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]',
+        className
+      )}
+    >
       <h2 className="text-[14.5px] font-semibold">{title}</h2>
       {note ? <p className="mt-0.5 text-xs text-muted-foreground">{note}</p> : null}
       {children}
@@ -315,10 +427,16 @@ function Bars({ rows }: { rows: { label: string; value: number; tone: string }[]
   return (
     <ul className="mt-3 space-y-1.5">
       {rows.map((r) => (
-        <li key={r.label} className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)_32px] items-center gap-3 text-[13.5px] max-sm:grid-cols-[minmax(0,110px)_minmax(0,1fr)_28px]">
+        <li
+          key={r.label}
+          className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)_32px] items-center gap-3 text-[13.5px] max-sm:grid-cols-[minmax(0,110px)_minmax(0,1fr)_28px]"
+        >
           <span className="truncate text-text/85">{r.label}</span>
           <span aria-hidden className="h-2 overflow-hidden rounded-[2px] bg-active">
-            <span className={cn('block h-full rounded-[2px]', r.tone)} style={{ width: `${(r.value / max) * 100}%` }} />
+            <span
+              className={cn('block h-full rounded-[2px]', r.tone)}
+              style={{ width: `${(r.value / max) * 100}%` }}
+            />
           </span>
           <span className="text-right tabular-nums">{r.value}</span>
         </li>
@@ -327,29 +445,48 @@ function Bars({ rows }: { rows: { label: string; value: number; tone: string }[]
   );
 }
 
-function Outcomes({ decided }: { decided: { accepted: number; edited: number; dismissed: number } }) {
+function Outcomes({
+  decided,
+}: {
+  decided: { accepted: number; edited: number; dismissed: number };
+}) {
   const total = decided.accepted + decided.edited + decided.dismissed;
   const parts = [
     { label: 'Accepted', value: decided.accepted, tone: 'bg-positive' },
     { label: 'Edited', value: decided.edited, tone: 'bg-teal/70' },
     { label: 'Dismissed', value: decided.dismissed, tone: 'bg-control' },
   ];
-  if (total === 0) return <p className="mt-4 text-sm text-muted-foreground">No flags decided yet.</p>;
+  if (total === 0)
+    return <p className="mt-4 text-sm text-muted-foreground">No flags decided yet.</p>;
   return (
     <>
-      <div role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join(', ')} className="mt-4 flex h-3 gap-0.5 overflow-hidden rounded-[3px]">
-        {parts.map((p) => (p.value ? <span key={p.label} className={p.tone} style={{ flex: p.value }} /> : null))}
+      <div
+        role="img"
+        aria-label={parts.map((p) => `${p.label} ${p.value}`).join(', ')}
+        className="mt-4 flex h-3 gap-0.5 overflow-hidden rounded-[3px]"
+      >
+        {parts.map((p) =>
+          p.value ? <span key={p.label} className={p.tone} style={{ flex: p.value }} /> : null
+        )}
       </div>
       <table className="mt-3 w-full text-[13.5px]">
         <tbody>
           {parts.map((p) => (
             <tr key={p.label} className="border-t border-rule">
               <td className="py-2">
-                <span aria-hidden className={cn('mr-2.5 inline-block h-[9px] w-[9px] rounded-[2px] align-[-1px]', p.tone)} />
+                <span
+                  aria-hidden
+                  className={cn(
+                    'mr-2.5 inline-block h-[9px] w-[9px] rounded-[2px] align-[-1px]',
+                    p.tone
+                  )}
+                />
                 {p.label}
               </td>
               <td className="py-2 text-right tabular-nums">{p.value}</td>
-              <td className="w-14 py-2 text-right tabular-nums text-muted-foreground">{pct(p.value, total)}%</td>
+              <td className="w-14 py-2 text-right tabular-nums text-muted-foreground">
+                {pct(p.value, total)}%
+              </td>
             </tr>
           ))}
         </tbody>
@@ -409,9 +546,9 @@ function ResolutionArms({ metrics }: { metrics: ResolutionArmMetrics }) {
         ))}
       </dl>
       <p className="mt-3 text-xs text-muted-foreground">
-        A version counts toward the conversation arm when at least one of its flags was decided
-        from an agent draft. Reviewers choose the tab themselves, so this is an observational
-        comparison, not a randomized A/B; read it only once both arms have enough versions.
+        A version counts toward the conversation arm when at least one of its flags was decided from
+        an agent draft. Reviewers choose the tab themselves, so this is an observational comparison,
+        not a randomized A/B; read it only once both arms have enough versions.
       </p>
     </>
   );
@@ -419,7 +556,11 @@ function ResolutionArms({ metrics }: { metrics: ResolutionArmMetrics }) {
 
 function TimeToReadyFigures({ rows }: { rows: { hours: number; backfilled: boolean }[] }) {
   if (rows.length === 0) {
-    return <p className="mt-5 text-[13px] text-muted-foreground">No ticket has gone from ingest to ready yet, so there is no time to ready to show.</p>;
+    return (
+      <p className="mt-5 text-[13px] text-muted-foreground">
+        No ticket has gone from ingest to ready yet, so there is no time to ready to show.
+      </p>
+    );
   }
   const sorted = rows.map((r) => r.hours).sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -444,7 +585,9 @@ function TimeToReadyFigures({ rows }: { rows: { hours: number; backfilled: boole
       </dl>
       <p className="mt-3 text-xs text-muted-foreground">
         From ingest to “marked ready”.
-        {backfilled ? ` Includes ${backfilled} ${backfilled === 1 ? 'ticket' : 'tickets'} with history backfilled from Jira.` : ''}
+        {backfilled
+          ? ` Includes ${backfilled} ${backfilled === 1 ? 'ticket' : 'tickets'} with history backfilled from Jira.`
+          : ''}
       </p>
     </>
   );
@@ -475,26 +618,45 @@ function WeekColumns({
   return (
     <figure className="min-w-0 pt-2">
       <div className="grid grid-cols-[24px_minmax(0,1fr)] gap-2">
-        <div aria-hidden className="relative h-36 text-right text-[11px] tabular-nums text-muted-foreground">
+        <div
+          aria-hidden
+          className="relative h-36 text-right text-[11px] tabular-nums text-muted-foreground"
+        >
           {[0, 0.5, 1].map((f) => (
-            <span key={f} className="absolute right-0 translate-y-1/2 leading-none" style={{ bottom: `${f * 100}%` }}>
+            <span
+              key={f}
+              className="absolute right-0 translate-y-1/2 leading-none"
+              style={{ bottom: `${f * 100}%` }}
+            >
               {Math.round(top * f)}
             </span>
           ))}
         </div>
         <div className="relative h-36 border-b border-control">
           {[0.5, 1].map((f) => (
-            <span key={f} aria-hidden className="absolute inset-x-0 border-t border-rule" style={{ bottom: `${f * 100}%` }} />
+            <span
+              key={f}
+              aria-hidden
+              className="absolute inset-x-0 border-t border-rule"
+              style={{ bottom: `${f * 100}%` }}
+            />
           ))}
           <ol className="relative flex h-full items-end gap-[6%] px-[2%]">
             {weeks.map((w, i) => {
               const v = values[i] ?? 0;
               const ghost = outlined ? outlined(w) : 0;
               return (
-                <li key={w.week} className="flex h-full flex-1 items-end" title={`Week of ${w.week}: ${v}`}>
+                <li
+                  key={w.week}
+                  className="flex h-full flex-1 items-end"
+                  title={`Week of ${w.week}: ${v}`}
+                >
                   {v > 0 ? (
                     <span
-                      className={cn('block w-full', ghost === v ? 'border border-positive bg-transparent' : tone)}
+                      className={cn(
+                        'block w-full',
+                        ghost === v ? 'border border-positive bg-transparent' : tone
+                      )}
                       style={{ height: `${(v / top) * 100}%` }}
                     />
                   ) : null}
@@ -530,5 +692,9 @@ function WeekColumns({
 }
 
 function shortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
 }

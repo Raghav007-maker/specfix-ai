@@ -132,89 +132,88 @@ export default async function SpecsPage({
         />
       }
     >
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-[-0.012em]">
+          {version?.title ?? ticket.title}
+        </h1>
+        {version ? (
+          ready ? (
+            <Badge tone="success">Ready for dev</Badge>
+          ) : (
+            <Badge tone="muted">Not signed off</Badge>
+          )
+        ) : null}
+      </div>
 
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-[-0.012em]">
-            {version?.title ?? ticket.title}
-          </h1>
-          {version ? (
-            ready ? (
-              <Badge tone="success">Ready for dev</Badge>
-            ) : (
-              <Badge tone="muted">Not signed off</Badge>
-            )
-          ) : null}
+      <TicketTabs ticketId={ticket.id} active="specs" />
+
+      {error ? (
+        <Notice tone="error" className="mb-6">
+          {error}
+        </Notice>
+      ) : null}
+
+      {version && staleSpecCount > 0 ? (
+        <Notice tone="warning" className="mb-6">
+          This ticket changed after specs were approved on an earlier version. {staleSpecCount}{' '}
+          scenario{staleSpecCount === 1 ? '' : 's'} went stale — regenerate and re-review so the
+          specs match the current requirement.
+        </Notice>
+      ) : null}
+
+      {version && drift.length > 0 ? (
+        <div className="mb-6">
+          <DriftPanel drifted={drift} />
         </div>
+      ) : null}
 
-        <TicketTabs ticketId={ticket.id} active="specs" />
-
-        {error ? (
-          <Notice tone="error" className="mb-6">
-            {error}
-          </Notice>
-        ) : null}
-
-        {version && staleSpecCount > 0 ? (
-          <Notice tone="warning" className="mb-6">
-            This ticket changed after specs were approved on an earlier version. {staleSpecCount}{' '}
-            scenario{staleSpecCount === 1 ? '' : 's'} went stale — regenerate and re-review so the
-            specs match the current requirement.
-          </Notice>
-        ) : null}
-
-        {version && drift.length > 0 ? (
-          <div className="mb-6">
-            <DriftPanel drifted={drift} />
+      {!version ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            This ticket has no captured version yet, so there is nothing to compile. Versions are
+            created on ingest.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div className="lg:sticky lg:top-6 lg:self-start">
+            <TicketText version={version} />
           </div>
-        ) : null}
 
-        {!version ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              This ticket has no captured version yet, so there is nothing to compile. Versions are
-              created on ingest.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div className="lg:sticky lg:top-6 lg:self-start">
-              <TicketText version={version} />
-            </div>
-
-            <div className="space-y-6">
-              <GenerationPanel
-                ticketId={ticket.id}
-                ready={ready}
-                hasScenarios={liveScenarios.length > 0}
-                resolvedFlagCount={resolvedFlagCount}
-              />
-              <ScenarioList
-                ticketId={ticket.id}
-                scenarios={scenarios}
-                editingScenarioId={edit}
-                scaffolds={scaffolds}
-                editingScaffoldId={editScaffold}
-              />
-            </div>
-          </div>
-        )}
-
-        {version && coverage ? (
-          <div className="mt-6">
-            <CoveragePanel
-              counts={coverage}
-              untested={untested}
-              clauses={clauseRows}
-              semanticState={semanticState}
+          <div className="space-y-6">
+            <GenerationPanel
+              ticketId={ticket.id}
+              ready={ready}
+              hasScenarios={liveScenarios.length > 0}
+              resolvedFlagCount={resolvedFlagCount}
+            />
+            <ScenarioList
+              ticketId={ticket.id}
+              scenarios={scenarios}
+              editingScenarioId={edit}
+              scaffolds={scaffolds}
+              editingScaffoldId={editScaffold}
             />
           </div>
-        ) : null}
+        </div>
+      )}
 
-        {version && reviews.length > 0 ? (
-          <div className="mt-6">
-            <SpecsAuditTrail reviews={reviews} />
-          </div>
-        ) : null}
+      {version && coverage ? (
+        <div className="mt-6">
+          <CoveragePanel
+            counts={coverage}
+            untested={untested}
+            clauses={clauseRows}
+            semanticState={semanticState}
+          />
+        </div>
+      ) : null}
+
+      {version && reviews.length > 0 ? (
+        <div className="mt-6">
+          <SpecsAuditTrail reviews={reviews} />
+        </div>
+      ) : null}
     </AppShell>
   );
 }

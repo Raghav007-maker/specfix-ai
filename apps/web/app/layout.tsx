@@ -37,9 +37,18 @@ const display = localFont({
 });
 const inter = localFont({
   src: [
-    { path: '../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2', weight: '400' },
-    { path: '../../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2', weight: '500' },
-    { path: '../../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2', weight: '600' },
+    {
+      path: '../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2',
+      weight: '400',
+    },
+    {
+      path: '../../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2',
+      weight: '500',
+    },
+    {
+      path: '../../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2',
+      weight: '600',
+    },
   ],
   variable: '--font-inter',
   display: 'swap',
@@ -57,7 +66,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${display.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${display.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="min-h-screen font-sans text-sm antialiased">
         <a
           href="#main"
