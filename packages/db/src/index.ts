@@ -1,5 +1,6 @@
 export * from './client.ts';
 export * from './repositories/tenants.ts';
+export * from './repositories/members.ts';
 export * from './repositories/tickets.ts';
 export * from './repositories/analysis.ts';
 export * from './repositories/flags.ts';
@@ -8,4 +9,6 @@ export * from './repositories/scenarios.ts';
 export * from './repositories/scaffolds.ts';
 export * from './repositories/traceability.ts';
 export * from './repositories/embeddings.ts';
+export * from './repositories/analytics.ts';
 export * from './embedding-sync.ts';
+export * from './repositories/agent.ts';

@@ -13,8 +13,15 @@ const nextConfig: NextConfig = {
   // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
   // has to compile them itself rather than treat them as opaque deps. @specfix/compiler
   // and @specfix/core are here because the Specs tab's generate action calls the Spec
-  // Compiler inline (there is no worker yet).
-  transpilePackages: ['@specfix/db', '@specfix/shared', '@specfix/core', '@specfix/compiler'],
+  // Compiler inline (there is no worker yet), and @specfix/agent because the Conversation
+  // tab's send action runs an agent turn inline for the same reason.
+  transpilePackages: [
+    '@specfix/db',
+    '@specfix/shared',
+    '@specfix/core',
+    '@specfix/compiler',
+    '@specfix/agent',
+  ],
 
   // pg uses dynamic requires and native-ish internals; bundling it breaks it. openai
   // ships its own runtime shims and is only ever reached from a server action (the

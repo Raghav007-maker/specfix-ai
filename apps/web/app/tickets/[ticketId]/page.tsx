@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
@@ -8,6 +7,7 @@ import {
   latestVersion,
   listDecisionsForTicket,
   listGaps,
+  listProjects,
   listRunsForTicket,
   readinessTimeline,
   revealedFlags,
@@ -16,11 +16,20 @@ import {
   type ReviewerGapRow,
   type TicketDecisionRow,
 } from '@/lib/repos';
-import { AppHeader } from '@/components/app-header';
+import { AppShell, Breadcrumb } from '@/components/app-shell';
 import { TicketTabs } from '@/components/ticket-tabs';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
+import { EmptyNote, Notice, Pill, SectionHeading } from '@/components/ui';
+import { SubmitButton } from '@/components/submit-button';
+import { buildManuscript } from '@/lib/manuscript';
 import { beginReview } from './actions';
-import { AuditTrail, BlindGapStage, MarkReady, ReviewStage, TicketText } from './stages';
+import {
+  AuditTrail,
+  BlindGapStage,
+  LockAction,
+  MarkReadyAction,
+  ReviewStage,
+  TicketText,
+} from './stages';
 
 /**
  * One ticket, reviewed under the blind-first protocol.
@@ -37,18 +46,23 @@ export default async function TicketPage({
   searchParams,
 }: {
   params: Promise<{ ticketId: string }>;
-  searchParams: Promise<{ error?: string; edit?: string }>;
+  searchParams: Promise<{ error?: string; edit?: string; flag?: string }>;
 }) {
   // params, searchParams and the user check are mutually independent, so resolve them
   // together rather than in series.
-  const [{ ticketId }, { error, edit }, user] = await Promise.all([
+  const [{ ticketId }, { error, edit, flag: flagParam }, user] = await Promise.all([
     params,
     searchParams,
     requireUser(),
   ]);
   const tenant = await requireTenant(user.id);
 
-  const ticket = await getTicket(tenant.tenant_id, ticketId);
+  // The project list feeds the sidebar. It reads no ticket or flag data, so it is safe here,
+  // ahead of the blind-first branch below.
+  const [ticket, projects] = await Promise.all([
+    getTicket(tenant.tenant_id, ticketId),
+    listProjects(tenant.tenant_id),
+  ]);
   if (!ticket) notFound();
 
   const version = await latestVersion(tenant.tenant_id, ticket.id);
@@ -85,118 +99,158 @@ export default async function TicketPage({
   }
 
   const openFlags = flags.filter((f) => f.status === 'open').length;
+  const decided = flags.length - openFlags;
+  const matched = gaps.filter((g) => g.matched_flag_id !== null).length;
+  const sessionDone = session?.stage === 'done';
   const ready = timeline.some(
     (e) => e.event === 'marked_ready' && e.ticket_version_id === version?.id
   );
+  // Which flags' quoted spans can be found in the ticket text — empty before lock, because
+  // `flags` is never fetched on that path.
+  const located = version
+    ? buildManuscript(
+        version.description_text,
+        version.acceptance_criteria_text,
+        flags.map((f) => ({ flagId: f.id, quotedSpan: f.quoted_span }))
+      ).located
+    : new Set<string>();
+  // The expanded flag: the one being edited, else the one in the URL, else the first still
+  // open, so a decision (which redirects without ?flag) moves the reviewer to the next one.
+  const selectedFlagId =
+    flags.find((f) => f.id === (edit ?? flagParam))?.id ??
+    flags.find((f) => f.status === 'open')?.id ??
+    flags[0]?.id;
+
+  // Where the review stands, in one sentence (DESIGN.md §1 "finding line").
+  const finding = !version
+    ? 'No captured version yet'
+    : !session
+      ? 'Not started · you write your own gaps before the model’s flags are shown'
+      : !locked
+        ? `Writing gaps blind · ${plural(gaps.length, 'gap')} so far · the model’s flags stay hidden until you lock`
+        : [
+            ready ? 'Ready for development' : 'Blind list locked',
+            analyzed || flags.length > 0
+              ? `${decided} of ${plural(flags.length, 'flag')} decided`
+              : 'not analyzed yet',
+            gaps.length > 0
+              ? `${matched} of ${plural(gaps.length, 'gap')} linked`
+              : 'no gaps written',
+            sessionDone ? 'session complete' : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
 
   return (
-    <>
-      <AppHeader user={user} tenant={tenant} />
-
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <nav className="mb-4 text-sm text-muted-foreground">
-          <Link href={`/?project=${ticket.project_id}`} className="hover:text-foreground">
-            {ticket.project_name}
-          </Link>
-          <span className="mx-2">/</span>
-          <span className="font-mono text-xs">{ticket.external_key}</span>
-        </nav>
-
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">
+    <AppShell
+      user={user}
+      tenant={tenant}
+      projects={projects}
+      activeProjectId={ticket.project_id}
+      breadcrumb={
+        <Breadcrumb
+          parent={{ href: `/?project=${ticket.project_id}`, label: ticket.project_name }}
+          current={ticket.external_key}
+        />
+      }
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <h1 className="text-balance break-words text-xl font-semibold leading-7 sm:text-[22px]">
             {version?.title ?? ticket.title}
           </h1>
-          {locked ? (
-            <div className="flex items-center gap-2">
-              {ready ? <Badge tone="success">Ready for dev</Badge> : null}
-              {openFlags > 0 ? (
-                <Badge tone="warning">
-                  {openFlags} open {openFlags === 1 ? 'flag' : 'flags'}
-                </Badge>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-
-        <TicketTabs ticketId={ticket.id} active="review" />
-
-        {error ? (
-          <p className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
+          <p id="finding" className="mt-1 text-sm leading-5 text-muted-foreground">
+            {finding}
           </p>
-        ) : null}
-
-        {!version ? (
-          <NoVersion />
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div className="lg:sticky lg:top-6 lg:self-start">
-              <TicketText version={version} />
-            </div>
-
-            <div className="space-y-6">
-              {!session ? (
-                <StartReview ticketId={ticket.id} />
-              ) : !locked ? (
-                <BlindGapStage ticketId={ticket.id} session={session} gaps={gaps} />
-              ) : (
-                <ReviewStage
-                  ticketId={ticket.id}
-                  session={session}
-                  gaps={gaps}
-                  flags={flags}
-                  analyzed={analyzed}
-                  editingFlagId={edit}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {locked ? (
-          <div className="mt-6 space-y-6">
-            <MarkReady ticketId={ticket.id} openFlags={openFlags} ready={ready} />
-            <AuditTrail decisions={decisions} timeline={timeline} />
+        </div>
+        {version ? (
+          <div className="flex-none max-sm:w-full">
+            {!session ? (
+              <form action={beginReview}>
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <SubmitButton pendingLabel="Starting…" className="max-sm:w-full">
+                  Start blind review
+                </SubmitButton>
+              </form>
+            ) : !locked ? (
+              <LockAction ticketId={ticket.id} sessionId={session.id} gapCount={gaps.length} />
+            ) : ready ? (
+              <Pill tone="positive" className="h-7 px-2 text-sm">
+                Ready for development
+              </Pill>
+            ) : (
+              <MarkReadyAction ticketId={ticket.id} openFlags={openFlags} describedBy="finding" />
+            )}
           </div>
         ) : null}
-      </main>
-    </>
+      </div>
+
+      <div className="mt-5">
+        <TicketTabs ticketId={ticket.id} active="review" />
+      </div>
+
+      {error ? (
+        <Notice tone="error" className="mb-6">
+          {error}
+        </Notice>
+      ) : null}
+
+      {!version ? (
+        <EmptyNote>
+          This ticket has no captured version yet, so there is nothing to review. Versions are
+          created on ingest.
+        </EmptyNote>
+      ) : (
+        <div className="grid gap-x-6 gap-y-8 xl:grid-cols-[minmax(0,1fr)_440px]">
+          <TicketText version={version} flags={flags} selectedFlagId={selectedFlagId} />
+
+          <div className="min-w-0">
+            {!session ? (
+              <StartReview />
+            ) : !locked ? (
+              <BlindGapStage ticketId={ticket.id} session={session} gaps={gaps} />
+            ) : (
+              <ReviewStage
+                ticketId={ticket.id}
+                session={session}
+                gaps={gaps}
+                flags={flags}
+                analyzed={analyzed}
+                editingFlagId={edit}
+                selectedFlagId={selectedFlagId}
+                located={located}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {locked ? (
+        <div className="mt-12 border-t border-border pt-8">
+          <AuditTrail decisions={decisions} timeline={timeline} />
+        </div>
+      ) : null}
+    </AppShell>
   );
 }
 
-function StartReview({ ticketId }: { ticketId: string }) {
+function StartReview() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Blind-first review</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          You review this ticket before you see what the model found. First you write your own list
-          of the places a developer would have to guess; then you lock it; only then are the
-          model&rsquo;s flags revealed.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          The order matters. If you read the model&rsquo;s flags first, your own list is anchored to
-          them and the recall number stops meaning anything — it would measure agreement, not
-          coverage.
-        </p>
-        <form action={beginReview}>
-          <input type="hidden" name="ticketId" value={ticketId} />
-          <Button type="submit">Start blind review</Button>
-        </form>
-      </CardContent>
-    </Card>
+    <section aria-labelledby="start-heading" className="space-y-3">
+      <SectionHeading id="start-heading">Blind-first review</SectionHeading>
+      <p className="text-sm leading-5">
+        You review this ticket before you see what the model found. First you write your own list of
+        the places a developer would have to guess; then you lock it; only then are the
+        model&rsquo;s flags revealed.
+      </p>
+      <p className="text-sm leading-5 text-muted-foreground">
+        The order matters. If you read the model&rsquo;s flags first, your list is anchored to them
+        and the recall number would measure agreement, not coverage.
+      </p>
+    </section>
   );
 }
 
-function NoVersion() {
-  return (
-    <Card>
-      <CardContent className="py-10 text-center text-sm text-muted-foreground">
-        This ticket has no captured version yet, so there is nothing to review. Versions are created
-        on ingest.
-      </CardContent>
-    </Card>
-  );
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }

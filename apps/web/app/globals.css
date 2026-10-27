@@ -2,33 +2,195 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Light workspace tokens for the signed-in app, matching the dashboard ("Soft workspace"): a cool
+ * grey frame, white sheets, near-black text, one blue for the primary action and focus, and a
+ * pale marker yellow for quoted evidence. Channels are space-separated RGB so Tailwind can apply
+ * opacity (`bg-text/5`). The public landing and sign-in pages carry their own palette
+ * (components/playground/playground.module.css).
+ */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --primary: 222 47% 11%;
-  --primary-foreground: 210 40% 98%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 222 47% 11%;
-  --radius: 0.5rem;
+  --frame: 243 244 246;
+  --sheet: 255 255 255;
+  --raised: 247 248 250;
+  --active: 238 240 244;
+  --border: 227 229 234;
+  --rule: 236 238 242;
+  --control: 209 213 219;
+  --field: 160 166 178;
+  --text: 22 24 29;
+  --muted: 93 99 113;
+  --primary: 43 95 217;
+  --accent: 43 95 217;
+  --accent-ink: 30 64 160;
+  --mark: 254 240 190;
+  --mark-selected: 252 222 130;
+  --accent-tag: 232 239 253;
+  --positive: 46 125 80;
+  --negative: 186 52 40;
+  --warning: 163 106 0;
+  --positive-bg: 228 242 233;
+  --positive-ink: 30 98 60;
+  --negative-bg: 251 233 230;
+  --negative-ink: 160 40 30;
+  --warning-bg: 252 242 220;
+  --warning-ink: 128 82 0;
+  --warning-line: 232 204 150;
+  --neutral-bg: 238 240 244;
+  --neutral-ink: 68 72 82;
+
+  --float: 0 16px 40px rgb(15 23 42 / 0.12), 0 0 0 1px rgb(var(--border));
+
+  /* Legacy shadcn-style names used by pages not yet on the Review desk design. */
+  --background: var(--frame);
+  --foreground: var(--text);
+  --card: var(--sheet);
+  --card-foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --primary-foreground: var(--sheet);
+  --accent-foreground: var(--text);
+  --destructive: var(--negative);
+  --destructive-foreground: var(--sheet);
+  --input: var(--field);
+  --ring: var(--accent);
 }
 
 * {
-  border-color: hsl(var(--border));
+  border-color: rgb(var(--border));
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  /* Taps get feedback from the focus ring and pressed state instead of the grey flash. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: rgb(var(--frame));
+  color: rgb(var(--text));
   font-feature-settings:
     'rlig' 1,
     'calt' 1;
+}
+
+button,
+a,
+summary,
+select,
+input,
+textarea {
+  touch-action: manipulation;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A quoted span jumped to from its flag ("Show in ticket") is outlined until focus moves on. */
+mark:target {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+
+dialog[open] {
+  animation: dialog-in 150ms ease-out;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* The workspace sheet: white with a faint blue overhead light and a soft low shadow. The light
+   drifts a few percent over two minutes (still under reduced motion). */
+.app-sheet {
+  position: relative;
+  isolation: isolate;
+  background: rgb(var(--sheet));
+}
+
+.app-sheet::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  height: 520px;
+  pointer-events: none;
+  background: radial-gradient(60% 70% at 50% 0%, rgb(43 95 217 / 0.035), rgb(43 95 217 / 0) 70%);
+  animation: sheet-light 120s ease-in-out infinite alternate;
+}
+
+@keyframes sheet-light {
+  from {
+    transform: translateX(-4%);
+  }
+  to {
+    transform: translateX(4%);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-sheet {
+    overflow: clip;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.05),
+      0 24px 48px -28px rgb(15 23 42 / 0.18);
+  }
+}
+
+/* Page arrivals. Each page's content re-mounts on navigation and fades in, rising a few pixels;
+   the app sidebar sits outside it, so it holds still. Full document loads (a server action's
+   redirect, a typed URL) use a native cross-fade where the browser supports cross-document view
+   transitions. */
+.page-enter {
+  animation: page-enter 340ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: page-leave 180ms ease-in both;
+}
+
+::view-transition-new(root) {
+  animation: page-enter 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes page-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sheet::before {
+    animation: none;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

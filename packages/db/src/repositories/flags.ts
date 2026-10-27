@@ -43,6 +43,12 @@ export interface DecideFlagInput {
   /** Required for `edited`: the reviewer's rewrite of question_for_pm. */
   editedText?: string | undefined;
   resolutionNote?: string | undefined;
+  /**
+   * Refuse unless the flag is still open when it is locked. The resolution agent sets it:
+   * its draft was checked against an open flag earlier, and a decision posted from the
+   * form in between must not be silently overwritten.
+   */
+  expectOpen?: boolean;
 }
 
 export class FlagDecisionError extends Error {}
@@ -176,6 +182,11 @@ export async function decideFlag(tenantId: TenantId, input: DecideFlagInput): Pr
         'this flag was pruned by the Critic and was never shown for review'
       );
     }
+    if (input.expectOpen && existing.status !== 'open') {
+      throw new FlagDecisionError(
+        `This flag was ${existing.status} meanwhile, so nothing was changed. Reopen it on the Review tab to decide it again.`
+      );
+    }
     if (input.decision === 'reopened' && !isReviewed(existing.status)) {
       throw new FlagDecisionError(`cannot reopen a flag that is ${existing.status}`);
     }
@@ -212,6 +223,25 @@ export async function decideFlag(tenantId: TenantId, input: DecideFlagInput): Pr
       ]
     );
 
+    // The resolution agent's records follow the flag however it was decided. Guarded so a
+    // database without migration 0008 still decides flags.
+    const [agent] = await rows<{ present: boolean }>(
+      client,
+      `select to_regclass('public.agent_messages') is not null as present`,
+      []
+    );
+    const agentTables = agent?.present === true;
+
+    // A decision made any other way retires the agent's undecided drafts on this flag, so a
+    // later reopen cannot bring an old draft back. (Applying a draft marks it applied first.)
+    if (agentTables && input.decision !== 'reopened') {
+      await client.query(
+        `update agent_messages set proposal_status = 'superseded'
+         where tenant_id = $1 and flag_id = $2 and proposal_status = 'pending'`,
+        [tenantId, input.flagId]
+      );
+    }
+
     // When the last open flag on this version is resolved, record it. The event is
     // what time-to-ready is measured from, so it has to be written by the same
     // transaction that resolved the flag rather than by a later sweep.
@@ -228,6 +258,18 @@ export async function decideFlag(tenantId: TenantId, input: DecideFlagInput): Pr
          values ($1, $2, $3, 'all_flags_resolved', $4)`,
         [tenantId, updated.ticket_id, updated.ticket_version_id, input.userId]
       );
+
+      // A resolution-agent conversation on this version is complete however its last flag
+      // was decided — here, or on the form — provided the reviewer actually used it.
+      if (agentTables) {
+        await client.query(
+          `update agent_conversations c set status = 'completed', completed_at = now()
+           where c.tenant_id = $1 and c.ticket_version_id = $2 and c.status = 'active'
+             and exists (select 1 from agent_messages m
+                         where m.conversation_id = c.id and m.tenant_id = c.tenant_id)`,
+          [tenantId, updated.ticket_version_id]
+        );
+      }
     }
 
     return updated;
@@ -258,6 +300,7 @@ export async function listDecisionsForFlag(
 }
 
 export interface TicketDecisionRow extends FlagDecisionRow {
+  ticket_id: string;
   user_email: string | null;
   category: string;
   question_for_pm: string;
@@ -268,21 +311,23 @@ export interface TicketDecisionRow extends FlagDecisionRow {
  * Every decision ever recorded against any flag on a ticket, oldest first — the
  * audit trail the review UI shows. Joined to the flag so the trail reads as
  * "who decided what about which question" rather than as a list of uuids.
+ *
+ * Takes one ticket id, or several to read them all in one query.
  */
 export async function listDecisionsForTicket(
   tenantId: TenantId,
-  ticketId: string
+  ticketId: string | readonly string[]
 ): Promise<TicketDecisionRow[]> {
   return query<TicketDecisionRow>(
     `select d.id, d.flag_id, d.user_id, d.decision, d.edited_text, d.resolution_note,
             d.created_at, u.email as user_email,
-            f.category, f.question_for_pm, f.severity
+            f.ticket_id, f.category, f.question_for_pm, f.severity
      from flag_decisions d
      join flags f on f.id = d.flag_id and f.tenant_id = d.tenant_id
      left join auth.users u on u.id = d.user_id
-     where d.tenant_id = $1 and f.ticket_id = $2
+     where d.tenant_id = $1 and f.ticket_id = any($2::uuid[])
      order by d.created_at`,
-    [tenantId, ticketId]
+    [tenantId, [ticketId].flat()]
   );
 }
 
