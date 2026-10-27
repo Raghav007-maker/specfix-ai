@@ -498,6 +498,7 @@
   align-items: stretch;
   max-width: var(--pg-content);
   margin-inline: auto;
+  border-bottom: var(--pg-line) solid var(--pg-border);
 }
 
 .heroCopy {
@@ -595,31 +596,27 @@
   cursor: grabbing;
 }
 
-.artMeta,
-.artFoot {
+.figureCaption {
   position: absolute;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  left: 18px;
-  right: 18px;
-  margin: 0;
+  right: 28px;
+  bottom: 44px;
+  white-space: nowrap;
   font-family: var(--font-mono), monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--pg-muted);
+  color: var(--pg-text);
+  /* A page-coloured backing keeps the background dot grid from breaking up the letters. */
+  background: var(--pg-page);
+  padding: 2px 8px;
   pointer-events: none;
+  z-index: 1;
 }
 
-.artMeta {
-  top: 14px;
-}
-
-.artFoot {
-  bottom: 14px;
-  justify-content: flex-end;
+/* The opening mark has no caption; an empty span would still paint its padded backing. */
+.figureCaption:empty {
+  display: none;
 }
 
 .term {
@@ -705,29 +702,6 @@
   50% {
     opacity: 0;
   }
-}
-
-.cue {
-  position: absolute;
-  left: var(--pg-pad);
-  bottom: 0;
-  transform: translateY(50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: var(--pg-line) solid var(--pg-border);
-  border-radius: 999px;
-  background: var(--pg-page);
-  font-size: 12.5px;
-  color: var(--pg-muted);
-  text-decoration: none;
-  z-index: 3;
-}
-
-.root[data-hover='on'] .cue:hover {
-  color: var(--pg-text);
-  border-color: var(--pg-text);
 }
 
 .section {
@@ -2187,8 +2161,7 @@ pre.typeIn > span {
   margin: -6px 0 0;
 }
 
-.modeSwitch,
-.segment {
+.modeSwitch {
   display: inline-flex;
   padding: 3px;
   border-radius: calc(var(--pg-radius) + 3px);
@@ -2203,8 +2176,7 @@ pre.typeIn > span {
   grid-template-columns: 1fr 1fr;
 }
 
-.modeSwitch button,
-.segment button {
+.modeSwitch button {
   min-height: 32px;
   padding: 0 12px;
   border: 0;
@@ -2221,8 +2193,7 @@ pre.typeIn > span {
     box-shadow var(--pg-t);
 }
 
-.modeSwitch button[aria-checked='true'],
-.segment button[aria-checked='true'] {
+.modeSwitch button[aria-checked='true'] {
   background: var(--pg-card);
   color: var(--pg-text);
   box-shadow:
@@ -2527,19 +2498,6 @@ pre.typeIn > span {
   margin: 0;
 }
 
-.date {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--pg-muted);
-}
-
-.date svg {
-  width: var(--pg-icon);
-  height: var(--pg-icon);
-}
-
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2608,7 +2566,6 @@ pre.typeIn > span {
 
 .chartCard,
 .queue,
-.profile,
 .agent {
   padding: calc(18px * var(--pg-density)) 20px;
   border-radius: var(--pg-radius);
@@ -2618,7 +2575,6 @@ pre.typeIn > span {
 
 .root[data-card='filled'] .chartCard,
 .root[data-card='filled'] .queue,
-.root[data-card='filled'] .profile,
 .root[data-card='filled'] .agent {
   background: var(--pg-surface);
   box-shadow: none;
@@ -2626,7 +2582,6 @@ pre.typeIn > span {
 
 .root[data-card='elevated'] .chartCard,
 .root[data-card='elevated'] .queue,
-.root[data-card='elevated'] .profile,
 .root[data-card='elevated'] .agent {
   box-shadow:
     var(--pg-elev),
@@ -2637,25 +2592,6 @@ pre.typeIn > span {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
-}
-
-.queueHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-}
-
-.queueHead p {
-  margin: 2px 0 0;
-  font-size: 13px;
-}
-
-.segment button {
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 12.5px;
 }
 
 .chart {
@@ -2791,99 +2727,6 @@ pre.typeIn > span {
   gap: 10px;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-
-.table th {
-  padding: 8px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  text-align: left;
-  color: var(--pg-muted);
-  border-bottom: var(--pg-line) solid var(--pg-border);
-}
-
-.table td {
-  height: var(--pg-row);
-  padding: 4px 10px;
-  border-bottom: var(--pg-line) solid var(--pg-border);
-  vertical-align: middle;
-}
-
-.table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.table tbody tr {
-  transition: background-color var(--pg-t);
-}
-
-.root[data-hover='on'] .table tbody tr:hover {
-  background: color-mix(in srgb, var(--pg-text) 3%, transparent);
-}
-
-.table th:first-child,
-.table td:first-child {
-  padding-left: 0;
-}
-
-.ticketCell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.ticketIcon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: calc(var(--pg-icon) * 1.9);
-  height: calc(var(--pg-icon) * 1.9);
-  border-radius: 50%;
-  background: var(--pg-surface);
-}
-
-.ticketIcon svg {
-  width: calc(var(--pg-icon) * 0.85);
-  height: calc(var(--pg-icon) * 0.85);
-  stroke-width: 1.8;
-}
-
-.ticketIcon[data-status='need'] {
-  background: #fdf0dc;
-  color: #8a5300;
-}
-
-.ticketIcon[data-status='ready'] {
-  background: #e4f2e8;
-  color: #1f6a3c;
-}
-
-.ticketText {
-  display: grid;
-  min-width: 0;
-}
-
-.ticketText b {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ticketText span {
-  font-size: 12px;
-  color: var(--pg-muted);
-}
-
-.ticketText code {
-  font-size: 11.5px;
-}
-
 .status {
   display: inline-flex;
   align-items: center;
@@ -2916,17 +2759,6 @@ pre.typeIn > span {
   color: #23743f;
 }
 
-.num {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--pg-muted);
-}
-
-.actionCell {
-  text-align: right;
-  white-space: nowrap;
-}
-
 .empty {
   margin: 0;
   padding: 28px 16px;
@@ -2949,50 +2781,20 @@ pre.typeIn > span {
   min-width: 6px;
 }
 
-.stack [data-status='need'],
-.stackKey [data-status='need'] {
+.stack [data-status='need'] {
   background: #d08a1c;
 }
 
-.stack [data-status='waiting'],
-.stackKey [data-status='waiting'] {
+.stack [data-status='waiting'] {
   background: color-mix(in srgb, var(--pg-muted) 45%, var(--pg-surface));
 }
 
-.stack [data-status='resolved'],
-.stackKey [data-status='resolved'] {
+.stack [data-status='resolved'] {
   background: #5b7fd0;
 }
 
-.stack [data-status='ready'],
-.stackKey [data-status='ready'] {
+.stack [data-status='ready'] {
   background: #2f8a50;
-}
-
-.stackKey {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: 13px;
-}
-
-.stackKey li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.stackKey i {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.stackKey b {
-  font-variant-numeric: tabular-nums;
 }
 
 .right {
@@ -3008,14 +2810,6 @@ pre.typeIn > span {
 
 .root[data-panel-align='stretch'] .right .agent {
   flex: 1;
-}
-
-.profile {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding-block: calc(24px * var(--pg-density));
-  text-align: center;
 }
 
 .avatar {
@@ -3087,19 +2881,6 @@ pre.typeIn > span {
   font-size: var(--pg-base);
 }
 
-.profile p {
-  margin: 0;
-  font-size: 13px;
-}
-
-.roleLine {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 10px;
-  color: var(--pg-muted);
-}
-
 .role {
   padding: 1px 8px;
   border-radius: 999px;
@@ -3109,37 +2890,11 @@ pre.typeIn > span {
   font-weight: 500;
 }
 
-.profileActions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
 .agent {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-}
-
-.agentHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 10px;
-}
-
-.agentHead .h2 {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: calc(var(--pg-base) * 1.1);
-}
-
-.inlineIcon {
-  width: var(--pg-icon);
-  height: var(--pg-icon);
 }
 
 .agentTicket {
@@ -3184,37 +2939,6 @@ pre.typeIn > span {
   margin: auto 0 0;
   font-size: 12px;
   color: var(--pg-muted);
-}
-
-/* ---------- Dashboard: progress and analytics ---------- */
-
-.progressCard {
-  display: grid;
-  gap: 10px;
-}
-
-.progressTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.progressLine {
-  margin: 0;
-  font-size: 14px;
-}
-
-.progressLine b {
-  font-family: var(--pg-display);
-  font-size: 1.35em;
-  font-weight: var(--pg-hw);
-  font-variant-numeric: tabular-nums;
-}
-
-.progressCard > .muted {
-  margin: 0;
-  font-size: 12.5px;
 }
 
 .bar {
@@ -4209,48 +3933,8 @@ pre.typeIn > span {
   .stat + .stat {
     border-left: var(--pg-line) solid var(--pg-border);
   }
-  .table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-  }
-  .table,
-  .table tbody,
-  .table tr,
-  .table td {
-    display: block;
-  }
-  .table tr {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 4px 12px;
-    padding: 12px 0;
-    border-bottom: var(--pg-line) solid var(--pg-border);
-  }
-  .table tbody tr:last-child {
-    border-bottom: 0;
-  }
-  .table td {
-    height: auto;
-    padding: 0;
-    border: 0;
-  }
-  .table td:first-child {
-    grid-column: 1 / -1;
-  }
-  .ticketText b {
-    white-space: normal;
-  }
-  .actionCell {
-    grid-column: 2;
-    grid-row: 2 / span 2;
-    align-self: center;
-  }
   .chartCard,
   .queue,
-  .profile,
   .agent {
     padding-inline: 14px;
   }
@@ -4289,9 +3973,6 @@ pre.typeIn > span {
   .ctaRow .btn {
     flex: 1 1 auto;
   }
-  .cue {
-    display: none;
-  }
 }
 
 /* The workspace column responds to its own width, which the side panels squeeze. */
@@ -4305,10 +3986,6 @@ pre.typeIn > span {
   .stat + .stat {
     padding: 0;
     border-left: 0;
-  }
-  .table th:nth-child(3),
-  .table td:nth-child(3) {
-    display: none;
   }
 }
 
