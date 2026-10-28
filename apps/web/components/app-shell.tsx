@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { BarChart3, Folder, ListChecks, LogOut, Menu, Users, X } from 'lucide-react';
+import { BarChart3, Bell, Folder, ListChecks, LogOut, Menu, Plug, Users, X } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { signOut } from '@/app/(auth)/actions';
 import type { MembershipRow } from '@/lib/tenant';
@@ -29,7 +29,7 @@ export function AppShell({
   projects: ProjectRow[];
   activeProjectId?: string;
   /** Which top-level destination this page is, for the sidebar's active state. */
-  current?: 'queue' | 'analytics' | 'team';
+  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox';
   breadcrumb: ReactNode;
   children: ReactNode;
 }) {
@@ -87,7 +87,7 @@ function Nav({
   tenant: MembershipRow;
   projects: ProjectRow[];
   activeProjectId?: string;
-  current?: 'queue' | 'analytics' | 'team';
+  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox';
   email: string;
 }) {
   return (
@@ -116,6 +116,13 @@ function Nav({
           Home
         </NavLink>
         <NavLink
+          href="/inbox"
+          active={current === 'inbox'}
+          icon={<Bell aria-hidden size={18} strokeWidth={1.6} />}
+        >
+          Inbox
+        </NavLink>
+        <NavLink
           href="/analytics"
           active={current === 'analytics'}
           icon={<BarChart3 aria-hidden size={18} strokeWidth={1.6} />}
@@ -128,6 +135,13 @@ function Nav({
           icon={<Users aria-hidden size={18} strokeWidth={1.6} />}
         >
           Team
+        </NavLink>
+        <NavLink
+          href="/settings/integrations"
+          active={current === 'integrations'}
+          icon={<Plug aria-hidden size={18} strokeWidth={1.6} />}
+        >
+          Integrations
         </NavLink>
 
         {projects.length > 0 ? (

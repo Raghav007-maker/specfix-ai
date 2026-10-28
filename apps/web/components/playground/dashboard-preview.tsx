@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   BarChart3,
+  Bell,
   ChevronRight,
   CircleCheck,
   CircleDashed,
@@ -12,6 +13,7 @@ import {
   LogIn,
   LogOut,
   MessagesSquare,
+  Plug,
   UserRound,
   Users,
   Flag,
@@ -89,9 +91,19 @@ export function DashboardPreview({
       >
         Ticket analytics
       </NavButton>
+      <a className={s.navItem} href="/inbox">
+        <Bell aria-hidden />
+        <span>Inbox</span>
+        <ArrowUpRight aria-hidden className={s.navOut} />
+      </a>
       <a className={s.navItem} href="/team">
         <Users aria-hidden />
         <span>Team</span>
+        <ArrowUpRight aria-hidden className={s.navOut} />
+      </a>
+      <a className={s.navItem} href="/settings/integrations">
+        <Plug aria-hidden />
+        <span>Integrations</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
       </a>
       {projects && projects.length > 0 ? (

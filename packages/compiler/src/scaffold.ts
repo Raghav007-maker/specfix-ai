@@ -42,6 +42,11 @@ export interface EmittedScaffold {
   selectorPlaceholders: SelectorPlaceholder[];
 }
 
+/** The Playwright tag linking a test to its SpecFix scenario, e.g. `@sf-<uuid>`. */
+export function scenarioTag(scenarioId: string): string {
+  return `@sf-${scenarioId}`;
+}
+
 export function emitPlaywrightScaffold(input: EmitScaffoldInput): EmittedScaffold {
   const framework: ScaffoldFramework = input.framework ?? 'playwright';
   if (framework !== 'playwright') {
@@ -84,7 +89,10 @@ export function emitPlaywrightScaffold(input: EmitScaffoldInput): EmittedScaffol
     `import { test, expect } from '@playwright/test';`,
     ``,
     `test.describe(${JSON.stringify(input.externalKey)}, () => {`,
-    `  test.fixme(${JSON.stringify(input.scenario.title)}, async ({ page }) => {`,
+    // The tag is how CI results find their way back to this scenario: Playwright puts it
+    // in the JSON report's `tags`, and /api/ci/results matches on it. Keep it when
+    // editing the test.
+    `  test.fixme(${JSON.stringify(input.scenario.title)}, { tag: ${JSON.stringify(scenarioTag(input.scenarioId))} }, async ({ page }) => {`,
     ...bodyLines,
     `  });`,
     `});`,

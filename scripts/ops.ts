@@ -39,6 +39,7 @@ import {
   doubleLabeledVersions,
   findUserByEmail,
   ingestTicket,
+  isOverTokenCap,
   latestVersion,
   listMembershipsForUser,
   listProjects,
@@ -384,6 +385,12 @@ async function analyzePending(
       skipped += 1;
       process.stdout.write(`  = ${item.ticket.externalKey}  already analyzed\n`);
       continue;
+    }
+    // The workspace's monthly token cap is checked before every call, as the worker does.
+    if (await isOverTokenCap(tenantId)) {
+      process.stderr.write('  ! monthly token cap reached; stopping analysis\n');
+      failed += 1;
+      break;
     }
 
     try {

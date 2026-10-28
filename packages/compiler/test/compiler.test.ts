@@ -146,6 +146,11 @@ describe('emitPlaywrightScaffold', () => {
     expect(emitted.code).toContain('test.fixme');
   });
 
+  it('tags the test with its scenario id so CI results can find it', () => {
+    const emitted = emitPlaywrightScaffold({ scenario, externalKey: 'PAY-142', scenarioId: 's1' });
+    expect(emitted.code).toContain(`{ tag: "@sf-s1" }`);
+  });
+
   it('refuses a framework it cannot emit', () => {
     expect(() =>
       emitPlaywrightScaffold({

@@ -22,6 +22,7 @@ export default defineConfig({
       '@specfix/eval': r('./packages/eval/src/index.ts'),
       '@specfix/compiler': r('./packages/compiler/src/index.ts'),
       '@specfix/agent': r('./packages/agent/src/index.ts'),
+      '@specfix/sync': r('./packages/sync/src/index.ts'),
     },
   },
 });
