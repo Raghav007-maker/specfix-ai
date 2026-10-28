@@ -5,13 +5,117 @@ import { MARK } from './logo-paths';
 import s from './playground.module.css';
 
 /**
- * What the dots build, in order: the SF mark (traced from the logo), a ticket with a flagged
- * span, a flag, the sign-off tick, then a sphere and a knot.
+ * What the dots build, in order: the SF mark (traced from the logo), a code-style ticket naming
+ * the team, a flag, the sign-off tick, then a sphere and a knot.
  */
 const FORMS = ['mark', 'ticket', 'flag', 'check', 'sphere', 'knot'] as const;
 type FormId = (typeof FORMS)[number];
 
 const TAU = Math.PI * 2;
+
+// The ticket is drawn on a 340×440 canvas, which rasterPoints maps to [-1, 1] around its centre.
+const TICKET = { w: 340, h: 440 };
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const NAME_FONT = `900 30px ${MONO}`;
+const NAME_X = 134;
+const NAME_Y = [180, 232, 284];
+const ROLES = ['lead:', 'dev:', 'qa:'];
+const TEAM = ['raghav', 'udit', 'shrikant'];
+// The values drawn glyph by glyph, densely: the names, then the status that lands last.
+const VALUES = [
+  ...TEAM.map((name, r) => ({ text: `"${name}"`, x: NAME_X, y: NAME_Y[r]! })),
+  { text: '"resolved"', x: 144, y: 388 },
+];
+const SCRAMBLE = '01{}<>/#$%&*@=+?';
+/** A random code character, for text that is still decoding. */
+const noise = () => SCRAMBLE[Math.floor(Math.random() * SCRAMBLE.length)]!;
+/** The line under each form; the opening mark speaks for itself. */
+const CAPTIONS: Record<FormId, string> = {
+  mark: '',
+  ticket: 'team names',
+  flag: 'flag ticket',
+  check: 'ticket resolved',
+  sphere: 'connect all the team',
+  knot: 'team integration',
+};
+
+type Cell = { ch: string; row: number; col: number; x: number; y: number };
+let cellCache: Cell[] | null = null;
+
+/** One cell per character of each quoted value, at its place on the ticket canvas. */
+function teamLayout(n: number) {
+  if (!cellCache) {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (ctx) ctx.font = NAME_FONT;
+    const cw = ctx?.measureText('M').width ?? 18;
+    cellCache = VALUES.flatMap(({ text, x, y }, row) =>
+      [...text].map((ch, col) => ({ ch, row, col, x: x + col * cw, y }))
+    );
+  }
+  // The values take the last dots, a fixed share per character, so every letter stays dense.
+  const k = Math.max(50, Math.floor(n * 0.014));
+  return { cells: cellCache, k, base: n - cellCache.length * k };
+}
+
+const glyphCache = new Map<string, [number, number][]>();
+
+/** A character's filled pixels, as offsets from where fillText draws it. */
+function glyph(ch: string) {
+  let pts = glyphCache.get(ch);
+  if (!pts) {
+    pts = rasterPoints(
+      (ctx) => {
+        ctx.font = NAME_FONT;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ch, 2, 22);
+      },
+      44,
+      44
+    ).map(([x, y]): [number, number] => [x * 22 + 20, y * 22]);
+    if (!pts.length) pts = [[0, 0]];
+    glyphCache.set(ch, pts);
+  }
+  return pts;
+}
+
+/** Writes `ch` into k dots of a shape from index i0, keeping their depth. */
+function placeGlyph(out: Float32Array, i0: number, k: number, cell: Cell, ch: string) {
+  const pts = glyph(ch);
+  const half = TICKET.h / 2;
+  for (let j = 0; j < k; j++) {
+    const [gx, gy] = pts[(j * 37 + cell.col * 11) % pts.length]!;
+    // A sub-pixel nudge so dots that share a pixel don't stack.
+    out[(i0 + j) * 3] = (cell.x + gx + ((j * 0.618) % 1) - 0.5 - TICKET.w / 2) / half;
+    out[(i0 + j) * 3 + 1] = (cell.y + gy + ((j * 0.382) % 1) - 0.5 - half) / half;
+  }
+}
+
+/** The ticket's page edge, drawn apart from the text so it can take only a small share of dots. */
+function drawTicketEdge(ctx: CanvasRenderingContext2D) {
+  ctx.lineWidth = 2;
+  ctx.strokeRect(16, 16, 308, 408);
+}
+
+/** The ticket's text without the names: a small code block crediting the team. */
+function drawTicketText(ctx: CanvasRenderingContext2D) {
+  ctx.textBaseline = 'middle';
+  // Monospace fonts top out at bold, so a stroke thickens the strokes enough to hold in dots.
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  const write = (text: string, x: number, y: number) => {
+    ctx.fillText(text, x, y);
+    ctx.strokeText(text, x, y);
+  };
+  ctx.font = `900 24px ${MONO}`;
+  write('SF-042 · ticket', 40, 56);
+  ctx.fillRect(40, 82, 260, 2);
+  ctx.font = `900 26px ${MONO}`;
+  write('team = {', 40, 124);
+  write('}', 40, 336);
+  ctx.font = `900 24px ${MONO}`;
+  ROLES.forEach((role, r) => write(role, 50, NAME_Y[r]!));
+  write('status:', 40, 388);
+}
 
 /** Seeded random, so every load draws the same figure. */
 function rng(seed: number) {
@@ -64,8 +168,9 @@ function sample(form: FormId, n: number, rand: () => number): Float32Array {
     );
     for (let i = 0; i < n; i++) {
       const [x, y] = pts[Math.floor(rand() * pts.length)] ?? [0, 0];
-      // Extruded: most dots on the two faces, the rest through the depth for the side walls.
-      const z = rand() < 0.8 ? (rand() < 0.5 ? -0.09 : 0.09) : (rand() - 0.5) * 0.18;
+      // Extruded: most dots on the two faces, the rest through the depth for the side walls. Kept
+      // shallow, since deeper faces split into two ghosted marks as it turns.
+      const z = rand() < 0.85 ? (rand() < 0.5 ? -0.04 : 0.04) : (rand() - 0.5) * 0.08;
       put(i, x * 1.05, y * 1.05, z);
     }
     return out;
@@ -113,33 +218,17 @@ function sample(form: FormId, n: number, rand: () => number): Float32Array {
   }
 
   if (form === 'ticket') {
-    // A ticket page: its edge, lines of text, and one flagged span drawn densely.
-    const W = 1.4;
-    const H = 1.84;
-    const top = -H / 2 + 0.3;
-    const gap = 0.2;
-    const rows = [0.62, 0.92, 0.78, 0.86, 0.5, 0.88, 0.7];
+    // A ticket page written as code, crediting the team; the names are placed glyph by glyph.
+    const { cells, k, base } = teamLayout(n);
+    const edge = rasterPoints(drawTicketEdge, TICKET.w, TICKET.h);
+    const text = rasterPoints(drawTicketText, TICKET.w, TICKET.h);
     for (let i = 0; i < n; i++) {
-      const r = rand();
-      let x: number;
-      let y: number;
-      if (r < 0.16) {
-        const t = rand() * 2 * (W + H);
-        if (t < W) [x, y] = [-W / 2 + t, -H / 2];
-        else if (t < W + H) [x, y] = [W / 2, -H / 2 + (t - W)];
-        else if (t < 2 * W + H) [x, y] = [W / 2 - (t - W - H), H / 2];
-        else [x, y] = [-W / 2, H / 2 - (t - 2 * W - H)];
-      } else if (r < 0.36) {
-        // The flagged span on the third line, filled like a highlighter mark.
-        x = -0.22 + rand() * 0.66;
-        y = top + 2 * gap + (rand() - 0.5) * 0.14;
-      } else {
-        const row = Math.floor(rand() * rows.length);
-        x = -W / 2 + 0.16 + rand() * (W - 0.32) * rows[row]!;
-        y = top + row * gap + (rand() - 0.5) * 0.04;
-      }
+      // The edge gets a small share, so the labels keep most of the dots.
+      const pts = i < base * 0.12 ? edge : text;
+      const [x, y] = i < base ? (pts[Math.floor(rand() * pts.length)] ?? [0, 0]) : [0, 0];
       put(i, x, y, (rand() - 0.5) * 0.05);
     }
+    cells.forEach((c, j) => placeGlyph(out, base + j * k, k, c, c.ch));
     return out;
   }
 
@@ -190,11 +279,12 @@ function sample(form: FormId, n: number, rand: () => number): Float32Array {
 }
 
 /**
- * A dense field of ink dots that builds SpecFix's forms: the SF mark, a ticket with a flagged
- * span, a sphere and a knot. The dots assemble out of a dust cloud on load and rebuild in a
- * left-to-right wave on every change. It is interactive: drag to turn it, move the cursor to push
- * dots aside, click to scatter them and watch them spring back, and it moves on to the next form by itself. It reads its ink
- * from the CSS `color`, pauses off screen, and under reduced motion draws one still frame.
+ * A dense field of ink dots that builds SpecFix's forms: the SF mark, a ticket that prints top
+ * to bottom and decodes the team's names, a sphere and a knot. The dots assemble out of a dust
+ * cloud on load and rebuild in a left-to-right wave on every change. It is interactive: drag to
+ * turn it, move the cursor to push dots aside, click to scatter them and watch them spring back,
+ * and it moves on to the next form by itself. It reads its ink from the CSS `color`, pauses off
+ * screen, and under reduced motion draws one still frame.
  */
 export function ParticleFigure({
   speed,
@@ -202,6 +292,7 @@ export function ParticleFigure({
   density = 0.9,
   className,
   label,
+  captions = false,
 }: {
   /** Motion multiplier: 1 is the default pace. */
   speed: number;
@@ -211,11 +302,14 @@ export function ParticleFigure({
   density?: number;
   className?: string;
   label: string;
+  /** Show the decoding line naming each form, under the figure. */
+  captions?: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ speed, intensity });
   live.current = { speed, intensity };
   const formRef = useRef(0);
+  const captionRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -223,8 +317,7 @@ export function ParticleFigure({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const small = canvas.clientWidth < 420;
-    const n = Math.round((small ? 7000 : 14000) * Math.min(1, Math.max(0.3, density)));
+    const n = Math.round(11000 * Math.min(1, Math.max(0.3, density)));
     const rand = rng(11);
     const shapes = FORMS.map((f) => sample(f, n, rand));
     // The dust cloud every dot starts from on load.
@@ -239,6 +332,47 @@ export function ParticleFigure({
     const pos = new Float32Array(n * 2);
     const SHADES = 9;
     const shade = new Uint8Array(n);
+
+    // The ticket's names decode: each character cycles through code glyphs, then locks in.
+    const ticket = shapes[FORMS.indexOf('ticket')]!;
+    const team = teamLayout(n);
+    const lockAt = new Float64Array(team.cells.length);
+    const locked = new Uint8Array(team.cells.length);
+    // -1 idle, 0 decoding, otherwise when the last name locked.
+    let decoded = -1;
+    // 0–1: how much heavier the dots draw, eased in while the SF mark is up so its broad
+    // shapes read solid rather than speckled.
+    let heavy = 0;
+    const finishDecode = () => {
+      team.cells.forEach((c, j) => placeGlyph(ticket, team.base + j * team.k, team.k, c, c.ch));
+      decoded = -1;
+    };
+    const startDecode = (now: number) => {
+      const sp = live.current.speed;
+      team.cells.forEach((c, j) => {
+        // The code runs for a beat once the page has printed, then the names land row by row.
+        lockAt[j] = now + morphMs() + (1300 + c.row * 380 + c.col * 70) / sp;
+        locked[j] = 0;
+      });
+      decoded = 0;
+    };
+    const stepDecode = (now: number) => {
+      let done = true;
+      team.cells.forEach((c, j) => {
+        const i0 = team.base + j * team.k;
+        if (now < lockAt[j]!) {
+          done = false;
+          if (Math.random() < 0.25) placeGlyph(ticket, i0, team.k, c, noise());
+        } else if (!locked[j]) {
+          locked[j] = 1;
+          placeGlyph(ticket, i0, team.k, c, c.ch);
+          // A small hop as each letter lands.
+          for (let d = i0; d < i0 + team.k; d++)
+            vel[d * 2 + 1] = vel[d * 2 + 1]! - 2 - Math.random() * 2;
+        }
+      });
+      if (done) decoded = now;
+    };
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
     let to: Float32Array = shapes[formRef.current]!;
@@ -278,11 +412,13 @@ export function ParticleFigure({
     };
 
     const morphMs = () => 1900 / live.current.speed;
-    // A wave: dots on the left set off first; each also carries a little random lag.
+    // A wave: dots on the left set off first; each also carries a little random lag. The ticket
+    // prints instead, top to bottom.
     const progressOf = (i: number, now: number) => {
-      const xs = (to[i * 3]! + 1.2) / 2.4;
+      const printing = to === ticket;
+      const xs = (to[i * 3 + (printing ? 1 : 0)]! + 1.2) / 2.4;
       const t = (now - morphStart) / morphMs();
-      const delay = 0.45 * (0.65 * xs + 0.35 * lag[i]!);
+      const delay = 0.45 * (printing ? 0.85 * xs + 0.15 * lag[i]! : 0.65 * xs + 0.35 * lag[i]!);
       const p = Math.min(1, Math.max(0, (t - delay) / 0.55));
       return p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
     };
@@ -297,15 +433,41 @@ export function ParticleFigure({
       return out;
     };
 
+    // The caption decodes like the names: random code characters settling left to right.
+    let captionTimer = 0;
+    const showCaption = () => {
+      const el = captionRef.current;
+      if (!el) return;
+      clearInterval(captionTimer);
+      const text = CAPTIONS[FORMS[formRef.current]!];
+      if (reduce.matches || !text) {
+        el.textContent = text;
+        return;
+      }
+      const t0 = performance.now();
+      const settle = (i: number) => 250 + i * 45;
+      captionTimer = window.setInterval(() => {
+        const t = performance.now() - t0;
+        el.textContent = [...text]
+          .map((ch, i) => (ch === ' ' || t > settle(i) ? ch : noise()))
+          .join('');
+        if (t > settle(text.length)) clearInterval(captionTimer);
+      }, 40);
+    };
+
     const goto = (i: number) => {
       const next = ((i % FORMS.length) + FORMS.length) % FORMS.length;
       const now = performance.now();
       // Start from wherever the dots are now, mid-morph included.
       from = reduce.matches ? shapes[next]! : current(now);
+      if (decoded === 0) finishDecode();
+      decoded = -1;
       to = shapes[next]!;
       formRef.current = next;
       morphStart = reduce.matches ? -1 : now;
       lastChange = now;
+      if (to === ticket && !reduce.matches) startDecode(now);
+      showCaption();
       if (reduce.matches) draw(now);
       start();
     };
@@ -316,7 +478,14 @@ export function ParticleFigure({
       const { speed: sp, intensity: k } = live.current;
       const still = reduce.matches;
 
-      if (!still && morphStart < 0 && now - lastChange > 7200 / sp && now - lastTouch > 9000) {
+      if (decoded === 0) {
+        if (still) finishDecode();
+        else stepDecode(now);
+      }
+      // The ticket moves on soon after its names land; every other form holds a while.
+      const held =
+        decoded > 0 ? now - decoded > 1400 / sp : decoded < 0 && now - lastChange > 7200 / sp;
+      if (!still && morphStart < 0 && held && now - lastTouch > 9000) {
         goto(formRef.current + 1);
       }
       let morphing = morphStart >= 0;
@@ -335,8 +504,10 @@ export function ParticleFigure({
       pitch = Math.max(-0.9, Math.min(0.9, pitch + spinPitch * dt));
       const w = canvas!.clientWidth;
       const h = canvas!.clientHeight;
-      const idleYaw = still ? 0 : Math.sin(now * 0.00045 * sp) * 0.42;
-      const idlePitch = still ? 0 : Math.sin(now * 0.00031 * sp) * 0.12;
+      // Text and the logo read best face on, so they sway less.
+      const flat = to === ticket ? 0.25 : to === shapes[0] ? 0.4 : 1;
+      const idleYaw = still ? 0 : Math.sin(now * 0.00045 * sp) * 0.42 * flat;
+      const idlePitch = still ? 0 : Math.sin(now * 0.00031 * sp) * 0.12 * flat;
       const tiltX = pointer && !drag ? (pointer.x / w - 0.5) * 0.35 : 0;
       const tiltY = pointer && !drag ? (pointer.y / h - 0.5) * 0.25 : 0;
       const ay = yaw + idleYaw + tiltX;
@@ -409,14 +580,35 @@ export function ParticleFigure({
         const depth = Math.max(0, Math.min(1, (1 - rz2) / 2));
         shade[i] = Math.min(SHADES - 1, Math.floor(depth * SHADES));
       }
+      heavy += ((to === shapes[0] ? 1 : 0) - heavy) * Math.min(1, 0.06 * dt);
+      // Every figure keeps all its dots and shrinks them with its size, so a small one (the login
+      // panel, a phone) is the landing hero scaled down: same tone, same detail, names still legible.
+      const zoom = Math.min(1, Math.max(0.6, scale / 248));
       // One fillStyle per shade keeps thousands of dots cheap.
       for (let b = 0; b < SHADES; b++) {
         const depth = (b + 0.5) / SHADES;
-        const size = 1.4 + 1.4 * depth;
-        ctx!.fillStyle = `rgba(${ink},${(0.8 + 0.2 * depth).toFixed(3)})`;
+        const size = (1.1 + 0.9 * depth) * (1 + 0.5 * heavy) * zoom;
+        ctx!.fillStyle = `rgba(${ink},${(0.65 + 0.3 * depth + 0.05 * heavy).toFixed(3)})`;
         for (let i = 0; i < n; i++) {
           if (shade[i] !== b) continue;
           ctx!.fillRect(pos[i * 2]! - size / 2, pos[i * 2 + 1]! - size / 2, size, size);
+        }
+      }
+
+      // The print head: a line running down the ticket just where its dots are landing. It solves
+      // the ticket delay in progressOf for the row at half progress; change the two together.
+      if (morphing && to === ticket) {
+        const ys = ((now - morphStart) / morphMs() - 0.275) / 0.45 / 0.85 - 0.075 / 0.85;
+        if (ys > 0 && ys < 1) {
+          const y = ys * 2.4 - 1.2;
+          ctx!.fillStyle = `rgba(${ink},0.9)`;
+          for (let x = -0.78; x <= 0.78; x += 0.012) {
+            const rz2 = y * spch + x * sa * cp;
+            const persp = 2.8 / (2.8 + rz2);
+            const bx = cx + x * ca * scale * persp * breathe;
+            const by = cy + (y * cp - x * sa * spch) * scale * persp * breathe;
+            ctx!.fillRect(bx - 0.8, by - 0.8, 1.6, 1.6);
+          }
         }
       }
     }
@@ -491,6 +683,8 @@ export function ParticleFigure({
     }
 
     resize();
+    if (to === ticket && !reduce.matches) startDecode(performance.now());
+    showCaption();
     draw(performance.now());
     start();
 
@@ -566,6 +760,7 @@ export function ParticleFigure({
 
     return () => {
       cancelAnimationFrame(frame);
+      clearInterval(captionTimer);
       ro.disconnect();
       io.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
@@ -578,8 +773,9 @@ export function ParticleFigure({
   }, [density]);
 
   return (
-    <div className={`${s.figureWrap} ${className ?? ''}`}>
+    <div className={className}>
       <canvas ref={ref} className={s.figureCanvas} role="img" aria-label={label} />
+      {captions ? <span ref={captionRef} className={s.figureCaption} aria-hidden="true" /> : null}
     </div>
   );
 }

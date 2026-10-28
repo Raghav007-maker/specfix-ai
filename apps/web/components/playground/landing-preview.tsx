@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -255,6 +254,7 @@ export function LandingPreview({ settings, go }: { settings: Settings; go: Go })
                 speed={b.motionSpeed}
                 intensity={b.intensity / 100}
                 density={b.dotDensity / 100}
+                captions
                 label="Animated dot figure: drag to turn it, click to scatter the dots."
               />
             ) : (
@@ -262,19 +262,6 @@ export function LandingPreview({ settings, go }: { settings: Settings; go: Go })
             )}
             {q.terminal ? <ReviewLog /> : null}
           </div>
-
-          {q.showFigures ? (
-            <a
-              className={s.cue}
-              href="#pg-figures"
-              onClick={(e) => {
-                e.preventDefault();
-                jump('pg-figures');
-              }}
-            >
-              Six ways a ticket goes wrong <ArrowDown aria-hidden size={14} strokeWidth={1.75} />
-            </a>
-          ) : null}
         </section>
 
         {q.showFigures ? <Figures /> : null}
