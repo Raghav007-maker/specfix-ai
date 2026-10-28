@@ -25,7 +25,9 @@
       "@specfix/core": ["../../packages/core/src/index.ts"],
       "@specfix/compiler": ["../../packages/compiler/src/index.ts"],
       "@specfix/agent": ["../../packages/agent/src/index.ts"],
-      "@specfix/db": ["../../packages/db/src/index.ts"]
+      "@specfix/db": ["../../packages/db/src/index.ts"],
+      "@specfix/ingest": ["../../packages/ingest/src/index.ts"],
+      "@specfix/sync": ["../../packages/sync/src/index.ts"]
     },
     "allowJs": true
   },

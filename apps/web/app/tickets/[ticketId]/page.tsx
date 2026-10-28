@@ -15,13 +15,15 @@ import {
   type ReadinessTimelineRow,
   type ReviewerGapRow,
   type TicketDecisionRow,
+  currentWritebacks,
+  type WritebackRow,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
 import { TicketTabs } from '@/components/ticket-tabs';
 import { EmptyNote, Notice, Pill, SectionHeading } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { buildManuscript } from '@/lib/manuscript';
-import { beginReview } from './actions';
+import { beginReview, retryWritebackAction } from './actions';
 import {
   AuditTrail,
   BlindGapStage,
@@ -98,6 +100,7 @@ export default async function TicketPage({
     gaps = await listGaps(tenant.tenant_id, session.id);
   }
 
+  const writebacks = locked ? await currentWritebacks(tenant.tenant_id, ticket.id) : [];
   const openFlags = flags.filter((f) => f.status === 'open').length;
   const decided = flags.length - openFlags;
   const matched = gaps.filter((g) => g.matched_flag_id !== null).length;
@@ -195,6 +198,8 @@ export default async function TicketPage({
         </Notice>
       ) : null}
 
+      {ready ? <JiraWritebackStatus ticketId={ticket.id} rows={writebacks} /> : null}
+
       {!version ? (
         <EmptyNote>
           This ticket has no captured version yet, so there is nothing to review. Versions are
@@ -253,4 +258,36 @@ function StartReview() {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** Whether the sign-off reached Jira, with a retry when it did not. */
+function JiraWritebackStatus({ ticketId, rows }: { ticketId: string; rows: WritebackRow[] }) {
+  if (rows.length === 0) return null;
+  const failed = rows.filter((r) => r.status === 'failed');
+  if (failed.length > 0) {
+    return (
+      <Notice tone="warning" className="mb-6" title="Jira was not updated">
+        <p>{failed[0]!.error}</p>
+        <form action={retryWritebackAction} className="mt-2">
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <SubmitButton size="sm" variant="outline" pendingLabel="Retrying…">
+            Retry Jira update
+          </SubmitButton>
+        </form>
+      </Notice>
+    );
+  }
+  const done = rows.filter((r) => r.status === 'done').map((r) => r.kind);
+  if (done.length === 0) return null;
+  return (
+    <p className="mb-6 text-sm text-muted-foreground">
+      Written to Jira:{' '}
+      {done
+        .map((k) =>
+          k === 'comment' ? 'clarified acceptance criteria comment' : 'specfix-ready label'
+        )
+        .join(' and ')}
+      .
+    </p>
+  );
 }

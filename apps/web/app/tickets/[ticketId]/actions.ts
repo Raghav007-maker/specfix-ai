@@ -13,6 +13,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { REVIEW_DECISIONS, type ReviewDecision } from '@specfix/shared';
+import { writeBackSignOff } from '@specfix/sync';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
@@ -30,6 +31,7 @@ import {
   markReady,
   removeGap,
   startSession,
+  notifyTicketEvent,
 } from '@/lib/repos';
 
 /** A refusal these actions word for the reviewer themselves. */
@@ -180,5 +182,34 @@ export async function markReadyAction(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   await settle(ctx.ticketId, async () => {
     await markReady(ctx.tenantId, ctx.ticketId, ctx.userId);
+    await notifyTicketEvent(ctx.tenantId, {
+      kind: 'signed_off',
+      ticketId: ctx.ticketId,
+      actorId: ctx.userId,
+    });
+    await writeBack(ctx);
   });
+}
+
+/** Retries a Jira write-back that failed at sign-off. Writes nothing already written. */
+export async function retryWritebackAction(formData: FormData): Promise<void> {
+  const ctx = await context(formData);
+  await settle(ctx.ticketId, () => writeBack(ctx));
+}
+
+/**
+ * The sign-off write to Jira (a comment with the clarified acceptance criteria and a
+ * `specfix-ready` label). The ticket is already marked ready when this runs, so a failed
+ * write is reported, never rolled back, and the page offers a retry.
+ */
+async function writeBack(ctx: Context): Promise<void> {
+  const outcome = await writeBackSignOff(ctx.tenantId, {
+    ticketId: ctx.ticketId,
+    userId: ctx.userId,
+  });
+  if (outcome.status === 'failed') {
+    throw new ActionError(
+      `Marked ready, but updating Jira failed: ${outcome.error} Use "Retry Jira update" to try again.`
+    );
+  }
 }

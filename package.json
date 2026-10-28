@@ -24,6 +24,7 @@
     "embed:backfill": "tsx packages/db/scripts/embed-backfill.ts",
     "eval": "tsx packages/eval/src/cli.ts",
     "ops": "tsx scripts/ops.ts",
+    "worker": "tsx scripts/worker.ts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test"
   },
   "devDependencies": {
@@ -41,5 +42,14 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "zod": "^3.23.8"
+  },
+  "overrides": {
+    "sharp": "0.35.5",
+    "postcss": "8.5.29",
+    "source-map-js": "1.2.2",
+    "next": {
+      ".": "15.5.28",
+      "postcss": "8.5.29"
+    }
   }
 }

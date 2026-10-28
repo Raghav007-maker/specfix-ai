@@ -15,6 +15,8 @@ import {
   listScaffoldsForVersion,
   listScenarioReviewsForVersion,
   listScenariosForVersion,
+  latestCiForTicket,
+  type ScenarioCiRow,
   untestedResolvedFlags,
   type CoverageCounts,
   type DriftedScenario,
@@ -35,6 +37,7 @@ import {
   SpecsAuditTrail,
   type SemanticState,
 } from './specs';
+import { CiPanel } from './ci-panel';
 
 /**
  * The Specs tab: compile Gherkin scenarios from the approved requirement, then review
@@ -75,11 +78,13 @@ export default async function SpecsPage({
   let clauseRows: ClauseCoverageRow[] = [];
   let semanticState: SemanticState = 'schema_missing';
   let drift: DriftedScenario[] = [];
+  let ci: ScenarioCiRow[] = [];
 
   if (version) {
     const events = await listReadinessEvents(tenant.tenant_id, ticket.id);
     ready = events.some((e) => e.event === 'marked_ready' && e.ticket_version_id === version.id);
     scenarios = await listScenariosForVersion(tenant.tenant_id, version.id);
+    ci = await latestCiForTicket(tenant.tenant_id, ticket.id);
     scaffolds = await listScaffoldsForVersion(tenant.tenant_id, version.id);
     reviews = await listScenarioReviewsForVersion(tenant.tenant_id, version.id);
     coverage = await coverageCounts(tenant.tenant_id, version.id);
@@ -197,6 +202,12 @@ export default async function SpecsPage({
           </div>
         </div>
       )}
+
+      {version ? (
+        <div className="mt-6">
+          <CiPanel scenarios={scenarios} rows={ci} />
+        </div>
+      ) : null}
 
       {version && coverage ? (
         <div className="mt-6">
