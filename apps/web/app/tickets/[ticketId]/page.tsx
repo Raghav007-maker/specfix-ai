@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
+import { agentAccess } from '@/lib/plan';
 import {
   pullRequestsForTicket,
   type TicketPullRequestRow,
@@ -194,7 +195,11 @@ export default async function TicketPage({
       </div>
 
       <div className="mt-5">
-        <TicketTabs ticketId={ticket.id} active="review" />
+        <TicketTabs
+          ticketId={ticket.id}
+          active="review"
+          agent={await agentAccess(user, tenant.tenant_id)}
+        />
       </div>
 
       {error ? (

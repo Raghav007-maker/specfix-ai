@@ -53,6 +53,9 @@ import {
   syncClauseEmbeddings,
   syncRequirementEmbeddings,
   timeToReady,
+  setProUntil,
+  tenantPlan,
+  FREE_PROJECT_LIMIT,
   type EmbeddingSyncResult,
   type TenantId,
 } from '@specfix/db';
@@ -86,6 +89,11 @@ specfix ops
       plus scenario acceptance (clean vs after-edit) from the scenario review history.
       --prompt scopes the flag rates; --compile-prompt scopes the scenario rates.
 
+  plan --tenant <uuid|name> [--owner <email>] (--pro-until <YYYY-MM-DD> | --free)
+      Put a workspace on Pro until the end of that day (India time), or back on Free.
+      Free allows five projects and no resolution agent. SpecFix's own team, listed in
+      SPECFIX_OWNER_EMAILS, needs neither. --owner is needed only with a name.
+
   compile --ticket <path> [options]
       Phase 2. Compile Gherkin scenarios from a ticket's approved acceptance criteria
       and print them. Costs money (one model call).
@@ -111,6 +119,8 @@ async function main(argv: string[]): Promise<number> {
       return invite(flags);
     case 'metrics':
       return metrics(flags);
+    case 'plan':
+      return plan(flags);
     case 'compile':
       return compile(flags, rest);
     case undefined:
@@ -222,7 +232,8 @@ async function seed(flags: Flags): Promise<number> {
   const projects = await listProjects(tenantId);
   const project =
     projects.find((p) => p.name === projectName) ??
-    (await createProject(tenantId, { name: projectName, sourceType: 'file' }));
+    // The operator seeds on SpecFix's behalf, so the Free project limit does not apply.
+    (await createProject(tenantId, { name: projectName, sourceType: 'file' }, { unlimited: true }));
   process.stdout.write(`project "${project.name}" (${project.id})\n`);
 
   const source = new FileSource({ dir });
@@ -480,33 +491,65 @@ async function invite(flags: Flags): Promise<number> {
   return 0;
 }
 
+// --- plan --------------------------------------------------------------------
+
+async function plan(flags: Flags): Promise<number> {
+  const until = flags['pro-until'];
+  const free = 'free' in flags;
+  if (free === Boolean(until)) throw new UsageError('give exactly one of --pro-until or --free');
+
+  let proUntil: Date | null = null;
+  if (until) {
+    // The end of that day in India, so "until 2027-01-31" includes the 31st.
+    proUntil = /^\d{4}-\d{2}-\d{2}$/.test(until) ? new Date(`${until}T23:59:59+05:30`) : null;
+    if (!proUntil || Number.isNaN(proUntil.getTime())) {
+      throw new UsageError('--pro-until must be a date like 2027-01-31');
+    }
+  }
+
+  const tenantId = await resolveTenant(flags);
+  if (!tenantId) return 1;
+  if (!(await setProUntil(tenantId, proUntil))) {
+    process.stderr.write(`No workspace ${tenantId}.\n`);
+    return 1;
+  }
+  const { projectCount } = await tenantPlan(tenantId);
+  process.stdout.write(
+    proUntil
+      ? `workspace ${tenantId} is on Pro until ${proUntil.toISOString()} (${projectCount} projects)\n`
+      : `workspace ${tenantId} is on Free (${projectCount} of ${FREE_PROJECT_LIMIT} projects)\n`
+  );
+  return 0;
+}
+
 // --- metrics -----------------------------------------------------------------
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function metrics(flags: Flags): Promise<number> {
+/** --tenant as a uuid, or as a workspace name that --owner belongs to. Null after a message. */
+async function resolveTenant(flags: Flags): Promise<TenantId | null> {
   const tenantRef = required(flags, 'tenant');
-  const promptVersion = flags['prompt'] || undefined;
-
-  let tenantId: TenantId;
-  if (UUID.test(tenantRef)) {
-    tenantId = tenantRef;
-  } else {
-    const ownerEmail = required(flags, 'owner');
-    const owner = await findUserByEmail(ownerEmail);
-    if (!owner) {
-      process.stderr.write(`No account for ${ownerEmail}.\n`);
-      return 1;
-    }
-    const membership = (await listMembershipsForUser(owner.id)).find(
-      (m) => m.tenant_name === tenantRef
-    );
-    if (!membership) {
-      process.stderr.write(`${ownerEmail} is not a member of "${tenantRef}".\n`);
-      return 1;
-    }
-    tenantId = membership.tenant_id;
+  if (UUID.test(tenantRef)) return tenantRef;
+  const ownerEmail = required(flags, 'owner');
+  const owner = await findUserByEmail(ownerEmail);
+  if (!owner) {
+    process.stderr.write(`No account for ${ownerEmail}.\n`);
+    return null;
   }
+  const membership = (await listMembershipsForUser(owner.id)).find(
+    (m) => m.tenant_name === tenantRef
+  );
+  if (!membership) {
+    process.stderr.write(`${ownerEmail} is not a member of "${tenantRef}".\n`);
+    return null;
+  }
+  return membership.tenant_id;
+}
+
+async function metrics(flags: Flags): Promise<number> {
+  const promptVersion = flags['prompt'] || undefined;
+  const tenantId = await resolveTenant(flags);
+  if (!tenantId) return 1;
 
   const precision = await precisionCounts(tenantId, promptVersion);
   const recall = await recallCounts(tenantId, promptVersion);

@@ -8,6 +8,7 @@
  * exists to eliminate.
  */
 import { tx, query, type TenantId } from '../client.ts';
+import { assertProjectRoom } from './plans.ts';
 
 export interface TenantRow {
   id: string;
@@ -46,6 +47,10 @@ export async function addMembership(
   );
 }
 
+/**
+ * Adds a project. On the Free plan this throws ProjectLimitError once the workspace has its
+ * five; `unlimited` skips the check for SpecFix's own team.
+ */
 export async function createProject(
   tenantId: TenantId,
   input: {
@@ -53,22 +58,28 @@ export async function createProject(
     sourceType: 'file' | 'jira';
     jiraCloudId?: string | undefined;
     jiraProjectKey?: string | undefined;
-  }
+  },
+  options: { unlimited?: boolean } = {}
 ): Promise<ProjectRow> {
-  const [project] = await query<ProjectRow>(
-    `insert into projects (tenant_id, name, source_type, jira_cloud_id, jira_project_key)
-     values ($1, $2, $3, $4, $5)
-     returning id, tenant_id, name, source_type, jira_cloud_id, jira_project_key`,
-    [
-      tenantId,
-      input.name,
-      input.sourceType,
-      input.jiraCloudId ?? null,
-      input.jiraProjectKey ?? null,
-    ]
-  );
-  if (!project) throw new Error('projects insert returned no row');
-  return project;
+  return tx(async (client) => {
+    if (!options.unlimited) await assertProjectRoom(client, tenantId);
+    const {
+      rows: [project],
+    } = await client.query<ProjectRow>(
+      `insert into projects (tenant_id, name, source_type, jira_cloud_id, jira_project_key)
+       values ($1, $2, $3, $4, $5)
+       returning id, tenant_id, name, source_type, jira_cloud_id, jira_project_key`,
+      [
+        tenantId,
+        input.name,
+        input.sourceType,
+        input.jiraCloudId ?? null,
+        input.jiraProjectKey ?? null,
+      ]
+    );
+    if (!project) throw new Error('projects insert returned no row');
+    return project;
+  });
 }
 
 /**

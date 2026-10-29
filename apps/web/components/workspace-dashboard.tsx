@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { PRESETS, cssVars, dataAttrs, sanitize } from '@/components/playground/settings';
+import { WORKSPACE_SETTINGS, cssVars, dataAttrs } from '@/components/playground/settings';
 import { DashboardPreview } from '@/components/playground/dashboard-preview';
 import type { DashboardData } from '@/components/playground/dashboard-data';
 import p from '@/components/playground/playground.module.css';
@@ -26,21 +26,7 @@ export function WorkspaceDashboard({
   top?: ReactNode;
 }) {
   const router = useRouter();
-  // The soft workspace preset on a white page, as in the supplied dashboard screenshot.
-  const settings = useMemo(
-    () =>
-      sanitize({
-        ...PRESETS.workspace.patch,
-        appearance: {
-          ...PRESETS.workspace.patch.appearance,
-          page: '#ffffff',
-          sidebar: '#ffffff',
-          surface: '#f4f4f5',
-          border: '#ececef',
-        },
-      }).settings,
-    []
-  );
+  const settings = WORKSPACE_SETTINGS;
   const style = { ...cssVars(settings), minHeight: '100vh' } as CSSProperties;
   return (
     <div

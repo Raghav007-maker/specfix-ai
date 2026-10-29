@@ -4,7 +4,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
-import { listMembershipsForUser, createProject } from '@/lib/repos';
+import { listMembershipsForUser, createProject, ProjectLimitError } from '@/lib/repos';
+import { isAppOwner } from '@/lib/plan';
 import { TENANT_COOKIE } from '@/lib/tenant';
 
 /** Switch the active tenant. The target is validated against the user's actual
@@ -23,7 +24,7 @@ export async function switchTenant(formData: FormData): Promise<void> {
   redirect('/');
 }
 
-/** Add a project to the current tenant. Owners and admins only. */
+/** Add a project to the current tenant. Owners and admins only; Free allows five. */
 export async function createProjectForCurrentTenant(formData: FormData): Promise<void> {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
@@ -37,6 +38,19 @@ export async function createProjectForCurrentTenant(formData: FormData): Promise
     redirect('/?error=' + encodeURIComponent('A project name is required.'));
   }
 
-  const project = await createProject(tenant.tenant_id, { name, sourceType: 'file' });
-  redirect(`/?project=${project.id}`);
+  let projectId: string;
+  try {
+    projectId = (
+      await createProject(
+        tenant.tenant_id,
+        { name, sourceType: 'file' },
+        { unlimited: isAppOwner(user) }
+      )
+    ).id;
+  } catch (error) {
+    if (error instanceof ProjectLimitError)
+      redirect('/?error=' + encodeURIComponent(error.message));
+    throw error;
+  }
+  redirect(`/?project=${projectId}`);
 }
