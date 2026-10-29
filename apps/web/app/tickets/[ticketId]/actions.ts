@@ -29,6 +29,7 @@ import {
   linkGap,
   lockGaps,
   markReady,
+  queueGithubSyncForTicket,
   removeGap,
   startSession,
   notifyTicketEvent,
@@ -182,6 +183,10 @@ export async function markReadyAction(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   await settle(ctx.ticketId, async () => {
     await markReady(ctx.tenantId, ctx.ticketId, ctx.userId);
+    // Linked PRs re-check their "not ready" comment. Best effort: sign-off stands either way.
+    await queueGithubSyncForTicket(ctx.tenantId, ctx.ticketId).catch((error) =>
+      console.error('[github] queueing PR re-check failed', error)
+    );
     await notifyTicketEvent(ctx.tenantId, {
       kind: 'signed_off',
       ticketId: ctx.ticketId,

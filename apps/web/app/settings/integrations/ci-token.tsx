@@ -68,10 +68,14 @@ export function CiTokenControl({
   if: always()
   env:
     SPECFIX_CI_TOKEN: \${{ secrets.SPECFIX_CI_TOKEN }}
+    SHA: \${{ github.event.pull_request.head.sha || github.sha }}
+    BRANCH: \${{ github.head_ref || github.ref_name }}
+    PR: \${{ github.event.pull_request.number }}
   run: |
-    jq -n --arg c "$GITHUB_SHA" --arg b "$GITHUB_REF_NAME" \\
+    jq -n --arg c "$SHA" --arg b "$BRANCH" --arg p "$PR" --arg g "$GITHUB_REPOSITORY" \\
       --arg u "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \\
-      --slurpfile r results.json '{commit:$c, branch:$b, runUrl:$u, report:$r[0]}' |
+      --slurpfile r results.json \\
+      '{commit:$c, branch:$b, pullRequest:$p, repository:$g, runUrl:$u, report:$r[0]}' |
     curl -sf --max-time 60 -X POST "${baseUrl}/api/ci/results" \\
       -H "Authorization: Bearer $SPECFIX_CI_TOKEN" \\
       -H "Content-Type: application/json" --data-binary @-`}</pre>

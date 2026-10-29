@@ -21,6 +21,9 @@ export const JOB_KINDS = [
   'jira_webhook_sync',
   'notify_deliver',
   'notify_digest',
+  'github_pr_sync',
+  'github_check_run',
+  'github_repo_sync',
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';

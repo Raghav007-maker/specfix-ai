@@ -15,6 +15,11 @@ import { readLimited } from '@/lib/read-limited';
  *     -H "Authorization: Bearer $SPECFIX_CI_TOKEN" -H "Content-Type: application/json" \
  *     --data-binary @-
  *
+ * On a pull request, send the PR's head commit and branch rather than GitHub's merge
+ * ref, plus `repository` ($GITHUB_REPOSITORY) and `pullRequest` (the PR number) when the
+ * project has more than one mapped repository. Only runs on the repository's default
+ * branch set a ticket's CI status; PR runs are shown on the PR and its check run.
+ *
  * The token (one per project, from Settings → Integrations) decides the workspace and
  * project. Tests are matched to scenarios by their `@sf-<id>` tag; results for scenarios
  * outside the token's project are ignored. A raw Playwright file (top-level `suites`) is
@@ -62,12 +67,18 @@ export async function POST(request: NextRequest) {
   }
 
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const prNumber = (v: unknown) => {
+    const n = typeof v === 'string' && /^\d{1,9}$/.test(v.trim()) ? Number(v) : v;
+    return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : null;
+  };
   let recorded;
   try {
     recorded = await recordCiRun(scope.tenant_id, scope.project_id, {
       commitSha: text(wrapper.commit),
       branch: text(wrapper.branch),
       runUrl: text(wrapper.runUrl),
+      repository: text(wrapper.repository),
+      pullRequest: prNumber(wrapper.pullRequest),
       results: parsed.results,
       unmatched: parsed.unmatched,
       tokenHash: scope.token_hash,

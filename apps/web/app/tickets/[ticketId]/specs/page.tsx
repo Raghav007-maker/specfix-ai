@@ -16,6 +16,10 @@ import {
   listScenarioReviewsForVersion,
   listScenariosForVersion,
   latestCiForTicket,
+  pullRequestsForTicket,
+  scaffoldPrContext,
+  type GithubRepositoryRow,
+  type TicketPullRequestRow,
   type ScenarioCiRow,
   untestedResolvedFlags,
   type CoverageCounts,
@@ -38,6 +42,7 @@ import {
   type SemanticState,
 } from './specs';
 import { CiPanel } from './ci-panel';
+import { PullRequestPanel } from './pr-panel';
 
 /**
  * The Specs tab: compile Gherkin scenarios from the approved requirement, then review
@@ -79,12 +84,23 @@ export default async function SpecsPage({
   let semanticState: SemanticState = 'schema_missing';
   let drift: DriftedScenario[] = [];
   let ci: ScenarioCiRow[] = [];
+  let pulls: TicketPullRequestRow[] = [];
+  let prRepos: GithubRepositoryRow[] = [];
+  let approvedScaffolds = 0;
+  const canOpenPr = tenant.role === 'owner' || tenant.role === 'admin';
 
   if (version) {
     const events = await listReadinessEvents(tenant.tenant_id, ticket.id);
     ready = events.some((e) => e.event === 'marked_ready' && e.ticket_version_id === version.id);
     scenarios = await listScenariosForVersion(tenant.tenant_id, version.id);
     ci = await latestCiForTicket(tenant.tenant_id, ticket.id);
+    const [prs, prContext] = await Promise.all([
+      pullRequestsForTicket(tenant.tenant_id, ticket.id),
+      scaffoldPrContext(tenant.tenant_id, ticket.id),
+    ]);
+    pulls = prs;
+    prRepos = prContext?.repos ?? [];
+    approvedScaffolds = prContext?.scaffolds.length ?? 0;
     scaffolds = await listScaffoldsForVersion(tenant.tenant_id, version.id);
     reviews = await listScenarioReviewsForVersion(tenant.tenant_id, version.id);
     coverage = await coverageCounts(tenant.tenant_id, version.id);
@@ -206,6 +222,18 @@ export default async function SpecsPage({
       {version ? (
         <div className="mt-6">
           <CiPanel scenarios={scenarios} rows={ci} />
+        </div>
+      ) : null}
+
+      {version && (pulls.length > 0 || prRepos.length > 0) ? (
+        <div className="mt-6">
+          <PullRequestPanel
+            ticketId={ticket.id}
+            pulls={pulls}
+            repos={prRepos}
+            approvedScaffolds={approvedScaffolds}
+            canOpen={canOpenPr}
+          />
         </div>
       ) : null}
 

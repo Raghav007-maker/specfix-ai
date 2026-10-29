@@ -43,7 +43,7 @@ export function CiPanel({ scenarios, rows }: { scenarios: ScenarioRow[]; rows: S
         </div>
         {latest ? (
           <p className="text-xs text-muted-foreground">
-            Latest run {latest.received_at.toLocaleString('en-GB')}
+            Latest default-branch run {latest.received_at.toLocaleString('en-GB')}
             {latest.commit_sha ? ` · ${latest.commit_sha.slice(0, 7)}` : ''}
             {latest.branch ? ` on ${latest.branch}` : ''}
             {latest.run_url ? (

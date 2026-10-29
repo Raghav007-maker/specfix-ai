@@ -10,6 +10,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
 import { JiraConnectionError, requireTenantAdmin } from './jira.ts';
+import { enqueueJob } from './jobs.ts';
 
 export class CiTokenError extends Error {}
 
@@ -135,9 +136,111 @@ export interface RecordedCiRun {
   /**
    * Tickets where an approved scenario has newly started failing (its previous result was
    * not a failure), for notifications. A scenario that keeps failing run after run, or a
-   * draft/dismissed one, does not notify again.
+   * draft/dismissed one, does not notify again. Only default-branch runs notify: a PR's
+   * failures are reported on the PR.
    */
   failedTickets: Array<{ ticket_id: string; failed: number; total: number }>;
+  /** Whether this run sets the tickets' CI status (it ran on the default branch). */
+  onDefaultBranch: boolean;
+  /** The linked PR this run belongs to, when SpecFix knows it. */
+  pullRequestId: string | null;
+}
+
+interface RunPlacement {
+  repositoryId: string | null;
+  pullRequestId: string | null;
+  /** The PR number when known but the PR itself is not stored yet. */
+  pullNumber: number | null;
+  onDefaultBranch: boolean;
+  installationActive: boolean;
+}
+
+/**
+ * Where a run belongs: which mapped repository, which PR, and whether it ran on the
+ * repository's default branch.
+ *
+ * The repository is the one CI named (`repository`, i.e. $GITHUB_REPOSITORY) among the
+ * project's mapped repositories, or the project's only mapped repository. A PR is found
+ * by its number (CI's `pullRequest`, or a `<n>/merge` ref as GitHub Actions reports for
+ * pull_request events), else by the head commit, else by an open PR from the branch.
+ *
+ * Without a mapped repository the default branch is assumed to be main or master; a run
+ * with no branch at all keeps counting, as it did before branches were considered.
+ */
+async function placeRun(
+  client: PoolClient,
+  tenantId: TenantId,
+  projectId: string,
+  input: {
+    commitSha: string | null;
+    branch: string | null;
+    repository: string | null;
+    pullRequest: number | null;
+  }
+): Promise<RunPlacement> {
+  const repos = (
+    await client.query<{
+      id: string;
+      full_name: string;
+      default_branch: string;
+      active: boolean;
+    }>(
+      `select r.id, r.full_name, r.default_branch, i.suspended_at is null as active
+       from github_repositories r
+       join github_installations i
+         on i.installation_id = r.installation_id and i.tenant_id = r.tenant_id
+       where r.tenant_id = $1 and r.project_id = $2`,
+      [tenantId, projectId]
+    )
+  ).rows;
+  const named = input.repository?.toLowerCase() ?? null;
+  const repo = named
+    ? (repos.find((r) => r.full_name.toLowerCase() === named) ?? null)
+    : repos.length === 1
+      ? repos[0]!
+      : null;
+
+  const mergeRef = input.branch ? /^(\d{1,9})\/merge$/.exec(input.branch) : null;
+  const pullNumber =
+    input.pullRequest && Number.isSafeInteger(input.pullRequest) && input.pullRequest > 0
+      ? input.pullRequest
+      : mergeRef
+        ? Number(mergeRef[1])
+        : null;
+
+  let pullRequestId: string | null = null;
+  if (repo) {
+    const found = pullNumber
+      ? await client.query<{ id: string }>(
+          `select id from github_pull_requests
+           where tenant_id = $1 and repository_id = $2 and number = $3`,
+          [tenantId, repo.id, pullNumber]
+        )
+      : await client.query<{ id: string }>(
+          `select id from github_pull_requests
+           where tenant_id = $1 and repository_id = $2
+             and (head_sha = $3 or (state = 'open' and head_ref = $4))
+           order by (head_sha = $3) desc, (state = 'open') desc, updated_at desc
+           limit 1`,
+          [tenantId, repo.id, input.commitSha ?? '', input.branch ?? '']
+        );
+    pullRequestId = found.rows[0]?.id ?? null;
+  }
+
+  let onDefaultBranch: boolean;
+  if (pullNumber || pullRequestId) onDefaultBranch = false;
+  else if (!input.branch) onDefaultBranch = true;
+  else if (repo) onDefaultBranch = input.branch === repo.default_branch;
+  else if (repos.length > 0) onDefaultBranch = repos.some((r) => r.default_branch === input.branch);
+  else onDefaultBranch = input.branch === 'main' || input.branch === 'master';
+
+  return {
+    repositoryId: repo?.id ?? null,
+    pullRequestId,
+    pullNumber: pullRequestId ? null : pullNumber,
+    onDefaultBranch,
+    installationActive: repo?.active ?? false,
+  };
 }
 
 export async function recordCiRun(
@@ -151,9 +254,21 @@ export async function recordCiRun(
     unmatched: number;
     /** The token that sent the run; marked used once the run is stored. */
     tokenHash?: string;
+    /** "owner/name" of the repository CI ran in ($GITHUB_REPOSITORY), when sent. */
+    repository?: string | null;
+    /** The PR number CI ran for, when sent. */
+    pullRequest?: number | null;
   }
 ): Promise<RecordedCiRun> {
   return tx(async (client) => {
+    const commitSha = clean(input.commitSha, 64);
+    const branch = clean(input.branch, 200);
+    const placement = await placeRun(client, tenantId, projectId, {
+      commitSha,
+      branch,
+      repository: clean(input.repository ?? null, 201),
+      pullRequest: input.pullRequest ?? null,
+    });
     const ids = input.results.map((r) => r.scenarioId).filter((id) => UUID.test(id));
     const known = await client.query<{
       id: string;
@@ -165,6 +280,7 @@ export async function recordCiRun(
               coalesce((select r.status = 'failed' from ci_results r
                         join ci_runs cr on cr.id = r.ci_run_id
                         where r.tenant_id = s.tenant_id and r.scenario_id = s.id
+                          and cr.on_default_branch
                         order by cr.received_at desc limit 1), false) as was_failing
        from scenarios s
        join tickets t on t.id = s.ticket_id and t.tenant_id = s.tenant_id
@@ -178,14 +294,15 @@ export async function recordCiRun(
 
     const run = await client.query<{ id: string }>(
       `insert into ci_runs (tenant_id, project_id, commit_sha, branch, run_url, total, passed,
-                            failed, flaky, skipped, unmatched)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                            failed, flaky, skipped, unmatched, repository_id, pull_request_id,
+                            on_default_branch)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        returning id`,
       [
         tenantId,
         projectId,
-        clean(input.commitSha, 64),
-        clean(input.branch, 200),
+        commitSha,
+        branch,
         safeRunUrl(input.runUrl),
         kept.length,
         count('passed'),
@@ -193,6 +310,9 @@ export async function recordCiRun(
         count('flaky'),
         count('skipped'),
         input.unmatched + (input.results.length - kept.length),
+        placement.repositoryId,
+        placement.pullRequestId,
+        placement.onDefaultBranch,
       ]
     );
     const runId = run.rows[0]!.id;
@@ -220,10 +340,38 @@ export async function recordCiRun(
       ]);
     }
 
+    // The PR's "SpecFix acceptance" check is published by the worker, queued in the same
+    // transaction as the run so a stored run always gets its check. A PR SpecFix has not
+    // seen yet (CI finished before the webhook arrived) is fetched first; that job then
+    // attaches this run and publishes the check.
+    if (placement.installationActive && placement.pullRequestId) {
+      await enqueueJob(
+        tenantId,
+        {
+          kind: 'github_check_run',
+          payload: { pullRequestId: placement.pullRequestId },
+          dedupeKey: `gh-check:${placement.pullRequestId}:${runId}`,
+          maxAttempts: 4,
+        },
+        client
+      );
+    } else if (placement.installationActive && placement.repositoryId && placement.pullNumber) {
+      await enqueueJob(
+        tenantId,
+        {
+          kind: 'github_pr_sync',
+          payload: { repositoryId: placement.repositoryId, number: placement.pullNumber },
+          dedupeKey: `gh-pr:${placement.repositoryId}:${placement.pullNumber}`,
+          maxAttempts: 4,
+        },
+        client
+      );
+    }
+
     // Only approved scenarios count, and a ticket notifies only when one of them newly
-    // fails — repeated failures and drafts stay quiet.
+    // fails on the default branch — repeated failures, drafts and PR runs stay quiet.
     const perTicket = new Map<string, { failed: number; total: number; newly: number }>();
-    for (const r of kept) {
+    for (const r of placement.onDefaultBranch ? kept : []) {
       const sc = info.get(r.scenarioId)!;
       if (!sc.approved) continue;
       const entry = perTicket.get(sc.ticket_id) ?? { failed: 0, total: 0, newly: 0 };
@@ -241,6 +389,8 @@ export async function recordCiRun(
       failedTickets: [...perTicket.entries()]
         .filter(([, v]) => v.newly > 0)
         .map(([ticket_id, v]) => ({ ticket_id, failed: v.failed, total: v.total })),
+      onDefaultBranch: placement.onDefaultBranch,
+      pullRequestId: placement.pullRequestId,
     };
   });
 }
@@ -255,7 +405,10 @@ export interface ScenarioCiRow {
   received_at: Date;
 }
 
-/** Each scenario of the ticket's latest result, newest run first. */
+/**
+ * Each scenario's latest result on the default branch: the ticket's CI status. Runs on
+ * feature branches and PRs never overwrite it; they are shown per PR instead.
+ */
 export async function latestCiForTicket(
   tenantId: TenantId,
   ticketId: string
@@ -266,7 +419,7 @@ export async function latestCiForTicket(
      from ci_results r
      join ci_runs cr on cr.id = r.ci_run_id
      join scenarios s on s.id = r.scenario_id and s.tenant_id = r.tenant_id
-     where r.tenant_id = $1 and s.ticket_id = $2
+     where r.tenant_id = $1 and s.ticket_id = $2 and cr.on_default_branch
      order by r.scenario_id, cr.received_at desc`,
     [tenantId, ticketId]
   );
@@ -289,7 +442,7 @@ export async function latestCiRuns(tenantId: TenantId): Promise<CiRunRow[]> {
   return query<CiRunRow>(
     `select distinct on (project_id) project_id, commit_sha, branch, total, passed, failed,
             flaky, skipped, unmatched, received_at
-     from ci_runs where tenant_id = $1
+     from ci_runs where tenant_id = $1 and on_default_branch
      order by project_id, received_at desc`,
     [tenantId]
   );

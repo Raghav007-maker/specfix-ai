@@ -19,3 +19,4 @@ export * from './repositories/jira-live.ts';
 export * from './repositories/writebacks.ts';
 export * from './repositories/notifications.ts';
 export * from './repositories/ci.ts';
+export * from './repositories/github.ts';

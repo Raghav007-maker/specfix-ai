@@ -15,6 +15,8 @@ import {
   getJiraConnection,
   getTenantWebhook,
   latestCiRuns,
+  listGithubInstallations,
+  listGithubRepositories,
   latestProjectJobs,
   listCiTokens,
   listProjects,
@@ -27,6 +29,8 @@ import { analyzeBatchLimit, estimateAnalysisCost, type CostEstimate } from '@spe
 import { AutoRefresh } from '@/components/auto-refresh';
 import { ProjectSync } from './project-sync';
 import { CiTokenControl } from './ci-token';
+import { GithubCard } from './github-card';
+import { githubReady } from '@/lib/github';
 import { jiraAccess, jiraClientFor, jiraReady } from '@/lib/jira';
 import { AppShell } from '@/components/app-shell';
 import {
@@ -69,13 +73,16 @@ export default async function IntegrationsPage({
 
   const isAdmin = tenant.role === 'owner' || tenant.role === 'admin';
   const jiraProjects = projects.filter((p) => p.source_type === 'jira');
-  const [jobs, budget, counts, ciTokens, ciRuns] = await Promise.all([
-    latestProjectJobs(tenant.tenant_id),
-    tenantTokenBudget(tenant.tenant_id),
-    Promise.all(jiraProjects.map((p) => countAnalysisCandidates(tenant.tenant_id, p.id))),
-    listCiTokens(tenant.tenant_id),
-    latestCiRuns(tenant.tenant_id),
-  ]);
+  const [jobs, budget, counts, ciTokens, ciRuns, githubInstallations, githubRepos] =
+    await Promise.all([
+      latestProjectJobs(tenant.tenant_id),
+      tenantTokenBudget(tenant.tenant_id),
+      Promise.all(jiraProjects.map((p) => countAnalysisCandidates(tenant.tenant_id, p.id))),
+      listCiTokens(tenant.tenant_id),
+      latestCiRuns(tenant.tenant_id),
+      listGithubInstallations(tenant.tenant_id),
+      listGithubRepositories(tenant.tenant_id),
+    ]);
   const baseUrl = (process.env.PUBLIC_BASE_URL?.trim() || 'http://localhost:3000').replace(
     /\/$/,
     ''
@@ -226,6 +233,14 @@ export default async function IntegrationsPage({
               </CardContent>
             </Card>
           ) : null}
+
+          <GithubCard
+            installations={githubInstallations}
+            repos={githubRepos}
+            projects={projects}
+            isAdmin={isAdmin}
+            ready={githubReady()}
+          />
 
           <Card>
             <CardHeader className="border-b">

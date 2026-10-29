@@ -7,6 +7,7 @@
  * Opt-in: needs SPECFIX_E2E_URL (e.g. http://localhost:3100) pointing at a server started
  * with DATABASE_URL = the test database, and SPECFIX_TEST_DATABASE_URL for seeding.
  * JIRA_CLIENT_SECRET (from .env) signs webhook JWTs exactly as the server verifies them.
+ * GITHUB_WEBHOOK_SECRET, when set for both, enables the GitHub webhook block.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
@@ -18,13 +19,17 @@ import {
   createTenant,
   ingestTicket,
   query,
+  saveGithubInstallation,
   saveJiraGrant,
+  setGithubRepoProject,
   setJiraSite,
 } from '@specfix/db';
+import { signGithubBody } from '@specfix/ingest';
 
 const BASE = process.env.SPECFIX_E2E_URL?.replace(/\/$/, '');
 const SECRET = process.env.JIRA_CLIENT_SECRET?.trim();
 const enabled = Boolean(BASE && process.env.SPECFIX_TEST_DATABASE_URL && SECRET);
+const GH_SECRET = process.env.GITHUB_WEBHOOK_SECRET?.trim();
 
 afterAll(async () => {
   if (enabled) await closePool();
@@ -54,6 +59,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
   let projectId: string;
   let connectionId: string;
   let token: string;
+  let ownerId: string;
   const scenarios: string[] = [];
 
   beforeAll(async () => {
@@ -64,6 +70,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       [`${label}@example.test`]
     );
     await addMembership(tenantId, user!.id, 'owner');
+    ownerId = user!.id;
     await saveJiraGrant(tenantId, user!.id, 'read', {
       accessToken: 'a',
       refreshToken: 'r',
@@ -165,6 +172,14 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       const r = await fetch(`${BASE}/api/jira/connect`, { redirect: 'manual' });
       expect(r.headers.get('location') ?? '').toMatch(/\/login/);
     });
+
+    it.each(['/api/github/install', '/api/github/callback?installation_id=1&code=x&state=y'])(
+      'refuses %s without a session',
+      async (path) => {
+        const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+        expect(r.headers.get('location') ?? '').toMatch(/\/login/);
+      }
+    );
   });
 
   describe('CI results endpoint', () => {
@@ -199,6 +214,107 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       const raw = `{"suites":[{"specs":[{"tags":["@sf-${scenarios[0]}"],"tests":[{"status":"unexpected","results":[{"duration":1e400,"error":{"message":"bad \\u0000 byte"}}]}]}]}]}`;
       const r = await ci(raw);
       expect(r.status).toBe(201);
+    });
+  });
+
+  describe.skipIf(!GH_SECRET)('GitHub webhook endpoint and PR runs', () => {
+    const installationId = 100_000_000 + Math.floor(Math.random() * 1_000_000_000);
+    const repoId = 100_000_000 + Math.floor(Math.random() * 1_000_000_000);
+    beforeAll(async () => {
+      await saveGithubInstallation(tenantId, ownerId, {
+        installationId,
+        accountLogin: 'e2e',
+        accountType: 'Organization',
+        repositorySelection: 'selected',
+        repos: [{ repoId, fullName: 'e2e/web', defaultBranch: 'main' }],
+      });
+      const [repo] = await query<{ id: string }>(
+        `select id from github_repositories where repo_id = $1`,
+        [repoId]
+      );
+      await setGithubRepoProject(tenantId, ownerId, repo!.id, projectId);
+    });
+
+    const prBody = (number: number, repo = repoId) =>
+      JSON.stringify({
+        action: 'opened',
+        number,
+        installation: { id: installationId },
+        repository: { id: repo },
+      });
+    const gh = (body: string, headers: Record<string, string> = {}) =>
+      fetch(`${BASE}/api/github/webhook`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-event': 'pull_request',
+          'x-github-delivery': randomUUID(),
+          'x-hub-signature-256': signGithubBody(body, GH_SECRET!),
+          ...headers,
+        },
+        body,
+        redirect: 'manual',
+      });
+    const pending = async (number: number) =>
+      (
+        await query(
+          `select 1 from sync_jobs where tenant_id = $1 and kind = 'github_pr_sync'
+             and status = 'queued' and payload->>'number' = $2`,
+          [tenantId, String(number)]
+        )
+      ).length;
+
+    it('is not behind the session middleware: a signed delivery is accepted', async () => {
+      const r = await gh(prBody(1));
+      expect(r.status).toBe(202);
+      expect(await r.text()).toBe('');
+      expect(await pending(1)).toBe(1);
+    });
+
+    it('rejects a missing or forged signature with an empty 401', async () => {
+      for (const sig of ['', signGithubBody(prBody(2), 'guess'), `sha256=${'0'.repeat(64)}`]) {
+        const r = await gh(prBody(2), { 'x-hub-signature-256': sig });
+        expect(r.status).toBe(401);
+        expect(await r.text()).toBe('');
+      }
+      expect(await pending(2)).toBe(0);
+    });
+
+    it('drops a redelivery and ignores a repository the installation does not own', async () => {
+      const id = randomUUID();
+      expect((await gh(prBody(3), { 'x-github-delivery': id })).status).toBe(202);
+      expect((await gh(prBody(3), { 'x-github-delivery': id })).status).toBe(204);
+      expect((await gh(prBody(4, repoId + 1))).status).toBe(204);
+      expect(await pending(4)).toBe(0);
+    });
+
+    it('a PR run (merge ref) does not change the default-branch status', async () => {
+      const r = await ci(
+        JSON.stringify({ commit: 'pr-sha', branch: '77/merge', report: report('unexpected') })
+      );
+      expect(r.status).toBe(201);
+      const [row] = await query<{ on_default_branch: boolean }>(
+        `select on_default_branch from ci_runs where tenant_id = $1 and commit_sha = 'pr-sha'`,
+        [tenantId]
+      );
+      expect(row!.on_default_branch).toBe(false);
+    });
+
+    it('a burst of 300 deliveries for 10 PRs leaves one pending re-read per PR', async () => {
+      const latencies: number[] = [];
+      const statuses = await Promise.all(
+        Array.from({ length: 300 }, async (_, i) => {
+          const started = ms();
+          const r = await gh(prBody(600 + (i % 10)));
+          latencies.push(ms() - started);
+          return r.status;
+        })
+      );
+      console.log(
+        `[load] github webhook x300: p50=${percentile(latencies, 50)}ms p95=${percentile(latencies, 95)}ms`
+      );
+      expect(statuses.filter((s) => s !== 202)).toEqual([]);
+      for (let n = 600; n < 610; n++) expect(await pending(n)).toBe(1);
     });
   });
 
@@ -239,7 +355,8 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
     });
   });
 
-  describe('load', () => {
+  // Timing-dependent: a slow machine or a reset keep-alive socket can exceed vitest's 5 s.
+  describe('load', { timeout: 30_000 }, () => {
     it('200 concurrent CI uploads all succeed, each stored once', async () => {
       const before = await query<{ n: number }>(
         `select count(*)::int n from ci_runs where tenant_id = $1`,
@@ -309,7 +426,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
 
   // Last on purpose: the server answers 413 without draining the body, which resets the
   // client's keep-alive connection, so nothing may run after these on the same client.
-  describe('oversized bodies', () => {
+  describe('oversized bodies', { timeout: 30_000 }, () => {
     it('stops a chunked upload past 5 MB without a Content-Length', async () => {
       const chunk = new TextEncoder().encode('x'.repeat(1_000_000));
       let sent = 0;
@@ -341,6 +458,24 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
         [tenantId]
       );
       expect(jobs).toHaveLength(0);
+    });
+
+    it.skipIf(!GH_SECRET)('rejects a GitHub webhook body over 1 MB', async () => {
+      const body = JSON.stringify({ pad: 'x'.repeat(1_100_000) });
+      const outcome = await fetch(`${BASE}/api/github/webhook`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-event': 'pull_request',
+          'x-github-delivery': randomUUID(),
+          'x-hub-signature-256': signGithubBody(body, GH_SECRET!),
+        },
+        body,
+      }).then(
+        (r) => r.status,
+        (error: { cause?: { code?: string } }) => error.cause?.code
+      );
+      expect([413, 'ECONNRESET', 'EPIPE']).toContain(outcome);
     });
   });
 });

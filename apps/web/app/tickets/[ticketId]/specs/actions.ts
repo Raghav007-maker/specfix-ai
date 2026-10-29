@@ -24,10 +24,13 @@ import {
   type ScenarioReviewDecision,
 } from '@specfix/shared';
 import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
+import { GithubAuthError, GithubHttpError } from '@specfix/ingest';
+import { PermanentJobError, openScaffoldPr } from '@specfix/sync';
 import { refreshScenarioEmbedding } from '@/lib/embeddings';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
+  GithubConnectionError,
   ScenarioDecisionError,
   decideScaffold,
   decideScenario,
@@ -268,5 +271,33 @@ export async function decideScaffoldAction(formData: FormData): Promise<void> {
       status: status as 'approved' | 'edited' | 'dismissed',
       code: status === 'edited' ? code : undefined,
     });
+  });
+}
+
+/**
+ * "Open PR with scaffolds": commits the ticket's approved scaffolds to `specfix/<KEY>` in
+ * the mapped repository and opens a PR, or finds the one already open. Owner/admin only;
+ * the repository layer re-checks the role and serializes concurrent clicks, so the result
+ * is one branch and one PR however often this runs.
+ */
+export async function openScaffoldPrAction(formData: FormData): Promise<void> {
+  const ctx = await context(formData);
+  const repositoryId = String(formData.get('repositoryId') ?? '') || null;
+
+  await settle(ctx.ticketId, async () => {
+    try {
+      await openScaffoldPr(ctx.tenantId, ctx.userId, { ticketId: ctx.ticketId, repositoryId });
+    } catch (error) {
+      if (error instanceof GithubConnectionError || error instanceof PermanentJobError) {
+        throw new ActionError(error.message);
+      }
+      if (error instanceof GithubAuthError || error instanceof GithubHttpError) {
+        console.error('[specs] opening scaffold PR failed', error.message);
+        throw new ActionError(
+          'GitHub refused the change. Check the app’s repository access and try again.'
+        );
+      }
+      throw error;
+    }
   });
 }

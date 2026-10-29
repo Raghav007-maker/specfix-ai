@@ -8,3 +8,4 @@ export * from './live.ts';
 export * from './writeback.ts';
 export * from './mail.ts';
 export * from './notify.ts';
+export * from './github.ts';

@@ -529,7 +529,7 @@ describe.skipIf(!hasDatabase)('CI hardening', () => {
       expect(theirs.map((r) => r.project_id)).toEqual([foreignTenantProjectId]);
     });
 
-    it('a feature-branch run overrides main in latestCiForTicket (no branch filter)', async () => {
+    it('fixed: a feature-branch run no longer overrides main in latestCiForTicket', async () => {
       await recordCiRun(tenantId, projectId, { ...baseRun, branch: 'main', results: [res(sT2)] });
       await recordCiRun(tenantId, projectId, {
         ...baseRun,
@@ -537,7 +537,7 @@ describe.skipIf(!hasDatabase)('CI hardening', () => {
         results: [res(sT2, 'failed')],
       });
       const [row] = await latestCiForTicket(tenantId, ticket2Id);
-      expect(row).toMatchObject({ branch: 'wip/experiment', status: 'failed' });
+      expect(row).toMatchObject({ branch: 'main', status: 'passed' });
     });
   });
 
