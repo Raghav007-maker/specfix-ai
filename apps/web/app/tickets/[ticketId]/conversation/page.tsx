@@ -4,6 +4,7 @@ import { openingQuestion } from '@specfix/agent';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { resolutionAgentEnabled } from '@/lib/agent';
+import { agentAccess } from '@/lib/plan';
 import {
   agentTablesAvailable,
   findAgentConversation,
@@ -54,6 +55,40 @@ export default async function ConversationPage({
     listProjects(tenant.tenant_id),
   ]);
   if (!ticket) notFound();
+
+  // On a Free workspace the tab stays visible with a lock and says what Pro adds; it reads
+  // nothing else about the ticket.
+  if ((await agentAccess(user, tenant.tenant_id)) === 'locked') {
+    return (
+      <AppShell
+        user={user}
+        tenant={tenant}
+        projects={projects}
+        activeProjectId={ticket.project_id}
+        breadcrumb={
+          <Breadcrumb
+            parent={{ href: `/?project=${ticket.project_id}`, label: ticket.project_name }}
+            current={ticket.external_key}
+          />
+        }
+      >
+        <h1 className="text-balance break-words text-xl font-semibold leading-7 sm:text-[22px]">
+          {ticket.title}
+        </h1>
+        <div className="mt-5">
+          <TicketTabs ticketId={ticket.id} active="conversation" agent="locked" />
+        </div>
+        <Notice
+          tone="info"
+          title="The Conversational agent is part of Pro"
+          className="max-w-reading"
+        >
+          On the Free plan, decide flags on the Review tab. Pro adds the agent, which talks you
+          through each open flag and drafts a decision for you to apply.
+        </Notice>
+      </AppShell>
+    );
+  }
 
   const version = await latestVersion(tenant.tenant_id, ticket.id);
   const session = version ? await findSession(tenant.tenant_id, version.id, user.id) : null;
@@ -153,7 +188,7 @@ export default async function ConversationPage({
       </div>
 
       <div className="mt-5">
-        <TicketTabs ticketId={ticket.id} active="conversation" />
+        <TicketTabs ticketId={ticket.id} active="conversation" agent="on" />
       </div>
 
       {error ? (

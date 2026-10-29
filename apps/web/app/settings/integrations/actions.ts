@@ -13,6 +13,7 @@ import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
   JiraConnectionError,
+  ProjectLimitError,
   addJiraProject,
   disconnectJira,
   getTenantWebhook,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/repos';
 import { analysisModel, analyzeBatchLimit } from '@specfix/sync';
 import { jiraAccess, jiraClientFor } from '@/lib/jira';
+import { isAppOwner } from '@/lib/plan';
 
 /**
  * Jira connection settings. Form values are only ever used as lookups into what Jira
@@ -64,11 +66,12 @@ export async function addJiraProjectAction(formData: FormData): Promise<void> {
     if (acFieldId && !fields.some((f) => f.id === acFieldId)) {
       throw new JiraConnectionError('That acceptance-criteria field no longer exists in Jira.');
     }
-    await addJiraProject(tenantId, user.id, {
-      projectKey: project.key,
-      name: project.name,
-      acFieldId: acFieldId || null,
-    });
+    await addJiraProject(
+      tenantId,
+      user.id,
+      { projectKey: project.key, name: project.name, acFieldId: acFieldId || null },
+      { unlimited: isAppOwner(user) }
+    );
     return `Added ${project.key} · ${project.name}.`;
   });
   back(outcome);
@@ -112,6 +115,7 @@ async function run(change: () => Promise<string>): Promise<Outcome> {
   } catch (error) {
     if (
       error instanceof JiraConnectionError ||
+      error instanceof ProjectLimitError ||
       error instanceof JiraAuthError ||
       error instanceof JiraHttpError
     ) {

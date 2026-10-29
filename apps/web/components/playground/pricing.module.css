@@ -1,0 +1,826 @@
+/* Pricing view inside the dashboard preview. Every value comes from the preview's --pg-* tokens,
+   so the Design Controls restyle it with the rest of the workspace. */
+
+/* Row one: the title, with the plan type in the far corner. Row two: the billing period, centred. */
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 18px 20px;
+  animation: rise 480ms var(--pg-ease) backwards;
+}
+
+.titleBlock {
+  min-width: 0;
+}
+
+.titleBlock p {
+  margin: 0;
+}
+
+.titleBlock h1 {
+  font-size: calc(
+    var(--pg-base) * var(--pg-scale) * var(--pg-scale) * var(--pg-scale) * var(--pg-scale) *
+      var(--pg-scale)
+  );
+}
+
+.billing {
+  position: relative;
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.audience {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.audience button {
+  min-height: 42px;
+  padding: 0 22px;
+  font-size: 15.5px;
+}
+
+/* Two-option switch with a thumb that slides to the chosen side. */
+.seg {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: calc(var(--pg-radius) + 3px);
+  background: var(--pg-surface);
+  box-shadow: inset 0 0 0 var(--pg-line) var(--pg-border);
+}
+
+.seg::before {
+  content: '';
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--pg-radius);
+  background: var(--pg-card);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.08),
+    0 0 0 var(--pg-line) var(--pg-border);
+  transition: transform calc(var(--pg-t) * 1.6) var(--pg-ease);
+}
+
+.seg[data-on='enterprise']::before,
+.seg[data-on='annual']::before {
+  transform: translateX(100%);
+}
+
+.seg button {
+  position: relative;
+  min-height: 36px;
+  padding: 0 18px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pg-muted);
+  cursor: pointer;
+  transition: color var(--pg-t) var(--pg-ease);
+}
+
+.seg button[aria-selected='true'],
+.seg button[aria-checked='true'] {
+  color: var(--pg-text);
+}
+
+/* Annually stacks its label over a small saving note, inside the button. */
+.pill .annualBtn {
+  flex-direction: column;
+  gap: 1px;
+  padding-block: 3px;
+  line-height: 1.1;
+}
+
+.annualLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.saveHint {
+  color: #2e7d50;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.8;
+  transition:
+    color 300ms var(--pg-ease),
+    opacity 300ms var(--pg-ease);
+}
+
+/* On the dark thumb the note lightens and pops. */
+.saveHint[data-on='true'] {
+  color: #b9f0cc;
+  opacity: 1;
+  animation: pop 380ms var(--pg-ease) 120ms backwards;
+}
+
+/* The billing switch: a round pill whose thumb springs across, and goes dark with a glow on
+   Annually so the saving feels like a choice. */
+.pill {
+  padding: 2px;
+  border-radius: 999px;
+  transition: box-shadow 300ms var(--pg-ease);
+}
+
+.pill::before {
+  inset: 2px auto 2px 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  transition:
+    transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 300ms var(--pg-ease),
+    box-shadow 300ms var(--pg-ease);
+}
+
+.pill button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  transition:
+    color 300ms var(--pg-ease),
+    transform 150ms var(--pg-ease);
+}
+
+.pill button:active {
+  transform: scale(0.95);
+}
+
+:global([data-hover='on']) .pill button:not([aria-checked='true']):hover {
+  color: var(--pg-text);
+}
+
+.pill[data-on='annual'] {
+  box-shadow:
+    inset 0 0 0 var(--pg-line) var(--pg-border),
+    0 0 0 4px color-mix(in srgb, var(--pg-accent) 7%, transparent);
+}
+
+.pill[data-on='annual']::before {
+  background: var(--pg-accent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--pg-accent) 32%, transparent);
+}
+
+.pill[data-on='annual'] .annualBtn {
+  color: var(--pg-on-accent);
+}
+
+/* One sweep of light across the dark thumb each time Annually is chosen. */
+.pill[data-on='annual']::after {
+  content: '';
+  position: absolute;
+  inset: 2px 2px 2px 50%;
+  border-radius: 999px;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.35) 50%, transparent 70%)
+    no-repeat;
+  background-size: 250% 100%;
+  animation: thumbShine 900ms var(--pg-ease) 220ms both;
+  pointer-events: none;
+}
+
+.annualBtn svg {
+  transition: transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:global([data-hover='on']) .annualBtn:hover svg {
+  transform: rotate(20deg) scale(1.25);
+}
+
+.pill[data-on='annual'] .annualBtn svg {
+  animation: spinIn 600ms var(--pg-ease);
+}
+
+/* ---------- Plans ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--pg-gap);
+  align-items: stretch;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: calc(22px * var(--pg-density)) 22px;
+  border-radius: var(--pg-radius);
+  background: var(--pg-card);
+  box-shadow: 0 0 0 var(--pg-line) var(--pg-border);
+  animation: rise 520ms var(--pg-ease) backwards;
+  animation-delay: calc(var(--i) * 90ms);
+  transition:
+    transform var(--pg-t) var(--pg-ease),
+    box-shadow var(--pg-t) var(--pg-ease);
+}
+
+/* Hover: the card lifts, its edge darkens, and a soft light follows the pointer. */
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 0%),
+    color-mix(in srgb, var(--pg-accent) 7%, transparent),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 300ms var(--pg-ease);
+  pointer-events: none;
+}
+
+:global([data-hover='on']) .card:hover::after {
+  opacity: 1;
+}
+
+:global([data-hover='on']) .card:hover {
+  transform: translateY(-5px);
+  box-shadow:
+    0 18px 40px rgb(15 23 42 / 0.12),
+    0 0 0 var(--pg-line) color-mix(in srgb, var(--pg-text) 35%, var(--pg-border));
+}
+
+:global([data-hover='on']) .soon:hover {
+  transform: translateY(-2px);
+}
+
+:global([data-hover='on']) .card:hover .features svg {
+  transform: scale(1.18);
+}
+
+:global([data-hover='on']) .card:hover .amount {
+  transform: translateY(-1px);
+}
+
+.pro {
+  box-shadow:
+    0 0 0 calc(var(--pg-line) + 1px) var(--pg-accent),
+    0 18px 40px color-mix(in srgb, var(--pg-accent) 14%, transparent);
+}
+
+:global([data-hover='on']) .pro:hover {
+  transform: translateY(-6px);
+  box-shadow:
+    0 0 0 calc(var(--pg-line) + 1px) var(--pg-accent),
+    0 22px 48px color-mix(in srgb, var(--pg-accent) 20%, transparent);
+}
+
+.soon {
+  background: var(--pg-surface);
+}
+
+.soon > :not(.name) {
+  opacity: 0.6;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--pg-display);
+  font-size: calc(var(--pg-base) * var(--pg-scale) * var(--pg-scale));
+  font-weight: var(--pg-hw);
+  letter-spacing: var(--pg-track);
+}
+
+.badge,
+.currentTag,
+.soonTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: var(--pg-font);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.badge {
+  background: var(--pg-accent);
+  color: var(--pg-on-accent);
+}
+
+.currentTag {
+  background: #e4f2e9;
+  color: #1e623c;
+}
+
+.soonTag {
+  background: var(--pg-card);
+  color: var(--pg-muted);
+  box-shadow: inset 0 0 0 var(--pg-line) var(--pg-border);
+}
+
+.tag {
+  margin: 0;
+  color: var(--pg-muted);
+  font-size: 13.5px;
+}
+
+.price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-height: 56px;
+  margin: 8px 0 0;
+}
+
+.amount {
+  display: inline-block;
+  transition: transform 300ms var(--pg-ease);
+  font-family: var(--pg-display);
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.per {
+  color: var(--pg-muted);
+  font-size: 14px;
+}
+
+/* The old yearly price, struck through by a line that draws itself across. */
+.was {
+  position: relative;
+  align-self: center;
+  color: var(--pg-muted);
+  font-family: var(--pg-display);
+  font-size: 22px;
+  text-decoration: none;
+  animation: fade 300ms var(--pg-ease) both;
+}
+
+.was::after {
+  content: '';
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: 52%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--pg-text);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: strike 420ms var(--pg-ease) 140ms forwards;
+}
+
+.sub {
+  min-height: 20px;
+  margin: 0 0 6px;
+  color: var(--pg-muted);
+  font-size: 13px;
+}
+
+.saved {
+  display: inline-block;
+  color: #1e623c;
+  font-weight: 600;
+  animation: pop 380ms var(--pg-ease) 420ms both;
+}
+
+.features {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 10px;
+  padding: 14px 0 0;
+  border-top: var(--pg-line) solid var(--pg-border);
+  list-style: none;
+  font-size: 14px;
+}
+
+.features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: rise 380ms var(--pg-ease) backwards;
+  animation-delay: calc(var(--i) * 90ms + 260ms + var(--j) * 70ms);
+}
+
+/* Buttons sit at the foot of every card, level across the row. */
+.cta {
+  margin-top: auto;
+}
+
+/* A soft light sweeps across the upgrade button now and then. */
+.shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgb(255 255 255 / 0.28) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: sweep 3.6s var(--pg-ease) 1.2s infinite;
+  pointer-events: none;
+}
+
+.bump {
+  animation: bump 420ms var(--pg-ease);
+}
+
+.badge svg {
+  animation: twinkle 2.4s ease-in-out infinite;
+}
+
+.features svg {
+  flex: none;
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-top: 2px;
+  color: #2e7d50;
+}
+
+.features li[data-locked='true'] {
+  color: var(--pg-muted);
+}
+
+.features li[data-locked='true'] svg {
+  color: var(--pg-muted);
+}
+
+/* ---------- Enterprise ---------- */
+
+.enterprise {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 56px 24px;
+  border-radius: var(--pg-radius);
+  background: var(--pg-card);
+  box-shadow: 0 0 0 var(--pg-line) var(--pg-border);
+  text-align: center;
+  animation: rise 420ms var(--pg-ease) backwards;
+}
+
+.enterprise p {
+  margin: 0 0 6px;
+}
+
+.entIcon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--pg-surface);
+  box-shadow: inset 0 0 0 var(--pg-line) var(--pg-border);
+}
+
+/* The real page's frame: the same layout rules the dashboard's work column gives the view. */
+.surface {
+  container: work / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pg-gap) * 1.2);
+}
+
+.teamNote {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--pg-radius);
+  background: #e4f2e9;
+  color: #1e623c;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.payNote {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--pg-radius);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.payNote[data-status='pending'] {
+  background: #fdf5e2;
+  color: #6b4a00;
+}
+
+.payNote[data-status='rejected'] {
+  background: #fbe9e6;
+  color: #a0281e;
+}
+
+/* ---------- UPI dialog ---------- */
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 24px;
+  border: 0;
+  border-radius: calc(var(--pg-radius) + 4px);
+  background: var(--pg-card);
+  color: var(--pg-text);
+  font-family: var(--pg-font);
+  box-shadow:
+    0 24px 60px rgb(15 23 42 / 0.22),
+    0 0 0 var(--pg-line) var(--pg-border);
+}
+
+.dialog[open] {
+  animation: rise 260ms var(--pg-ease);
+}
+
+.dialog::backdrop {
+  background: rgb(15 23 42 / 0.4);
+}
+
+.dialogClose {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pg-muted);
+  cursor: pointer;
+}
+
+.dialogClose:hover {
+  background: var(--pg-surface);
+  color: var(--pg-text);
+}
+
+.rzpBox {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.rzpBox p {
+  margin: 0;
+}
+
+.testTag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdf5e2;
+  color: #6b4a00;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.or {
+  margin: 18px 0 0;
+  color: var(--pg-muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.payNote[data-status='busy'] {
+  background: var(--pg-surface);
+  color: var(--pg-muted);
+}
+
+.payNote[data-status='paid'] {
+  background: #e4f2e9;
+  color: #1e623c;
+}
+
+.payNote[data-status='error'] {
+  background: #fbe9e6;
+  color: #a0281e;
+}
+
+.steps {
+  margin: 14px 0;
+  padding-left: 20px;
+  color: var(--pg-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.qrBox {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--pg-radius);
+  background: var(--pg-surface);
+  text-align: center;
+  font-size: 13px;
+}
+
+.qrBox img {
+  border-radius: 8px;
+  background: #fff;
+}
+
+.qrBox p {
+  margin: 0;
+}
+
+.utrForm {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13.5px;
+}
+
+.utrForm label {
+  font-weight: 500;
+}
+
+.utrForm input {
+  height: 40px;
+  padding: 0 12px;
+  border: var(--pg-line) solid var(--pg-border);
+  border-radius: var(--pg-radius);
+  background: var(--pg-card);
+  color: var(--pg-text);
+  font: inherit;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+
+.utrForm input[aria-invalid='true'] {
+  border-color: #ba3428;
+}
+
+.utrError {
+  margin: 0;
+  color: #a0281e;
+}
+
+.dialogDone {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.dialogDone svg {
+  color: #2e7d50;
+}
+
+.dialogDone p {
+  margin: 0;
+}
+
+.note {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--pg-radius);
+  background: var(--pg-surface);
+  color: var(--pg-muted);
+  font-size: 13px;
+  animation: fade 200ms var(--pg-ease) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes strike {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes thumbShine {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+@keyframes spinIn {
+  from {
+    transform: rotate(-120deg) scale(0.4);
+  }
+}
+
+@keyframes sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  40%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes bump {
+  40% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes twinkle {
+  50% {
+    transform: rotate(18deg) scale(1.18);
+    opacity: 0.75;
+  }
+}
+
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+/* Phone width: one column, Pro first. */
+@container work (max-width: 720px) {
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .audience {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .billing {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: center;
+  }
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pro {
+    order: -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .enterprise,
+  .note,
+  .was,
+  .saved,
+  .saveHint[data-on='true'],
+  .dialog[open],
+  .top,
+  .pill::after,
+  .pill[data-on='annual'] .annualBtn svg,
+  .features li,
+  .bump,
+  .badge svg,
+  .shine::after {
+    animation: none;
+  }
+  .was::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+  .seg::before,
+  .pill button,
+  .annualBtn svg,
+  .card,
+  .features svg,
+  .amount {
+    transition: none;
+  }
+}

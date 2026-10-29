@@ -27,7 +27,7 @@ import {
 } from '@specfix/agent';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
-import { resolutionAgentEnabled } from '@/lib/agent';
+import { agentAccess, type AgentAccess } from '@/lib/plan';
 import {
   AgentConversationError,
   FlagDecisionError,
@@ -61,6 +61,14 @@ interface Context {
   userId: string;
   tenantId: string;
   ticketId: string;
+  agent: AgentAccess;
+}
+
+/** Why the agent cannot run, for the reviewer; null when it can. */
+function agentRefusal(access: AgentAccess): string | null {
+  if (access === 'off') return 'The resolution agent is turned off.';
+  if (access === 'locked') return 'The Conversational agent is part of Pro.';
+  return null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -75,7 +83,12 @@ async function context(formData: FormData): Promise<Context> {
   const ticket = await getTicket(tenant.tenant_id, posted);
   if (!ticket) redirect('/');
 
-  return { userId: user.id, tenantId: tenant.tenant_id, ticketId: ticket.id };
+  return {
+    userId: user.id,
+    tenantId: tenant.tenant_id,
+    ticketId: ticket.id,
+    agent: await agentAccess(user, tenant.tenant_id),
+  };
 }
 
 /** A failure the reviewer can act on, as opposed to a bug. Its message is shown as-is. */
@@ -89,7 +102,8 @@ export async function sendAgentMessage(
   const flagId = String(formData.get('flagId') ?? '');
 
   try {
-    if (!resolutionAgentEnabled()) throw new SendError('The resolution agent is turned off.');
+    const refusal = agentRefusal(ctx.agent);
+    if (refusal) throw new SendError(refusal);
     if (!(await agentTablesAvailable())) {
       throw new SendError('The resolution agent needs database migration 0008 first.');
     }
@@ -223,9 +237,8 @@ export async function applyProposalAction(formData: FormData): Promise<void> {
   const resolutionNote = formData.get('resolutionNote');
 
   await settle(ctx.ticketId, flagId, async () => {
-    if (!resolutionAgentEnabled()) {
-      throw new AgentConversationError('The resolution agent is turned off.');
-    }
+    const refusal = agentRefusal(ctx.agent);
+    if (refusal) throw new AgentConversationError(refusal);
     await applyAgentProposal(ctx.tenantId, {
       conversationId,
       messageId,
@@ -246,9 +259,8 @@ export async function declineProposalAction(formData: FormData): Promise<void> {
   const flagId = String(formData.get('flagId') ?? '');
 
   await settle(ctx.ticketId, flagId, async () => {
-    if (!resolutionAgentEnabled()) {
-      throw new AgentConversationError('The resolution agent is turned off.');
-    }
+    const refusal = agentRefusal(ctx.agent);
+    if (refusal) throw new AgentConversationError(refusal);
     await declineAgentProposal(ctx.tenantId, { conversationId, messageId, userId: ctx.userId });
     return flagId;
   });

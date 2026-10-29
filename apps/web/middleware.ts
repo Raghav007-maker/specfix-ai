@@ -14,6 +14,6 @@ export const config = {
   // their own token and never carry a session, so refreshing one would only cost a
   // Supabase round-trip per delivery.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/jira/webhook/|api/ci/results|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|woff|woff2|ttf|otf|map)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/jira/webhook/|api/ci/results|api/payments/razorpay/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|woff|woff2|ttf|otf|map)$).*)',
   ],
 };

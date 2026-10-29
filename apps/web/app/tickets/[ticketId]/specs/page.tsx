@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
+import { agentAccess } from '@/lib/plan';
 import { buildClauseCoverage, isApprovedScenario, type ClauseCoverageRow } from '@specfix/shared';
 import {
   clauseCoverage,
@@ -150,7 +151,11 @@ export default async function SpecsPage({
         ) : null}
       </div>
 
-      <TicketTabs ticketId={ticket.id} active="specs" />
+      <TicketTabs
+        ticketId={ticket.id}
+        active="specs"
+        agent={await agentAccess(user, tenant.tenant_id)}
+      />
 
       {error ? (
         <Notice tone="error" className="mb-6">

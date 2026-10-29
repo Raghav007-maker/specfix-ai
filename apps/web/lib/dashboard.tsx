@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { openingQuestion } from '@specfix/agent';
 import { FLAG_CATEGORY_LABELS } from '@specfix/shared';
-import { resolutionAgentEnabled } from '@/lib/agent';
+import { agentAccess } from '@/lib/plan';
 import {
   agentTablesAvailable,
   findAgentConversation,
@@ -152,7 +152,8 @@ async function loadAgent(
   tenantId: string,
   queue: QueueItem[]
 ): Promise<{ state: DashboardData['agent']; node: ReactNode }> {
-  if (!resolutionAgentEnabled()) return { state: { state: 'off' }, node: null };
+  const access = await agentAccess(user, tenantId);
+  if (access !== 'on') return { state: { state: access }, node: null };
   if (!(await agentTablesAvailable())) return { state: { state: 'not-migrated' }, node: null };
 
   const candidates = queue

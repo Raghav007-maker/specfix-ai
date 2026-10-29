@@ -18,6 +18,7 @@ import {
   createTenant,
   ingestTicket,
   query,
+  recordRazorpayOrder,
   saveJiraGrant,
   setJiraSite,
 } from '@specfix/db';
@@ -25,6 +26,7 @@ import {
 const BASE = process.env.SPECFIX_E2E_URL?.replace(/\/$/, '');
 const SECRET = process.env.JIRA_CLIENT_SECRET?.trim();
 const enabled = Boolean(BASE && process.env.SPECFIX_TEST_DATABASE_URL && SECRET);
+const RAZORPAY_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
 
 afterAll(async () => {
   if (enabled) await closePool();
@@ -54,6 +56,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
   let projectId: string;
   let connectionId: string;
   let token: string;
+  let rzpOrder: string;
   const scenarios: string[] = [];
 
   beforeAll(async () => {
@@ -64,6 +67,8 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       [`${label}@example.test`]
     );
     await addMembership(tenantId, user!.id, 'owner');
+    rzpOrder = `order_e2e${Date.now()}`;
+    await recordRazorpayOrder(tenantId, user!.id, { period: 'monthly', orderId: rzpOrder });
     await saveJiraGrant(tenantId, user!.id, 'read', {
       accessToken: 'a',
       refreshToken: 'r',
@@ -152,14 +157,18 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       expect(r.status).toBe(200);
     });
 
-    it.each(['/settings/integrations', '/inbox', '/team', '/analytics'])(
-      'redirects an anonymous visitor from %s to /login',
-      async (path) => {
-        const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
-        expect([302, 303, 307, 308]).toContain(r.status);
-        expect(r.headers.get('location') ?? '').toMatch(/\/login/);
-      }
-    );
+    it.each([
+      '/settings/integrations',
+      '/inbox',
+      '/team',
+      '/analytics',
+      '/pricing',
+      '/admin/payments',
+    ])('redirects an anonymous visitor from %s to /login', async (path) => {
+      const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+      expect([302, 303, 307, 308]).toContain(r.status);
+      expect(r.headers.get('location') ?? '').toMatch(/\/login/);
+    });
 
     it('refuses /api/jira/connect without a session', async () => {
       const r = await fetch(`${BASE}/api/jira/connect`, { redirect: 'manual' });
@@ -304,6 +313,62 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
         )
       );
       expect(statuses.every((s) => s >= 300 && s < 400)).toBe(true);
+    });
+  });
+
+  describe.skipIf(!RAZORPAY_SECRET)('Razorpay webhook', () => {
+    const url = () => `${BASE}/api/payments/razorpay/webhook`;
+    const event = (orderId: string, paymentId: string, amount = 1500) =>
+      JSON.stringify({
+        event: 'payment.captured',
+        payload: {
+          payment: { entity: { id: paymentId, order_id: orderId, amount, status: 'captured' } },
+        },
+      });
+    const post = (body: string, signature: string | null) =>
+      fetch(url(), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(signature ? { 'x-razorpay-signature': signature } : {}),
+        },
+        body,
+      });
+    const sign = (body: string, secret = RAZORPAY_SECRET!) =>
+      createHmac('sha256', secret).update(body).digest('hex');
+
+    it('rejects a missing or wrong signature, and changes nothing', async () => {
+      const body = event(rzpOrder, 'pay_e2eWrong');
+      expect((await post(body, null)).status).toBe(401);
+      expect((await post(body, sign(body, 'not-the-secret'))).status).toBe(401);
+      expect((await post(body, sign(`${body} `))).status).toBe(401);
+      const [row] = await query<{ status: string }>(
+        `select status from payments where razorpay_order_id = $1`,
+        [rzpOrder]
+      );
+      expect(row?.status).toBe('created');
+    });
+
+    it('ignores a signed event for an order that is not ours, or a wrong amount', async () => {
+      const unknown = event('order_e2eUnknown', 'pay_e2eUnknown');
+      expect((await post(unknown, sign(unknown))).status).toBe(204);
+      const cheap = event(rzpOrder, 'pay_e2eCheap', 100);
+      expect((await post(cheap, sign(cheap))).status).toBe(204);
+    });
+
+    it('starts Pro once for a signed payment, and once more for nothing on replay', async () => {
+      const body = event(rzpOrder, 'pay_e2eGood');
+      const statuses = await Promise.all(
+        Array.from({ length: 5 }, () => post(body, sign(body)).then((r) => r.status))
+      );
+      expect(statuses.every((s) => s === 200)).toBe(true);
+      const [row] = await query<{ status: string; pro_until: Date }>(
+        `select p.status, t.pro_until from payments p join tenants t on t.id = p.tenant_id
+         where p.razorpay_order_id = $1`,
+        [rzpOrder]
+      );
+      expect(row?.status).toBe('paid');
+      expect(Math.round((row!.pro_until.getTime() - Date.now()) / 86_400_000)).toBe(30);
     });
   });
 

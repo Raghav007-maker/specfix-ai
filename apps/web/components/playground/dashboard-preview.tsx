@@ -18,6 +18,7 @@ import {
   Users,
   Flag,
   Folder,
+  Gem,
 } from 'lucide-react';
 import { signOut } from '@/app/(auth)/actions';
 import type { Settings } from './settings';
@@ -25,9 +26,16 @@ import type { DashboardData, QueueItem, WeekPoint } from './dashboard-data';
 import { Logo } from './logo';
 import { DateCalendar } from './date-calendar';
 import { AvatarEditor } from './avatar-editor';
+import { PricingView } from './pricing-view';
 import s from './playground.module.css';
 
-type View = 'queue' | 'analytics';
+type View = 'queue' | 'analytics' | 'pricing';
+
+const VIEW_LABEL: Record<View, string> = {
+  queue: 'Home',
+  analytics: 'Ticket analytics',
+  pricing: 'Pricing',
+};
 type Filter = 'all' | 'need' | 'waiting' | 'resolved' | 'ready';
 
 function statusOf(r: QueueItem): Exclude<Filter, 'all'> {
@@ -58,6 +66,7 @@ export function DashboardPreview({
   projects,
   activeProjectId,
   top,
+  pricing = false,
 }: {
   settings: Settings;
   data: DashboardData;
@@ -69,10 +78,14 @@ export function DashboardPreview({
   activeProjectId?: string;
   /** Server-rendered notices and forms shown above the queue (errors, switchers, setup). */
   top?: ReactNode;
+  /** Shows the Pricing prototype in the sidebar (design playground only, until plans ship). */
+  pricing?: boolean;
 }) {
   const [view, setView] = useState<View>('queue');
   const live = data.source === 'live';
   const l = settings.layout;
+  // Pricing takes the full width; the reviewer panel has nothing to say about plans.
+  const showRight = l.showRight && view !== 'pricing';
   const b = settings.brand;
 
   const nav = (
@@ -106,6 +119,22 @@ export function DashboardPreview({
         <span>Integrations</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
       </a>
+      {/* The playground shows its own Pricing prototype; the workspace links to the real page. */}
+      {pricing ? (
+        <NavButton
+          icon={<Gem aria-hidden />}
+          active={view === 'pricing'}
+          onClick={() => setView('pricing')}
+        >
+          Pricing
+        </NavButton>
+      ) : (
+        <a className={s.navItem} href="/pricing">
+          <Gem aria-hidden />
+          <span>Pricing</span>
+          <ArrowUpRight aria-hidden className={s.navOut} />
+        </a>
+      )}
       {projects && projects.length > 0 ? (
         <>
           <p className={s.navGroup}>Projects</p>
@@ -133,7 +162,7 @@ export function DashboardPreview({
     <div
       className={s.dash}
       data-sidebar={l.showSidebar ? 'on' : 'off'}
-      data-right={l.showRight ? 'on' : 'off'}
+      data-right={showRight ? 'on' : 'off'}
     >
       {l.showSidebar ? (
         <aside className={s.side} aria-label="Workspace">
@@ -166,21 +195,21 @@ export function DashboardPreview({
         </aside>
       ) : null}
 
-      <main
-        id="main"
-        className={s.work}
-        aria-label={view === 'queue' ? 'Home' : 'Ticket analytics'}
-      >
-        {!live ? <SampleBanner reason={data.sampleReason} goLogin={goLogin} /> : null}
+      <main id="main" className={s.work} aria-label={VIEW_LABEL[view]}>
+        {!live && view !== 'pricing' ? (
+          <SampleBanner reason={data.sampleReason} goLogin={goLogin} />
+        ) : null}
         {top}
         {view === 'queue' ? (
           <QueueView data={data} live={live} />
-        ) : (
+        ) : view === 'analytics' ? (
           <AnalyticsView data={data} live={live} />
+        ) : (
+          <PricingView />
         )}
       </main>
 
-      {l.showRight ? (
+      {showRight ? (
         <aside className={s.right} aria-label="Reviewer and agent">
           <Profile
             data={data}
@@ -975,6 +1004,8 @@ const AGENT_COPY: Record<DashboardData['agent']['state'], string> = {
   'signed-out':
     'Sign in to talk through a ticket’s open flags with the resolution agent, one flag at a time.',
   off: 'The resolution agent is turned off in this environment (SPECFIX_RESOLUTION_AGENT is not “on”). Decide flags on a ticket’s Review tab instead.',
+  locked:
+    'The Conversational agent is part of Pro. On the Free plan, decide flags on a ticket’s Review tab.',
   'not-migrated':
     'The agent’s tables are not on this database yet (migration 0008). Decide flags on the Review tab until then.',
   'no-ticket':
