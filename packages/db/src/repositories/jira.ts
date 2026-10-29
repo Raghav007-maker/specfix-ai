@@ -18,6 +18,7 @@ import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
 import { decryptSecret, encryptSecret, tokenKeyId } from '../crypto.ts';
 import type { ProjectRow } from './tenants.ts';
+import { assertProjectRoom } from './plans.ts';
 
 export const JIRA_GRANT_KINDS = ['read', 'write'] as const;
 export type JiraGrantKind = (typeof JIRA_GRANT_KINDS)[number];
@@ -238,14 +239,19 @@ export async function disconnectJira(tenantId: TenantId, actorId: string): Promi
   });
 }
 
-/** Adds a Jira project from the connected site to the workspace. */
+/**
+ * Adds a Jira project from the connected site to the workspace. Counts against the Free
+ * plan's project limit unless `unlimited` (SpecFix's own team).
+ */
 export async function addJiraProject(
   tenantId: TenantId,
   actorId: string,
-  input: { projectKey: string; name: string; acFieldId?: string | null }
+  input: { projectKey: string; name: string; acFieldId?: string | null },
+  options: { unlimited?: boolean } = {}
 ): Promise<ProjectRow> {
   return tx(async (client) => {
     await requireTenantAdmin(client, tenantId, actorId);
+    if (!options.unlimited) await assertProjectRoom(client, tenantId);
     const connection = await client.query<{ id: string; cloud_id: string | null }>(
       `select id, cloud_id from jira_connections where tenant_id = $1 and grant_kind = 'read'`,
       [tenantId]

@@ -417,3 +417,15 @@ export function dataAttrs(s: Settings): Record<string, string> {
     'data-logo-loop': s.brand.logoLoop ? 'on' : 'off',
   };
 }
+
+/** The soft workspace preset on a white page, as in the supplied dashboard screenshot. */
+export const WORKSPACE_SETTINGS = sanitize({
+  ...PRESETS.workspace.patch,
+  appearance: {
+    ...PRESETS.workspace.patch.appearance,
+    page: '#ffffff',
+    sidebar: '#ffffff',
+    surface: '#f4f4f5',
+    border: '#ececef',
+  },
+}).settings;

@@ -5,3 +5,4 @@ export * from './scenario.ts';
 export * from './hash.ts';
 export * from './clauses.ts';
 export * from './agent.ts';
+export * from './pricing.ts';

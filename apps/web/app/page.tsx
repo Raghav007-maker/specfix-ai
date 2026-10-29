@@ -6,6 +6,8 @@ import { loadWorkspaceDashboard } from '@/lib/dashboard';
 import { switchTenant, createProjectForCurrentTenant } from './actions';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { Button, Input, Notice, Select } from '@/components/ui';
+import { PlanNotice } from '@/components/plan-notice';
+import { planNoticeFor } from '@/lib/plan';
 
 export default async function QueuePage({
   searchParams,
@@ -28,11 +30,16 @@ export default async function QueuePage({
 
   // Only a project of this workspace narrows the queue; anything else shows them all.
   const activeProject = projects.find((p) => p.id === projectParam);
-  const { data, agent } = await loadWorkspaceDashboard(user, tenant, projects, activeProject?.id);
+  const [{ data, agent }, notice] = await Promise.all([
+    loadWorkspaceDashboard(user, tenant, projects, activeProject?.id),
+    planNoticeFor(user, tenant),
+  ]);
 
   const top =
-    error || memberships.length > 1 || projects.length === 0 ? (
+    notice || error || memberships.length > 1 || projects.length === 0 ? (
       <div className="space-y-4">
+        {/* The home queue has no top bar, so the plan notice sits at the top right here. */}
+        {notice ? <PlanNotice notice={notice} className="ml-auto w-fit" /> : null}
         {error ? <Notice tone="error">{error}</Notice> : null}
         {memberships.length > 1 ? (
           <form action={switchTenant} className="flex flex-wrap items-center gap-2">

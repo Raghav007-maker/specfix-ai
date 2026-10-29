@@ -331,6 +331,7 @@ export function Playground({ data, agent }: { data: DashboardData; agent: ReactN
                   settings={settings}
                   data={data}
                   agent={agent}
+                  pricing
                   goLogin={() => {
                     setMode('sign-in');
                     go('login');

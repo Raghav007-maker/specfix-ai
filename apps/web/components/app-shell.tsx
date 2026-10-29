@@ -1,12 +1,26 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { BarChart3, Bell, Folder, ListChecks, LogOut, Menu, Plug, Users, X } from 'lucide-react';
+import {
+  BarChart3,
+  Bell,
+  Folder,
+  Gem,
+  IndianRupee,
+  ListChecks,
+  LogOut,
+  Menu,
+  Plug,
+  Users,
+  X,
+} from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { signOut } from '@/app/(auth)/actions';
 import type { MembershipRow } from '@/lib/tenant';
 import type { ProjectRow } from '@/lib/repos';
 import { cn } from '@/lib/cn';
 import { LogoMark, LogoWordmark } from '@/components/brand';
+import { PlanNotice } from '@/components/plan-notice';
+import { isAppOwner, planNoticeFor } from '@/lib/plan';
 
 /**
  * The workspace frame: a white sidebar and top bar on the light grey ground around one white sheet,
@@ -29,7 +43,7 @@ export function AppShell({
   projects: ProjectRow[];
   activeProjectId?: string;
   /** Which top-level destination this page is, for the sidebar's active state. */
-  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox';
+  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
   breadcrumb: ReactNode;
   children: ReactNode;
 }) {
@@ -40,6 +54,7 @@ export function AppShell({
       activeProjectId={activeProjectId}
       current={current}
       email={user.email ?? ''}
+      appOwner={isAppOwner(user)}
     />
   );
 
@@ -49,7 +64,10 @@ export function AppShell({
         {nav}
       </aside>
 
-      <header className="flex h-12 items-center px-6 max-lg:hidden">{breadcrumb}</header>
+      <header className="flex h-12 items-center gap-3 px-6 max-lg:hidden">
+        <div className="min-w-0 flex-1">{breadcrumb}</div>
+        <PlanNoticeSlot user={user} tenant={tenant} />
+      </header>
 
       <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-frame px-2 lg:hidden">
         <details className="group">
@@ -65,6 +83,7 @@ export function AppShell({
           </div>
         </details>
         <div className="min-w-0 flex-1">{breadcrumb}</div>
+        <PlanNoticeSlot user={user} tenant={tenant} />
       </header>
 
       <main
@@ -77,18 +96,27 @@ export function AppShell({
   );
 }
 
+/** The plan notice for owners and admins, when there is one to show. */
+async function PlanNoticeSlot({ user, tenant }: { user: User; tenant: MembershipRow }) {
+  const notice = await planNoticeFor(user, tenant);
+  return notice ? <PlanNotice notice={notice} /> : null;
+}
+
 function Nav({
   tenant,
   projects,
   activeProjectId,
   current,
   email,
+  appOwner,
 }: {
   tenant: MembershipRow;
   projects: ProjectRow[];
   activeProjectId?: string;
-  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox';
+  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
   email: string;
+  /** SpecFix's own team also sees the payments to approve. */
+  appOwner: boolean;
 }) {
   return (
     <>
@@ -143,6 +171,22 @@ function Nav({
         >
           Integrations
         </NavLink>
+        <NavLink
+          href="/pricing"
+          active={current === 'pricing'}
+          icon={<Gem aria-hidden size={18} strokeWidth={1.6} />}
+        >
+          Pricing
+        </NavLink>
+        {appOwner ? (
+          <NavLink
+            href="/admin/payments"
+            active={current === 'payments'}
+            icon={<IndianRupee aria-hidden size={18} strokeWidth={1.6} />}
+          >
+            Payments
+          </NavLink>
+        ) : null}
 
         {projects.length > 0 ? (
           <>

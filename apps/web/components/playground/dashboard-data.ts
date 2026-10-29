@@ -49,6 +49,8 @@ export type AgentState =
   | 'signed-out'
   /** SPECFIX_RESOLUTION_AGENT is not "on" in this environment. */
   | 'off'
+  /** The workspace is on Free; the agent is a Pro feature. */
+  | 'locked'
   | 'not-migrated'
   /** No ticket with a locked gap list and an open flag for this reviewer. */
   | 'no-ticket'
