@@ -243,6 +243,15 @@ describe('notReadyComment', () => {
     expect(body.startsWith(NOT_READY_MARKER)).toBe(true);
     expect(body).toContain('[CART-1](https://specfix.example/tickets/x)');
     expect(notReadyComment({ notReady: [], ready: ['CART-1'] })).toContain('now ready');
+    const two = notReadyComment({
+      notReady: [
+        { key: 'CART-1', url: null },
+        { key: 'CART-2', url: null },
+      ],
+      ready: [],
+    });
+    expect(two).toContain('these tickets are');
+    expect(two).toContain('Their open questions');
   });
 });
 

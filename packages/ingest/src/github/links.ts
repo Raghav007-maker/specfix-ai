@@ -119,7 +119,9 @@ export function notReadyComment(input: {
     NOT_READY_MARKER,
     `**SpecFix:** ${input.notReady.length === 1 ? 'this ticket is' : 'these tickets are'} not marked "Ready for development" yet: ${input.notReady.map(link).join(', ')}.`,
     '',
-    'Its open questions may still change the acceptance criteria this PR is built against. Resolve the flags and sign the ticket off in SpecFix; this comment updates when that happens.',
+    input.notReady.length === 1
+      ? 'Its open questions may still change the acceptance criteria this PR is built against. Resolve the flags and sign the ticket off in SpecFix; this comment updates when that happens.'
+      : 'Their open questions may still change the acceptance criteria this PR is built against. Resolve the flags and sign the tickets off in SpecFix; this comment updates when that happens.',
   ].join('\n');
 }
 
