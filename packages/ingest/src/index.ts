@@ -10,4 +10,8 @@ export * from './jira/issues.ts';
 export * from './jira/webhooks.ts';
 export * from './jira/writeback.ts';
 export * from './ci/playwright.ts';
+export * from './github/app.ts';
+export * from './github/api.ts';
+export * from './github/webhooks.ts';
+export * from './github/links.ts';
 export * from './razorpay.ts';

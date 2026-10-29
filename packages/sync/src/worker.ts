@@ -14,6 +14,7 @@ import {
   dueDigestRecipients,
   failJob,
   pendingEmailTenants,
+  pruneGithubDeliveries,
   pruneWebhookDeliveries,
   tenantsDueForReconcile,
   tenantsDueForWebhookSync,
@@ -24,6 +25,7 @@ import { JiraAuthError } from '@specfix/ingest';
 import { runAnalyzeBatch } from './analyze-batch.ts';
 import { runBackfill } from './backfill.ts';
 import { PermanentJobError } from './errors.ts';
+import { runGithubCheckRun, runGithubPrSync, runGithubRepoSync } from './github.ts';
 import { publicBaseUrlFromEnv, runIssueSync, runReconcile, runWebhookSync } from './live.ts';
 import { runNotifyDeliver, runNotifyDigest } from './notify.ts';
 
@@ -37,6 +39,9 @@ export const defaultHandlers: Record<JobKind, JobHandler> = {
   jira_webhook_sync: (job) => runWebhookSync(job),
   notify_deliver: (job) => runNotifyDeliver(job),
   notify_digest: (job) => runNotifyDigest(job),
+  github_pr_sync: (job) => runGithubPrSync(job),
+  github_check_run: (job) => runGithubCheckRun(job),
+  github_repo_sync: (job) => runGithubRepoSync(job),
 };
 
 /**
@@ -99,6 +104,7 @@ export async function scheduleDueJobs(
     }
   }
   await pruneWebhookDeliveries();
+  await pruneGithubDeliveries();
   return queued;
 }
 

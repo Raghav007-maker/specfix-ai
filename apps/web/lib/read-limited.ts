@@ -3,12 +3,25 @@ import 'server-only';
 /**
  * A request body as text, or null as soon as it exceeds `limit` bytes.
  *
- * For the machine-to-machine endpoints (Jira webhooks, CI results), whose callers are
- * untrusted: a chunked upload has no Content-Length to check, and `request.json()` /
- * `request.text()` would buffer the whole body before any size check could run.
+ * For the machine-to-machine endpoints (Jira and GitHub webhooks, CI results), whose
+ * callers are untrusted: a chunked upload has no Content-Length to check, and
+ * `request.json()` / `request.text()` would buffer the whole body before any size check
+ * could run.
  */
 export async function readLimited(request: Request, limit: number): Promise<string | null> {
-  if (!request.body) return '';
+  const bytes = await readLimitedBytes(request, limit);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
+}
+
+/**
+ * As readLimited, but the exact bytes: a signature (GitHub's X-Hub-Signature-256) must
+ * be checked over what was sent, not over a decoded-and-re-encoded copy.
+ */
+export async function readLimitedBytes(
+  request: Request,
+  limit: number
+): Promise<Uint8Array | null> {
+  if (!request.body) return new Uint8Array(0);
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -28,5 +41,5 @@ export async function readLimited(request: Request, limit: number): Promise<stri
     all.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(all);
+  return all;
 }

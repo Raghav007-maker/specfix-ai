@@ -407,6 +407,14 @@ bodies) — no live Jira calls in CI.
    other company connects, set *Distribution* → *Sharing* (requires vendor name, privacy policy
    URL and a personal-data declaration).
 
+## 10. GitHub App (built after Phase 3)
+
+The GitHub side of the loop — PR ↔ ticket links by Jira key, the "SpecFix acceptance" check
+run, the one "not ready" PR comment, "Open PR with scaffolds", and default-branch-only CI
+status — is set up and described in [`docs/github-app.md`](docs/github-app.md) (registration
+steps, permissions, env names, what still needs a real app to verify). Schema: migration
+`0016_github_app.sql`.
+
 ## 8. Explicitly out of scope here
 
 Roles beyond owner/admin/reviewer and Login-with-Atlassian (gap #5), sprint readiness view,

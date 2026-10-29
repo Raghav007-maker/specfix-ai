@@ -3,6 +3,8 @@ import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { agentAccess } from '@/lib/plan';
 import {
+  pullRequestsForTicket,
+  type TicketPullRequestRow,
   findSession,
   getTicket,
   latestVersion,
@@ -101,7 +103,10 @@ export default async function TicketPage({
     gaps = await listGaps(tenant.tenant_id, session.id);
   }
 
-  const writebacks = locked ? await currentWritebacks(tenant.tenant_id, ticket.id) : [];
+  const [writebacks, pulls] = await Promise.all([
+    locked ? currentWritebacks(tenant.tenant_id, ticket.id) : Promise.resolve([]),
+    pullRequestsForTicket(tenant.tenant_id, ticket.id),
+  ]);
   const openFlags = flags.filter((f) => f.status === 'open').length;
   const decided = flags.length - openFlags;
   const matched = gaps.filter((g) => g.matched_flag_id !== null).length;
@@ -205,6 +210,8 @@ export default async function TicketPage({
 
       {ready ? <JiraWritebackStatus ticketId={ticket.id} rows={writebacks} /> : null}
 
+      {pulls.length > 0 ? <LinkedPulls ticketId={ticket.id} pulls={pulls} /> : null}
+
       {!version ? (
         <EmptyNote>
           This ticket has no captured version yet, so there is nothing to review. Versions are
@@ -293,6 +300,37 @@ function JiraWritebackStatus({ ticketId, rows }: { ticketId: string; rows: Write
         )
         .join(' and ')}
       .
+    </p>
+  );
+}
+
+/** The PRs that name this ticket, one line; the Specs tab has their CI runs and checks. */
+function LinkedPulls({ ticketId, pulls }: { ticketId: string; pulls: TicketPullRequestRow[] }) {
+  return (
+    <p className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+      <span>Linked PRs:</span>
+      {pulls.map((p) => (
+        <span key={p.id} className="inline-flex items-center gap-1.5">
+          {p.html_url ? (
+            <a
+              href={p.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-text underline-offset-[3px] hover:underline"
+            >
+              {p.full_name}#{p.number}
+            </a>
+          ) : (
+            <span className="font-medium text-text">
+              {p.full_name}#{p.number}
+            </span>
+          )}
+          <Pill tone={p.state === 'open' ? 'positive' : 'neutral'}>{p.state}</Pill>
+        </span>
+      ))}
+      <a href={`/tickets/${ticketId}/specs`} className="underline-offset-[3px] hover:underline">
+        CI per PR →
+      </a>
     </p>
   );
 }
