@@ -9,7 +9,13 @@
  * racing the browser, or a replayed webhook extends Pro exactly once.
  */
 import type { PoolClient } from 'pg';
-import { PRO_PRICES, normalizeUtr, type BillingPeriod } from '@specfix/shared';
+import {
+  PRO_PRICES,
+  normalizePayerCode,
+  normalizeUtr,
+  payerCode,
+  type BillingPeriod,
+} from '@specfix/shared';
 import { tx, query, type TenantId } from '../client.ts';
 
 /** A refusal the person can act on. Shown as-is. */
@@ -138,16 +144,33 @@ export async function listPaymentsForReview(limit = 50): Promise<PaymentReviewRo
 export async function decidePayment(
   paymentId: string,
   deciderId: string,
-  decision: 'paid' | 'rejected'
+  decision: 'paid' | 'rejected',
+  /** Approving a UPI claim needs the code the team read in the bank note. */
+  noteCode?: string
 ): Promise<{ proUntil: Date | null }> {
   return tx(async (client) => {
-    const found = await client.query<{ tenant_id: string; period: BillingPeriod; status: string }>(
-      `select tenant_id, period, status from payments where id = $1 for update`,
+    const found = await client.query<{
+      tenant_id: string;
+      period: BillingPeriod;
+      status: string;
+      method: string;
+      created_by: string | null;
+    }>(
+      `select tenant_id, period, status, method, created_by from payments where id = $1 for update`,
       [paymentId]
     );
     const payment = found.rows[0];
     if (!payment) throw new PaymentError('No such payment.');
     if (payment.status !== 'pending') throw new PaymentError('This payment was already decided.');
+    if (decision === 'paid' && payment.method === 'upi') {
+      const typed = normalizePayerCode(noteCode);
+      if (!typed) throw new PaymentError('Type the P-… code from the bank note to approve.');
+      if (!payment.created_by || typed !== payerCode(payment.created_by)) {
+        throw new PaymentError(
+          'The code in the bank note is not from the account that claimed this payment. Reject it.'
+        );
+      }
+    }
 
     await client.query(
       `update payments set status = $2, decided_by = $3, decided_at = now() where id = $1`,

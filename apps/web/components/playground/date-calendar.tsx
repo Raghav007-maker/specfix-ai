@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { HistoryEvent } from './dashboard-data';
 import s from './playground.module.css';
@@ -192,9 +193,9 @@ export function DateCalendar({
                     <span>
                       <b>{ACTION[e.kind]}</b>
                       {linkTickets ? (
-                        <a href={`/tickets/${e.ticketId}`}>
+                        <Link href={`/tickets/${e.ticketId}`}>
                           <code>{e.key}</code> {e.title}
-                        </a>
+                        </Link>
                       ) : (
                         <span>
                           <code>{e.key}</code> {e.title}

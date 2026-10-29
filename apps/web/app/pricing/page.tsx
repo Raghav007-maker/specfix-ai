@@ -25,7 +25,7 @@ export default async function PricingPage() {
   const cta = proCta({ pro: plan.pro, appOwner, role: tenant.role });
   // Only someone who can pay opens the dialog, so only they need the QR codes.
   const canPay = cta === 'upgrade' || cta === 'extend';
-  const upi = canPay ? await upiSetup(tenant.tenant_id) : null;
+  const upi = canPay ? await upiSetup(user.id) : null;
   const razorpay = canPay ? razorpaySetup() : null;
 
   return (

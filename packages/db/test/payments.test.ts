@@ -20,6 +20,7 @@ import {
   submitUpiPayment,
   tenantPlan,
 } from '../src/index.ts';
+import { payerCode } from '@specfix/shared';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 const DAY = 86_400_000;
@@ -104,13 +105,26 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     const id = await workspace('approve');
     const row = await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
     const before = Date.now();
-    const { proUntil } = await decidePayment(row.id, users.team, 'paid');
+    const { proUntil } = await decidePayment(row.id, users.team, 'paid', payerCode(users.owner));
     const days = (proUntil!.getTime() - before) / DAY;
     expect(days).toBeGreaterThan(29.99);
     expect(days).toBeLessThan(30.01);
     expect((await tenantPlan(id)).pro).toBe(true);
-    await expect(decidePayment(row.id, users.team, 'paid')).rejects.toThrow(/already decided/);
+    await expect(decidePayment(row.id, users.team, 'paid', payerCode(users.owner))).rejects.toThrow(
+      /already decided/
+    );
     await expect(decidePayment(row.id, users.team, 'rejected')).rejects.toThrow(/already decided/);
+  });
+
+  it('approves a UPI claim only with the claiming account’s code from the bank note', async () => {
+    const id = await workspace('note-code');
+    const row = await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
+    for (const bad of [undefined, '', payerCode(users.admin), 'W-ABCDEF', "P-' or 1=1 --"]) {
+      await expect(decidePayment(row.id, users.team, 'paid', bad)).rejects.toThrow(PaymentError);
+    }
+    expect((await tenantPlan(id)).pro).toBe(false);
+    const spaced = ` ${payerCode(users.owner).toLowerCase().replace('-', '- ')} `;
+    expect((await decidePayment(row.id, users.team, 'paid', spaced)).proUntil).not.toBeNull();
   });
 
   it('extends from the current end of Pro, not from today', async () => {
@@ -118,7 +132,7 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     const end = new Date(Date.now() + 10 * DAY);
     await setProUntil(id, end);
     const row = await submitUpiPayment(id, users.owner, { period: 'annual', utr: utr() });
-    const { proUntil } = await decidePayment(row.id, users.team, 'paid');
+    const { proUntil } = await decidePayment(row.id, users.team, 'paid', payerCode(users.owner));
     expect(Math.round((proUntil!.getTime() - end.getTime()) / DAY)).toBe(365);
   });
 
@@ -126,7 +140,7 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     const id = await workspace('lapsed');
     await setProUntil(id, new Date(Date.now() - 20 * DAY));
     const row = await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
-    const { proUntil } = await decidePayment(row.id, users.team, 'paid');
+    const { proUntil } = await decidePayment(row.id, users.team, 'paid', payerCode(users.owner));
     expect(Math.round((proUntil!.getTime() - Date.now()) / DAY)).toBe(30);
   });
 
@@ -153,9 +167,9 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     const id = await workspace('race');
     const row = await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
     const results = await Promise.allSettled([
-      decidePayment(row.id, users.team, 'paid'),
-      decidePayment(row.id, users.team, 'paid'),
-      decidePayment(row.id, users.team, 'paid'),
+      decidePayment(row.id, users.team, 'paid', payerCode(users.owner)),
+      decidePayment(row.id, users.team, 'paid', payerCode(users.owner)),
+      decidePayment(row.id, users.team, 'paid', payerCode(users.owner)),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const { proUntil } = await tenantPlan(id);

@@ -33,6 +33,22 @@ export function paymentRef(tenantId: string): string {
   return `W-${tenantId.replace(/-/g, '').slice(0, 6).toUpperCase()}`;
 }
 
+/**
+ * The payer's hidden code: derived from their account id, carried only inside the UPI QR's
+ * note, never shown in the app. The team approves a UPI claim only when the code in the bank
+ * note matches the account that claimed it, so a UTR copied from someone else's receipt fails.
+ */
+export function payerCode(userId: string): string {
+  return `P-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+/** A code typed by the team from the bank note, normalised for comparison; null if not one. */
+export function normalizePayerCode(input: unknown): string | null {
+  if (typeof input !== 'string' || input.length > 40) return null;
+  const code = input.replace(/\s/g, '').toUpperCase();
+  return /^P-[0-9A-F]{8}$/.test(code) ? code : null;
+}
+
 /** A UPI ID such as name@bank. */
 export function isUpiId(value: string): boolean {
   return /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/.test(value);

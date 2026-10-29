@@ -64,17 +64,25 @@ export default async function IntegrationsPage({
     listProjects(tenant.tenant_id),
     getJiraConnection(tenant.tenant_id),
   ]);
-  const [webhook, writeGrant] = connection
-    ? await Promise.all([
-        getTenantWebhook(tenant.tenant_id),
-        getJiraConnection(tenant.tenant_id, 'write'),
-      ])
-    : [null, null];
 
   const isAdmin = tenant.role === 'owner' || tenant.role === 'admin';
   const jiraProjects = projects.filter((p) => p.source_type === 'jira');
-  const [jobs, budget, counts, ciTokens, ciRuns, githubInstallations, githubRepos] =
-    await Promise.all([
+  const batchLimit = analyzeBatchLimit();
+  // Everything below needs only the tenant, its projects and the connection, so it is read in
+  // one parallel round (it was four rounds, one after another).
+  const [
+    [webhook, writeGrant],
+    [jobs, budget, counts, ciTokens, ciRuns, githubInstallations, githubRepos],
+    estimate,
+    live,
+  ] = await Promise.all([
+    connection
+      ? Promise.all([
+          getTenantWebhook(tenant.tenant_id),
+          getJiraConnection(tenant.tenant_id, 'write'),
+        ])
+      : Promise.resolve([null, null] as const),
+    Promise.all([
       latestProjectJobs(tenant.tenant_id),
       tenantTokenBudget(tenant.tenant_id),
       Promise.all(jiraProjects.map((p) => countAnalysisCandidates(tenant.tenant_id, p.id))),
@@ -82,7 +90,11 @@ export default async function IntegrationsPage({
       latestCiRuns(tenant.tenant_id),
       listGithubInstallations(tenant.tenant_id),
       listGithubRepositories(tenant.tenant_id),
-    ]);
+    ]),
+    analysisEstimate(tenant.tenant_id, batchLimit),
+    // Live Jira reads only for the people who can act on them.
+    isAdmin && connection ? loadLive(tenant.tenant_id, connection) : Promise.resolve(null),
+  ]);
   const baseUrl = (process.env.PUBLIC_BASE_URL?.trim() || 'http://localhost:3000').replace(
     /\/$/,
     ''
@@ -91,10 +103,6 @@ export default async function IntegrationsPage({
   const jobFor = (projectId: string, kind: JobRow['kind']) =>
     jobs.find((j) => j.project_id === projectId && j.kind === kind);
   const busy = jobs.some((j) => j.status === 'queued' || j.status === 'running');
-  const batchLimit = analyzeBatchLimit();
-  const estimate = await analysisEstimate(tenant.tenant_id, batchLimit);
-  // Live Jira reads only for the people who can act on them.
-  const live = isAdmin && connection ? await loadLive(tenant.tenant_id, connection) : null;
 
   return (
     <AppShell

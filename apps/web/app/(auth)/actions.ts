@@ -1,8 +1,27 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { AuthError } from '@supabase/supabase-js';
+import { AttemptLimiter } from '@specfix/shared';
 import { createClient } from '@/lib/supabase/server';
+
+const TOO_MANY = 'Too many attempts. Please wait a few minutes and try again.';
+
+// shortcut: counters live in this server process; with several instances, move them to Postgres.
+const signInByIp = new AttemptLimiter(20, 15 * 60_000);
+const signInByEmail = new AttemptLimiter(10, 15 * 60_000);
+const signUpByIp = new AttemptLimiter(5, 60 * 60_000);
+
+/** Emails over 254 chars are invalid; Supabase rejects passwords over 72. Refused without a call. */
+const tooLong = (email: string, password: string) => email.length > 254 || password.length > 72;
+
+/** The caller's IP, as set by the proxy in front (Vercel, nginx). A server exposed directly
+ * lets clients spoof these headers, so the per-email limit is what still holds then. */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  return h.get('x-real-ip') ?? (h.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown');
+}
 
 /**
  * Turn a Supabase AuthError into a message that is safe to show a user.
@@ -23,9 +42,7 @@ function friendlyAuthMessage(error: AuthError, action: 'sign-in' | 'sign-up'): s
   if (error.name === 'AuthRetryableFetchError' || status === 0) {
     return 'Cannot reach the authentication server. Please check your connection and try again.';
   }
-  if (status === 429) {
-    return 'Too many attempts. Please wait a moment and try again.';
-  }
+  if (status === 429) return TOO_MANY;
   if (action === 'sign-in' && (status === 400 || status === 401)) {
     return 'Incorrect email or password.';
   }
@@ -43,17 +60,23 @@ export async function signIn(formData: FormData): Promise<void> {
   const password = String(formData.get('password') ?? '');
 
   let reason: string | null = null;
-  try {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      // Server-side diagnostics: enough to debug, with no email or password in the log.
-      console.error('[auth] sign-in failed:', error.name, error.status ?? 0, error.message);
-      reason = friendlyAuthMessage(error, 'sign-in');
+  if (tooLong(email, password)) {
+    reason = 'Incorrect email or password.';
+  } else if (!(signInByIp.take(await clientIp()) && signInByEmail.take(email.toLowerCase()))) {
+    reason = TOO_MANY;
+  } else {
+    try {
+      const supabase = await createClient();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        // Server-side diagnostics: enough to debug, with no email or password in the log.
+        console.error('[auth] sign-in failed:', error.name, error.status ?? 0, error.message);
+        reason = friendlyAuthMessage(error, 'sign-in');
+      }
+    } catch (err) {
+      console.error('[auth] sign-in threw:', err instanceof Error ? err.message : err);
+      reason = 'Something went wrong signing you in. Please try again.';
     }
-  } catch (err) {
-    console.error('[auth] sign-in threw:', err instanceof Error ? err.message : err);
-    reason = 'Something went wrong signing you in. Please try again.';
   }
 
   // redirect() works by throwing, so it must run outside the try/catch above or the
@@ -71,6 +94,11 @@ export async function signIn(formData: FormData): Promise<void> {
 export async function signUp(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+
+  if (tooLong(email, password)) {
+    redirect(`/login?error=${encodeURIComponent('Use a shorter email or password.')}`);
+  }
+  if (!signUpByIp.take(await clientIp())) redirect(`/login?error=${encodeURIComponent(TOO_MANY)}`);
 
   let destination = '/';
   try {
