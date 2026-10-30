@@ -7,7 +7,8 @@ import { isAppOwner, PLAN_DATE } from '@/lib/plan';
 import { listPaymentsForReview, listProjects } from '@/lib/repos';
 import { AppShell } from '@/components/app-shell';
 import { ConfirmSubmit } from '@/components/confirm-dialog';
-import { EmptyNote, Notice, Pill } from '@/components/ui';
+import { SubmitButton } from '@/components/submit-button';
+import { EmptyNote, Input, Notice, Pill } from '@/components/ui';
 import { decidePaymentAction } from './actions';
 
 export const metadata: Metadata = { title: 'Payments · SpecFix', robots: { index: false } };
@@ -60,9 +61,9 @@ export default async function PaymentsPage({
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-[-0.012em]">Payments</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Check each UTR in the bank app before approving, and that its note shows the
-          workspace&rsquo;s code (W-…). Approving starts or extends that workspace&rsquo;s Pro plan.{' '}
-          {waiting > 0 ? `${waiting} waiting.` : 'Nothing waiting.'}
+          Check each UTR in the bank app, then type the P-… code from its note to approve. The
+          server refuses a code from another account. Approving starts or extends that
+          workspace&rsquo;s Pro plan. {waiting > 0 ? `${waiting} waiting.` : 'Nothing waiting.'}
         </p>
       </div>
 
@@ -145,14 +146,24 @@ export default async function PaymentsPage({
                           body={`The workspace “${p.tenant_name}” stays on its current plan and sees that UTR ${p.utr} could not be confirmed.`}
                           confirmLabel="Reject payment"
                         />
-                        <ConfirmSubmit
-                          action={decidePaymentAction}
-                          fields={{ paymentId: p.id, decision: 'paid' }}
-                          label="Approve"
-                          title={`Approve ₹${p.amount_paise / 100}?`}
-                          body={`Only if the bank app shows UTR ${p.utr} with ₹${p.amount_paise / 100} received and the note “${paymentRef(p.tenant_id)}”. A different code means someone else’s receipt: reject it. “${p.tenant_name}” gets ${p.period === 'annual' ? '365' : '30'} more days of Pro.`}
-                          confirmLabel="Approve and start Pro"
-                        />
+                        {p.method === 'upi' ? (
+                          <form action={decidePaymentAction} className="flex gap-2">
+                            <input type="hidden" name="paymentId" value={p.id} />
+                            <input type="hidden" name="decision" value="paid" />
+                            <Input
+                              name="noteCode"
+                              required
+                              maxLength={40}
+                              autoComplete="off"
+                              aria-label={`Code from the bank note for UTR ${p.utr}`}
+                              placeholder="P-… from bank note"
+                              className="w-40 font-mono"
+                            />
+                            <SubmitButton size="sm" pendingLabel="Approving…">
+                              Approve
+                            </SubmitButton>
+                          </form>
+                        ) : null}
                       </div>
                     ) : null}
                   </td>

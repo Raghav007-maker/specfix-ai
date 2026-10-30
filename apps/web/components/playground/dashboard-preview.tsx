@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import Link from 'next/link';
 import {
   ArrowUpRight,
   BadgeCheck,
@@ -104,21 +105,21 @@ export function DashboardPreview({
       >
         Ticket analytics
       </NavButton>
-      <a className={s.navItem} href="/inbox">
+      <Link className={s.navItem} href="/inbox">
         <Bell aria-hidden />
         <span>Inbox</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
-      </a>
-      <a className={s.navItem} href="/team">
+      </Link>
+      <Link className={s.navItem} href="/team">
         <Users aria-hidden />
         <span>Team</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
-      </a>
-      <a className={s.navItem} href="/settings/integrations">
+      </Link>
+      <Link className={s.navItem} href="/settings/integrations">
         <Plug aria-hidden />
         <span>Integrations</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
-      </a>
+      </Link>
       {/* The playground shows its own Pricing prototype; the workspace links to the real page. */}
       {pricing ? (
         <NavButton
@@ -129,21 +130,21 @@ export function DashboardPreview({
           Pricing
         </NavButton>
       ) : (
-        <a className={s.navItem} href="/pricing">
+        <Link className={s.navItem} href="/pricing">
           <Gem aria-hidden />
           <span>Pricing</span>
           <ArrowUpRight aria-hidden className={s.navOut} />
-        </a>
+        </Link>
       )}
       {projects && projects.length > 0 ? (
         <>
           <p className={s.navGroup}>Projects</p>
-          <a className={s.navItem} href="/" aria-current={!activeProjectId ? 'page' : undefined}>
+          <Link className={s.navItem} href="/" aria-current={!activeProjectId ? 'page' : undefined}>
             <Folder aria-hidden />
             <span>All projects</span>
-          </a>
+          </Link>
           {projects.map((p) => (
-            <a
+            <Link
               key={p.id}
               className={s.navItem}
               href={`/?project=${p.id}`}
@@ -151,7 +152,7 @@ export function DashboardPreview({
             >
               <Folder aria-hidden />
               <span>{p.name}</span>
-            </a>
+            </Link>
           ))}
         </>
       ) : null}
@@ -396,13 +397,13 @@ function QueueView({ data, live }: { data: DashboardData; live: boolean }) {
                       : '—'}
                   </span>
                   {live ? (
-                    <a
+                    <Link
                       className={s.taskGo}
                       href={`/tickets/${r.id}`}
                       aria-label={`${st === 'need' ? 'Review' : 'Open'} ${r.key}`}
                     >
                       <ChevronRight aria-hidden />
-                    </a>
+                    </Link>
                   ) : (
                     <span
                       className={s.taskGo}
@@ -760,9 +761,9 @@ function AnalyticsView({ data, live }: { data: DashboardData; live: boolean }) {
               : 'A prototype view with sample data. It is not a measurement.'}
           </p>
         </div>
-        <a className={`${s.btn} ${s.btnLine}`} href="/analytics">
+        <Link className={`${s.btn} ${s.btnLine}`} href="/analytics">
           Open full analytics <ArrowUpRight aria-hidden size={16} />
-        </a>
+        </Link>
       </header>
 
       <div className={s.kpis}>
@@ -916,9 +917,9 @@ function Profile({
             </p>
           ) : null}
           <div className={s.roundBtns}>
-            <a className={s.roundBtn} href="/team" aria-label="Team" title="Team">
+            <Link className={s.roundBtn} href="/team" aria-label="Team" title="Team">
               <Users aria-hidden />
-            </a>
+            </Link>
             <button
               type="button"
               className={s.roundBtn}
@@ -975,10 +976,10 @@ function AgentPanel({
         <span>Resolution agent</span>
       </h2>
       {a.ticket ? (
-        <a className={s.agentTicket} href={`/tickets/${a.ticket.id}/conversation`}>
+        <Link className={s.agentTicket} href={`/tickets/${a.ticket.id}/conversation`}>
           <MessagesSquare aria-hidden size={14} /> <code>{a.ticket.key}</code> · {a.ticket.title}
           <ArrowUpRight aria-hidden size={13} />
-        </a>
+        </Link>
       ) : null}
       {a.state === 'ready' && agent ? (
         <div className={s.agentBody}>{agent}</div>

@@ -10,7 +10,6 @@ import x from './pricing.module.css';
 export interface UpiPay {
   payee: string;
   payeeName: string;
-  ref: string;
   pay: Record<BillingPeriod, { link: string; qr: string }>;
 }
 
@@ -129,10 +128,7 @@ export function UpiDialog({
               {razorpay ? <p className={x.or}>or pay by UPI QR</p> : null}
               <ol className={x.steps}>
                 <li>Scan the QR with any UPI app (GPay, PhonePe, Paytm) and pay ₹{rupees}.</li>
-                <li>
-                  Keep the payment note as it is: it carries your workspace code{' '}
-                  <code>{upi.ref}</code>, which the team checks before switching on Pro.
-                </li>
+                <li>Keep the payment note as it is; the team checks it before switching on Pro.</li>
                 <li>Copy the 12-digit UTR from the payment receipt and paste it below.</li>
               </ol>
               <div className={x.qrBox}>

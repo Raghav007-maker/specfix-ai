@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -66,7 +66,9 @@ export function AppShell({
 
       <header className="flex h-12 items-center gap-3 px-6 max-lg:hidden">
         <div className="min-w-0 flex-1">{breadcrumb}</div>
-        <PlanNoticeSlot user={user} tenant={tenant} />
+        <Suspense fallback={null}>
+          <PlanNoticeSlot user={user} tenant={tenant} />
+        </Suspense>
       </header>
 
       <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-frame px-2 lg:hidden">
@@ -83,7 +85,9 @@ export function AppShell({
           </div>
         </details>
         <div className="min-w-0 flex-1">{breadcrumb}</div>
-        <PlanNoticeSlot user={user} tenant={tenant} />
+        <Suspense fallback={null}>
+          <PlanNoticeSlot user={user} tenant={tenant} />
+        </Suspense>
       </header>
 
       <main
@@ -96,7 +100,8 @@ export function AppShell({
   );
 }
 
-/** The plan notice for owners and admins, when there is one to show. */
+/** The plan notice for owners and admins, when there is one to show. Streamed in its own
+ * Suspense boundary so the page never waits on this extra query. */
 async function PlanNoticeSlot({ user, tenant }: { user: User; tenant: MembershipRow }) {
   const notice = await planNoticeFor(user, tenant);
   return notice ? <PlanNotice notice={notice} /> : null;

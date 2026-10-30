@@ -3,7 +3,7 @@ import { cache } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { resolutionAgentEnabled } from '@/lib/agent';
 import QRCode from 'qrcode';
-import { PRO_PRICES, isUpiId, paymentRef, upiPayLink, type BillingPeriod } from '@specfix/shared';
+import { PRO_PRICES, isUpiId, payerCode, upiPayLink, type BillingPeriod } from '@specfix/shared';
 import {
   agentAccessFor,
   isAppOwnerEmail,
@@ -90,8 +90,6 @@ export const planNoticeFor = cache(async function planNoticeFor(
 export interface UpiSetup {
   payee: string;
   payeeName: string;
-  /** This workspace's code, carried in the payment note (`paymentRef`). */
-  ref: string;
   pay: Record<BillingPeriod, { link: string; qr: string }>;
 }
 
@@ -103,11 +101,12 @@ export interface UpiSetup {
  *
  * The QR is an SVG data URL drawn from the upi:// link, so the page shows it as an image.
  */
-export async function upiSetup(tenantId: string): Promise<UpiSetup | null> {
+/** `userId` is the payer: their hidden code goes into the QR's note (`payerCode`). */
+export async function upiSetup(userId: string): Promise<UpiSetup | null> {
   const payee = process.env.UPI_PAYEE_VPA?.trim() ?? '';
   if (!isUpiId(payee)) return null;
   const payeeName = process.env.UPI_PAYEE_NAME?.trim() || 'SpecFix';
-  const ref = paymentRef(tenantId);
+  const ref = payerCode(userId);
   const entry = async (period: BillingPeriod) => {
     const link = upiPayLink({
       payee,
@@ -121,7 +120,6 @@ export async function upiSetup(tenantId: string): Promise<UpiSetup | null> {
   return {
     payee,
     payeeName,
-    ref,
     pay: { monthly: await entry('monthly'), annual: await entry('annual') },
   };
 }

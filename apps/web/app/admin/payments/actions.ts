@@ -28,7 +28,13 @@ export async function decidePaymentAction(formData: FormData): Promise<void> {
 
   let message: string;
   try {
-    const { proUntil } = await decidePayment(id, user.id, decision);
+    const noteCode = formData.get('noteCode');
+    const { proUntil } = await decidePayment(
+      id,
+      user.id,
+      decision,
+      typeof noteCode === 'string' ? noteCode : undefined
+    );
     message = proUntil
       ? `Approved. The workspace is on Pro until ${PLAN_DATE.format(proUntil)}.`
       : 'Rejected. The workspace was told the payment could not be confirmed.';

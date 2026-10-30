@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { openingQuestion } from '@specfix/agent';
 import { FLAG_CATEGORY_LABELS } from '@specfix/shared';
-import { agentAccess } from '@/lib/plan';
+import { agentAccess, type AgentAccess } from '@/lib/plan';
 import {
   agentTablesAvailable,
   findAgentConversation,
@@ -54,11 +54,12 @@ export async function loadWorkspaceDashboard(
 ): Promise<{ data: DashboardData; agent: ReactNode }> {
   const t = tenant.tenant_id;
   const scoped = projects.filter((p) => !projectId || p.id === projectId);
-  const [queues, weeks, breakdown, ttr] = await Promise.all([
+  const [queues, weeks, breakdown, ttr, access] = await Promise.all([
     Promise.all(scoped.map((p) => ticketQueue(t, p.id))),
     weeklyActivity(t, 12),
     flagBreakdown(t),
     timeToReady(t),
+    agentAccess(user, t),
   ]);
   const queue: QueueItem[] = scoped.flatMap((p, i) =>
     (queues[i] ?? []).map((r) => ({
@@ -73,7 +74,10 @@ export async function loadWorkspaceDashboard(
     }))
   );
 
-  const [found, history] = await Promise.all([loadAgent(user, t, queue), loadHistory(t, queue)]);
+  const [found, history] = await Promise.all([
+    loadAgent(user, t, queue, access),
+    loadHistory(t, queue),
+  ]);
   return {
     data: {
       source: 'live',
@@ -150,25 +154,29 @@ async function loadHistory(tenantId: string, queue: QueueItem[]): Promise<Histor
 async function loadAgent(
   user: User,
   tenantId: string,
-  queue: QueueItem[]
+  queue: QueueItem[],
+  access: AgentAccess
 ): Promise<{ state: DashboardData['agent']; node: ReactNode }> {
-  const access = await agentAccess(user, tenantId);
   if (access !== 'on') return { state: { state: access }, node: null };
   if (!(await agentTablesAvailable())) return { state: { state: 'not-migrated' }, node: null };
 
   const candidates = queue
     .filter((r) => r.analyzed && !r.ready && r.openFlags > 0)
     .sort((a, b) => b.openFlags - a.openFlags);
-  for (const row of candidates.slice(0, 6)) {
+  // Each candidate is checked in parallel (it was one after another: up to ~30 sequential
+  // queries); the first match in queue order still wins.
+  const tryRow = async (
+    row: QueueItem
+  ): Promise<{ state: DashboardData['agent']; node: ReactNode } | null> => {
     const version = await latestVersion(tenantId, row.id);
-    if (!version) continue;
+    if (!version) return null;
     const session = await findSession(tenantId, version.id, user.id);
-    if (!session || session.gaps_locked_at === null) continue;
+    if (!session || session.gaps_locked_at === null) return null;
 
     const revealed = await revealedFlags(tenantId, session.id);
     const flags = revealed.flags.filter((f) => f.status !== 'pruned');
     const focus = flags.find((f) => f.status === 'open');
-    if (!focus) continue;
+    if (!focus) return null;
 
     const conversation = await findAgentConversation(tenantId, version.id, user.id);
     const messages = conversation ? await listAgentMessages(tenantId, conversation.id) : [];
@@ -203,6 +211,7 @@ async function loadAgent(
         />
       ),
     };
-  }
-  return { state: { state: 'no-ticket' }, node: null };
+  };
+  const found = await Promise.all(candidates.slice(0, 6).map(tryRow));
+  return found.find(Boolean) ?? { state: { state: 'no-ticket' }, node: null };
 }

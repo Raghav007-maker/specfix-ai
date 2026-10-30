@@ -8,9 +8,13 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
  * cookie onto the response. This runs in the Edge middleware, so it touches only
  * @supabase/ssr and next/server — never pg or any Node-only code.
  *
- * The ordering here matters: create the client, then immediately call getUser(),
- * with no logic in between. getUser() is what revalidates the token; anything that
- * reads cookies before it can act on a stale session.
+ * The ordering here matters: create the client, then immediately call getClaims(),
+ * with no logic in between. getClaims() is what refreshes an expired token; anything
+ * that reads cookies before it can act on a stale session.
+ *
+ * getClaims() verifies the token locally against the project's cached ES256 public key,
+ * so a navigation no longer waits on an Auth-server round trip here (getUser() cost
+ * 0.3–1 s per request). Pages still call getUser() (lib/session.ts) for the full user.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
@@ -36,7 +40,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     }
   );
 
-  await supabase.auth.getUser();
+  await supabase.auth.getClaims();
 
   return response;
 }

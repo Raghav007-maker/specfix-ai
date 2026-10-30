@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { agentAccess } from '@/lib/plan';
@@ -328,9 +329,9 @@ function LinkedPulls({ ticketId, pulls }: { ticketId: string; pulls: TicketPullR
           <Pill tone={p.state === 'open' ? 'positive' : 'neutral'}>{p.state}</Pill>
         </span>
       ))}
-      <a href={`/tickets/${ticketId}/specs`} className="underline-offset-[3px] hover:underline">
+      <Link href={`/tickets/${ticketId}/specs`} className="underline-offset-[3px] hover:underline">
         CI per PR →
-      </a>
+      </Link>
     </p>
   );
 }
