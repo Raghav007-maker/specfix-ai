@@ -60,7 +60,7 @@ export function emitPlaywrightScaffold(input: EmitScaffoldInput): EmittedScaffol
   // the emitter cannot fabricate a page fixture, so it names it for the human.
   for (const step of input.scenario.steps) {
     if (step.keyword === 'Given') {
-      bodyLines.push(`  // Given: ${step.text}`);
+      bodyLines.push(`// Given: ${step.text}`);
     }
   }
 
@@ -78,23 +78,41 @@ export function emitPlaywrightScaffold(input: EmitScaffoldInput): EmittedScaffol
       description: `${step.keyword}: ${step.text}`,
       suggestion: suggestLocator(step),
     });
-    bodyLines.push(`  // ${step.keyword}: ${step.text}`);
-    bodyLines.push(`  await page.locator('${name}'); // TODO: replace with a real locator`);
+    bodyLines.push(`// ${step.keyword}: ${step.text}`);
+    bodyLines.push(`await page.locator('${name}'); // TODO: replace with a real locator`);
   }
+
+  // The output is already in Prettier's shape (singleQuote, printWidth 100, the repo's
+  // .prettierrc), so a scaffold committed to a repository passes `prettier --check` and
+  // `eslint` as it is: no unused `expect` import, and no `page` parameter when no step
+  // uses it. The tag is how CI results find their way back to this scenario: Playwright
+  // puts it in the JSON report's `tags`, and /api/ci/results matches on it. Keep it when
+  // editing the test.
+  const title = quote(input.scenario.title);
+  const tag = `{ tag: ${quote(scenarioTag(input.scenarioId))} }`;
+  const callback = placeholders.length > 0 ? 'async ({ page }) => {' : 'async () => {';
+  const hugged = `  test.fixme(${title}, ${tag}, ${callback}`;
+  const testLines =
+    hugged.length <= PRINT_WIDTH
+      ? [hugged, ...bodyLines.map((l) => `    ${l}`), `  });`]
+      : [
+          `  test.fixme(`,
+          `    ${title},`,
+          `    ${tag},`,
+          `    ${callback}`,
+          ...bodyLines.map((l) => `      ${l}`),
+          `    }`,
+          `  );`,
+        ];
 
   const code = [
     `// Generated scaffold for ${input.externalKey} — scenario ${input.scenarioId}`,
     `// Placeholder selectors only. A human must fill in the real locators before this`,
     `// spec is run; see the checklist in the review UI.`,
-    `import { test, expect } from '@playwright/test';`,
+    `import { test } from '@playwright/test';`,
     ``,
-    `test.describe(${JSON.stringify(input.externalKey)}, () => {`,
-    // The tag is how CI results find their way back to this scenario: Playwright puts it
-    // in the JSON report's `tags`, and /api/ci/results matches on it. Keep it when
-    // editing the test.
-    `  test.fixme(${JSON.stringify(input.scenario.title)}, { tag: ${JSON.stringify(scenarioTag(input.scenarioId))} }, async ({ page }) => {`,
-    ...bodyLines,
-    `  });`,
+    `test.describe(${quote(input.externalKey)}, () => {`,
+    ...testLines,
     `});`,
     ``,
   ].join('\n');
@@ -126,6 +144,21 @@ function suggestLocator(step: ScenarioStep): string {
     return `page.goto('<real-url>')`;
   }
   return `page.getByRole('<real-role>', { name: '<real-name>' })`;
+}
+
+/** The repo's Prettier printWidth: a `test.fixme(...)` line longer than this is broken. */
+const PRINT_WIDTH = 100;
+
+/**
+ * A string literal as Prettier with `singleQuote` writes it: single quotes unless the
+ * text holds more single than double quotes, with only the needed escapes.
+ */
+function quote(text: string): string {
+  const singles = (text.match(/'/g) ?? []).length;
+  const doubles = (text.match(/"/g) ?? []).length;
+  const inner = JSON.stringify(text).slice(1, -1); // escapes \ and control characters
+  if (singles > doubles) return `"${inner}"`;
+  return `'${inner.replace(/\\"/g, '"').replace(/'/g, "\\'")}'`;
 }
 
 /** Uppercase snake slug, capped so a long step does not produce an absurd identifier. */

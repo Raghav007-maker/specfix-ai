@@ -99,6 +99,11 @@ describe('scaffold validity', () => {
     expect(isStructurallyValid(valid)).toBe(true);
   });
 
+  it('accepts the import without expect, as the emitter now writes it', () => {
+    const withoutExpect = valid.replace('{ test, expect }', '{ test }');
+    expect(isStructurallyValid(withoutExpect)).toBe(true);
+  });
+
   it('rejects unbalanced or anchor-less code', () => {
     expect(isStructurallyValid(valid.replace('});', '}'))).toBe(false);
     expect(isStructurallyValid('const x = 1;')).toBe(false);

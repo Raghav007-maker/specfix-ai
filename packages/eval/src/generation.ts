@@ -137,7 +137,9 @@ export function isStructurallyValid(code: string): boolean {
   return (
     balanced(code, '{', '}') &&
     balanced(code, '(', ')') &&
-    code.includes("import { test, expect } from '@playwright/test';") &&
+    // `expect` is imported only when used (scaffolds emitted before it were always
+    // `{ test, expect }`), so either import line counts.
+    /^import \{ test(, expect)? \} from '@playwright\/test';$/m.test(code) &&
     code.includes('test.describe(') &&
     code.includes('test.fixme(')
   );

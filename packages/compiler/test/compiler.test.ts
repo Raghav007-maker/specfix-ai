@@ -148,7 +148,7 @@ describe('emitPlaywrightScaffold', () => {
 
   it('tags the test with its scenario id so CI results can find it', () => {
     const emitted = emitPlaywrightScaffold({ scenario, externalKey: 'PAY-142', scenarioId: 's1' });
-    expect(emitted.code).toContain(`{ tag: "@sf-s1" }`);
+    expect(emitted.code).toContain(`{ tag: '@sf-s1' }`);
   });
 
   it('refuses a framework it cannot emit', () => {
@@ -231,7 +231,7 @@ describe('scaffold validity', () => {
       });
       expect(balanced(emitted.code, '{', '}')).toBe(true);
       expect(balanced(emitted.code, '(', ')')).toBe(true);
-      expect(emitted.code).toContain("import { test, expect } from '@playwright/test';");
+      expect(emitted.code).toContain("import { test } from '@playwright/test';");
       expect(emitted.code).toContain('test.describe(');
       expect(emitted.code).toContain('test.fixme(');
       for (const placeholder of emitted.selectorPlaceholders) {
