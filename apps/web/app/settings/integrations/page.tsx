@@ -1,3 +1,4 @@
+import { Suspense, cache } from 'react';
 import {
   JiraAuthError,
   JiraHttpError,
@@ -74,7 +75,6 @@ export default async function IntegrationsPage({
     [webhook, writeGrant],
     [jobs, budget, counts, ciTokens, ciRuns, githubInstallations, githubRepos],
     estimate,
-    live,
   ] = await Promise.all([
     connection
       ? Promise.all([
@@ -92,9 +92,10 @@ export default async function IntegrationsPage({
       listGithubRepositories(tenant.tenant_id),
     ]),
     analysisEstimate(tenant.tenant_id, batchLimit),
-    // Live Jira reads only for the people who can act on them.
-    isAdmin && connection ? loadLive(tenant.tenant_id, connection) : Promise.resolve(null),
   ]);
+  // Live Jira reads only for the people who can act on them. They call Atlassian, so they
+  // stream in under Suspense instead of holding up the rest of the page.
+  const liveConnection = isAdmin ? connection : null;
   const baseUrl = (process.env.PUBLIC_BASE_URL?.trim() || 'http://localhost:3000').replace(
     /\/$/,
     ''
@@ -165,7 +166,11 @@ export default async function IntegrationsPage({
                 </Notice>
               ) : (
                 <>
-                  {live?.error ? <Notice tone="error">{live.error}</Notice> : null}
+                  {liveConnection ? (
+                    <Suspense fallback={null}>
+                      <LiveError tenantId={tenant.tenant_id} connection={liveConnection} />
+                    </Suspense>
+                  ) : null}
                   <div className="flex flex-wrap gap-3">
                     {/* A plain link: the route handler redirects off-site, so no prefetch. */}
                     <a
@@ -192,7 +197,11 @@ export default async function IntegrationsPage({
             </CardContent>
           </Card>
 
-          {live?.sites && !connection?.cloud_id ? <SitePicker sites={live.sites} /> : null}
+          {liveConnection && !liveConnection.cloud_id ? (
+            <Suspense fallback={null}>
+              <LiveSitePicker tenantId={tenant.tenant_id} connection={liveConnection} />
+            </Suspense>
+          ) : null}
 
           {connection?.cloud_id ? (
             <Card>
@@ -230,13 +239,18 @@ export default async function IntegrationsPage({
                     ))}
                   </ul>
                 )}
-                {live?.jiraProjects ? (
-                  <AddProject
-                    projects={live.jiraProjects.filter(
-                      (p) => !jiraProjects.some((existing) => existing.jira_project_key === p.key)
-                    )}
-                    fields={live.fields ?? []}
-                  />
+                {liveConnection ? (
+                  <Suspense
+                    fallback={
+                      <p className="text-sm text-muted-foreground">Loading Jira projects…</p>
+                    }
+                  >
+                    <LiveAddProject
+                      tenantId={tenant.tenant_id}
+                      connection={liveConnection}
+                      existingKeys={jiraProjects.map((p) => p.jira_project_key)}
+                    />
+                  </Suspense>
                 ) : null}
               </CardContent>
             </Card>
@@ -329,8 +343,12 @@ interface LiveJira {
   error?: string;
 }
 
-/** What Jira says right now. Failures become a message on the page, not a crash. */
-async function loadLive(tenantId: string, connection: JiraConnectionRow): Promise<LiveJira> {
+/** What Jira says right now. Failures become a message on the page, not a crash.
+ * cache() so the three Suspense sections below share one set of Jira calls per request. */
+const loadLive = cache(async function loadLive(
+  tenantId: string,
+  connection: JiraConnectionRow
+): Promise<LiveJira> {
   try {
     if (!connection.cloud_id) {
       const { accessToken } = await jiraAccess(tenantId);
@@ -350,6 +368,36 @@ async function loadLive(tenantId: string, connection: JiraConnectionRow): Promis
     console.error('loading Jira settings failed', error);
     return { error: 'Could not reach Jira just now. Refresh to try again.' };
   }
+});
+
+interface LiveProps {
+  tenantId: string;
+  connection: JiraConnectionRow;
+}
+
+async function LiveError({ tenantId, connection }: LiveProps) {
+  const live = await loadLive(tenantId, connection);
+  return live.error ? <Notice tone="error">{live.error}</Notice> : null;
+}
+
+async function LiveSitePicker({ tenantId, connection }: LiveProps) {
+  const live = await loadLive(tenantId, connection);
+  return live.sites ? <SitePicker sites={live.sites} /> : null;
+}
+
+async function LiveAddProject({
+  tenantId,
+  connection,
+  existingKeys,
+}: LiveProps & { existingKeys: (string | null)[] }) {
+  const live = await loadLive(tenantId, connection);
+  if (!live.jiraProjects) return null;
+  return (
+    <AddProject
+      projects={live.jiraProjects.filter((p) => !existingKeys.includes(p.key))}
+      fields={live.fields ?? []}
+    />
+  );
 }
 
 function ConnectionPill({ connection }: { connection: JiraConnectionRow | null }) {
