@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ScenarioCiRow, ScenarioRow } from '@/lib/repos';
 import {
   Card,
@@ -19,9 +20,18 @@ const TONE: Record<ScenarioCiRow['status'], PillTone> = {
 /**
  * The latest CI outcome of each approved scenario's test: the end of the loop from
  * clarified requirement to running code. Scenarios whose test never reported (no
- * `@sf-` tag in CI yet) say so rather than counting as passed.
+ * `@sf-` tag in CI yet) say so rather than counting as passed. `failedAction` adds a control
+ * under each failing scenario (the project's "File bug").
  */
-export function CiPanel({ scenarios, rows }: { scenarios: ScenarioRow[]; rows: ScenarioCiRow[] }) {
+export function CiPanel({
+  scenarios,
+  rows,
+  failedAction,
+}: {
+  scenarios: ScenarioRow[];
+  rows: ScenarioCiRow[];
+  failedAction?: (scenarioId: string) => ReactNode;
+}) {
   const approved = scenarios.filter((s) => s.status === 'approved' || s.status === 'edited');
   if (approved.length === 0) return null;
   const byScenario = new Map(rows.map((r) => [r.scenario_id, r]));
@@ -87,6 +97,9 @@ export function CiPanel({ scenarios, rows }: { scenarios: ScenarioRow[]; rows: S
                     <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-raised px-2 py-1 text-xs text-negative-ink">
                       {r.error}
                     </pre>
+                  ) : null}
+                  {r?.status === 'failed' && failedAction ? (
+                    <div className="mt-1.5">{failedAction(s.id)}</div>
                   ) : null}
                 </li>
               );

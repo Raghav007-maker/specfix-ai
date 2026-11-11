@@ -171,6 +171,11 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       '/analytics',
       '/pricing',
       '/admin/payments',
+      '/projects',
+      '/projects/00000000-0000-4000-8000-000000000000',
+      '/projects/00000000-0000-4000-8000-000000000000/board',
+      '/projects/00000000-0000-4000-8000-000000000000/backlog',
+      '/projects/00000000-0000-4000-8000-000000000000/tasks/1',
     ])('redirects an anonymous visitor from %s to /login', async (path) => {
       const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
       expect([302, 303, 307, 308]).toContain(r.status);

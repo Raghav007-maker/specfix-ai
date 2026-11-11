@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   Folder,
+  FolderKanban,
   Gem,
   IndianRupee,
   ListChecks,
@@ -43,7 +44,8 @@ export function AppShell({
   projects: ProjectRow[];
   activeProjectId?: string;
   /** Which top-level destination this page is, for the sidebar's active state. */
-  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
+  current?:
+    'queue' | 'projects' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
   breadcrumb: ReactNode;
   children: ReactNode;
 }) {
@@ -118,7 +120,8 @@ function Nav({
   tenant: MembershipRow;
   projects: ProjectRow[];
   activeProjectId?: string;
-  current?: 'queue' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
+  current?:
+    'queue' | 'projects' | 'analytics' | 'team' | 'integrations' | 'inbox' | 'pricing' | 'payments';
   email: string;
   /** SpecFix's own team also sees the payments to approve. */
   appOwner: boolean;
@@ -147,6 +150,13 @@ function Nav({
           icon={<ListChecks aria-hidden size={18} strokeWidth={1.6} />}
         >
           Home
+        </NavLink>
+        <NavLink
+          href="/projects"
+          active={current === 'projects'}
+          icon={<FolderKanban aria-hidden size={18} strokeWidth={1.6} />}
+        >
+          Projects
         </NavLink>
         <NavLink
           href="/inbox"

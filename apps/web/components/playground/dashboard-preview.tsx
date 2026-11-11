@@ -19,6 +19,7 @@ import {
   Users,
   Flag,
   Folder,
+  FolderKanban,
   Gem,
 } from 'lucide-react';
 import { signOut } from '@/app/(auth)/actions';
@@ -67,6 +68,7 @@ export function DashboardPreview({
   projects,
   activeProjectId,
   top,
+  work,
   pricing = false,
 }: {
   settings: Settings;
@@ -79,6 +81,8 @@ export function DashboardPreview({
   activeProjectId?: string;
   /** Server-rendered notices and forms shown above the queue (errors, switchers, setup). */
   top?: ReactNode;
+  /** Server-rendered project-work summary, shown under the review queue on Home. */
+  work?: ReactNode;
   /** Shows the Pricing prototype in the sidebar (design playground only, until plans ship). */
   pricing?: boolean;
 }) {
@@ -108,6 +112,11 @@ export function DashboardPreview({
       <Link className={s.navItem} href="/inbox">
         <Bell aria-hidden />
         <span>Inbox</span>
+        <ArrowUpRight aria-hidden className={s.navOut} />
+      </Link>
+      <Link className={s.navItem} href="/projects">
+        <FolderKanban aria-hidden />
+        <span>Projects</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
       </Link>
       <Link className={s.navItem} href="/team">
@@ -202,7 +211,7 @@ export function DashboardPreview({
         ) : null}
         {top}
         {view === 'queue' ? (
-          <QueueView data={data} live={live} />
+          <QueueView data={data} live={live} work={work} />
         ) : view === 'analytics' ? (
           <AnalyticsView data={data} live={live} />
         ) : (
@@ -283,7 +292,7 @@ function greeting(name: string | null, email: string | null): string {
  * Home, laid out like the supplied dashboard screenshot: a greeting with the date and its calendar
  * of ticket changes, three figures with their change, and the review queue as a plain list.
  */
-function QueueView({ data, live }: { data: DashboardData; live: boolean }) {
+function QueueView({ data, live, work }: { data: DashboardData; live: boolean; work?: ReactNode }) {
   const [filter, setFilter] = useState<Filter>('all');
   const c = useMemo(() => {
     const out = { need: 0, waiting: 0, resolved: 0, ready: 0, open: 0, total: 0 };
@@ -419,6 +428,7 @@ function QueueView({ data, live }: { data: DashboardData; live: boolean }) {
           </ul>
         )}
       </section>
+      {work}
     </>
   );
 }

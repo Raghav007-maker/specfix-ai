@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { getUser } from '@/lib/session';
 import { PublicLanding } from '@/components/public-pages';
 import { requireTenant, currentMemberships } from '@/lib/tenant';
@@ -8,6 +9,7 @@ import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { Button, Input, Notice, Select } from '@/components/ui';
 import { PlanNotice } from '@/components/plan-notice';
 import { planNoticeFor } from '@/lib/plan';
+import { WorkSummary } from '@/components/work-summary';
 
 export default async function QueuePage({
   searchParams,
@@ -71,6 +73,12 @@ export default async function QueuePage({
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
       activeProjectId={activeProject?.id}
       top={top}
+      work={
+        // Streamed after the queue, so Home never waits on (or fails because of) task data.
+        <Suspense fallback={null}>
+          <WorkSummary tenantId={tenant.tenant_id} projectId={activeProject?.id} />
+        </Suspense>
+      }
     />
   );
 }
