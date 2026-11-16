@@ -12,9 +12,19 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { Card, EmptyNote } from '@/components/ui';
 import { NotMigrated, ProgressBar, ProjectStatusPill } from './work-ui';
+import { Input, Notice } from '@/components/ui';
+import { SubmitButton } from '@/components/submit-button';
+import { cn } from '@/lib/cn';
+import { createProjectForCurrentTenant } from '../actions';
 
-export default async function ProjectsPage() {
-  const user = await requireUser();
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; new?: string }>;
+}) {
+  const [user, { error, new: fromCreate }] = await Promise.all([requireUser(), searchParams]);
+  // Arrived from the top bar's "Create project": put the cursor in the name field.
+  const focusCreate = fromCreate === '1';
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
@@ -37,13 +47,43 @@ export default async function ProjectsPage() {
       current="projects"
       breadcrumb={breadcrumb}
     >
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-[-0.012em]">Projects</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Tasks, progress and activity for each project. Spec review stays in each project&apos;s
-          queue.
-        </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-[-0.012em]">Projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tasks, progress and activity for each project. Spec review stays in each project&apos;s
+            queue.
+          </p>
+        </div>
+        {tenant.role !== 'reviewer' ? (
+          <form
+            id="new-project"
+            action={createProjectForCurrentTenant}
+            className={cn(
+              'flex scroll-mt-20 flex-wrap items-center gap-2 rounded-lg p-1',
+              focusCreate && 'bg-raised ring-2 ring-teal'
+            )}
+          >
+            <input type="hidden" name="from" value="projects" />
+            <Input
+              name="name"
+              aria-label="New project name"
+              placeholder="New project name"
+              autoComplete="off"
+              required
+              maxLength={100}
+              autoFocus={focusCreate}
+              className="w-56"
+            />
+            <SubmitButton pendingLabel="Creating…">Create project</SubmitButton>
+          </form>
+        ) : null}
       </div>
+      {error ? (
+        <Notice tone="error" className="mb-6">
+          {error}
+        </Notice>
+      ) : null}
       {children}
     </AppShell>
   );
@@ -57,7 +97,7 @@ export default async function ProjectsPage() {
         No projects yet.{' '}
         {tenant.role === 'reviewer'
           ? 'Ask an owner or admin to create one.'
-          : 'Create one from the home page.'}
+          : 'Create one with “Create project” above.'}
       </EmptyNote>
     );
   }

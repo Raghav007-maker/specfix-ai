@@ -1,16 +1,12 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   BOARD_SORTS,
-  BOARD_SORT_LABELS,
-  WORK_PRIORITIES,
   WORK_PRIORITY_LABELS,
   WORK_STATUSES,
   WORK_STATUS_LABELS,
-  WORK_TYPES,
   WORK_TYPE_LABELS,
   applyBoardQuery,
   getProjectDetail,
@@ -23,9 +19,9 @@ import {
   type WorkPriority,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
-import { Button, EmptyNote, Input, Label, Notice, Select, buttonClasses } from '@/components/ui';
+import { EmptyNote, Notice } from '@/components/ui';
 import type { PillTone } from '@/components/ui';
-import { NotMigrated, ProjectTabs } from '../../work-ui';
+import { NotMigrated, ProjectHeader, TaskFilters, epicsOf, isFiltered } from '../../work-ui';
 import { Board, type BoardCard } from './board';
 
 const PRIORITY_TONES: Record<WorkPriority, PillTone> = {
@@ -56,6 +52,7 @@ export default async function BoardPage({
       tenant={tenant}
       projects={projects}
       activeProjectId={projectId}
+      projectView="board"
       current="projects"
       breadcrumb={
         <Breadcrumb
@@ -64,8 +61,12 @@ export default async function BoardPage({
         />
       }
     >
-      <h1 className="mb-4 text-2xl font-semibold tracking-[-0.012em]">{sidebarProject.name}</h1>
-      <ProjectTabs projectId={projectId} active="board" />
+      <ProjectHeader
+        projectId={projectId}
+        name={sidebarProject.name}
+        active="board"
+        canManage={tenant.role !== 'reviewer'}
+      />
       {children}
     </AppShell>
   );
@@ -83,9 +84,7 @@ export default async function BoardPage({
   const labels = [...new Set(tasks.flatMap((task) => task.labels))].sort((a, b) =>
     a.localeCompare(b)
   );
-  const filtered =
-    Boolean(query.q || query.type || query.priority || query.assignee || query.label) ||
-    query.sort !== 'rank';
+  const filtered = isFiltered(query, 'rank');
   const one = (k: string) => {
     const v = search[k];
     return Array.isArray(v) ? v[0] : v;
@@ -106,6 +105,9 @@ export default async function BoardPage({
     labels: task.labels,
     dueOn: task.due_on,
     overdue: task.overdue,
+    points: task.story_points,
+    parentKey: task.parent_number === null ? null : taskKeyOf(project.task_key, task.parent_number),
+    parentTitle: task.parent_title,
   }));
 
   return shell(
@@ -121,85 +123,16 @@ export default async function BoardPage({
         </Notice>
       ) : null}
 
-      <form
-        method="get"
-        role="search"
-        aria-label="Filter the board"
-        className="mb-4 grid gap-3 rounded-lg border border-border bg-sheet p-3 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1.5fr)_repeat(5,minmax(0,1fr))_auto]"
-      >
-        <FilterField label="Search" htmlFor="board-q">
-          <Input
-            id="board-q"
-            name="q"
-            type="search"
-            defaultValue={query.q}
-            maxLength={100}
-            placeholder="Title, label or id"
-            autoComplete="off"
-          />
-        </FilterField>
-        <FilterField label="Type" htmlFor="board-type">
-          <Select id="board-type" name="type" defaultValue={query.type ?? ''}>
-            <option value="">All types</option>
-            {WORK_TYPES.map((v) => (
-              <option key={v} value={v}>
-                {WORK_TYPE_LABELS[v]}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Priority" htmlFor="board-priority">
-          <Select id="board-priority" name="priority" defaultValue={query.priority ?? ''}>
-            <option value="">All priorities</option>
-            {WORK_PRIORITIES.map((v) => (
-              <option key={v} value={v}>
-                {WORK_PRIORITY_LABELS[v]}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Assignee" htmlFor="board-assignee">
-          <Select id="board-assignee" name="assignee" defaultValue={query.assignee ?? ''}>
-            <option value="">Anyone</option>
-            <option value="me">Me</option>
-            <option value="none">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.user_id} value={m.user_id}>
-                {m.email ?? 'Member'}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Label" htmlFor="board-label">
-          <Select id="board-label" name="label" defaultValue={query.label ?? ''}>
-            <option value="">Any label</option>
-            {labels.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Sort" htmlFor="board-sort">
-          <Select id="board-sort" name="sort" defaultValue={query.sort}>
-            {BOARD_SORTS.map((v) => (
-              <option key={v} value={v}>
-                {BOARD_SORT_LABELS[v]}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <div className="flex items-end gap-2">
-          <Button type="submit" variant="outline">
-            Apply
-          </Button>
-          {filtered ? (
-            <Link href={`/projects/${projectId}/board`} className={buttonClasses('ghost')}>
-              Clear
-            </Link>
-          ) : null}
-        </div>
-      </form>
+      <TaskFilters
+        action={`/projects/${projectId}/board`}
+        query={query}
+        members={members}
+        labels={labels}
+        epics={epicsOf(tasks)}
+        taskKey={project.task_key}
+        sorts={BOARD_SORTS}
+        filtered={filtered}
+      />
 
       <p className="mb-3 text-sm text-muted-foreground">
         {filtered ? `Showing ${shown.length} of ${tasks.length} tasks. ` : null}
@@ -222,24 +155,5 @@ export default async function BoardPage({
         reorderable={query.sort === 'rank'}
       />
     </>
-  );
-}
-
-function FilterField({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
-      {children}
-    </div>
   );
 }

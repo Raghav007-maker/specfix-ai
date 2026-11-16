@@ -17,8 +17,14 @@ export const NOTIFICATION_KINDS = [
   'flags_stale',
   'signed_off',
   'ci_failed',
+  'task_assigned',
+  'task_commented',
+  'mentioned',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+/** The kinds raised about a spec ticket; task and mention kinds come from the work and chat
+ * repositories. */
+export type TicketNotificationKind = Exclude<NotificationKind, `task_${string}` | 'mentioned'>;
 
 export interface NotificationRow {
   id: string;
@@ -30,7 +36,7 @@ export interface NotificationRow {
 }
 
 /** Who hears about each kind of event. */
-const AUDIENCE: Record<NotificationKind, 'deciders' | 'everyone'> = {
+const AUDIENCE: Record<TicketNotificationKind, 'deciders' | 'everyone'> = {
   flags_ready: 'deciders',
   flags_stale: 'deciders',
   ci_failed: 'deciders',
@@ -44,7 +50,7 @@ const AUDIENCE: Record<NotificationKind, 'deciders' | 'everyone'> = {
 export async function notifyTicketEvent(
   tenantId: TenantId,
   input: {
-    kind: NotificationKind;
+    kind: TicketNotificationKind;
     ticketId: string;
     actorId?: string | null;
     details?: Record<string, unknown>;
@@ -167,6 +173,8 @@ export async function pendingEmails(tenantId: TenantId, limit = 100): Promise<Pe
               select 1 from notifications s
               where s.tenant_id = n.tenant_id and s.user_id = n.user_id
                 and s.ticket_id is not distinct from n.ticket_id
+                and s.payload->>'taskId' is not distinct from n.payload->>'taskId'
+                and s.payload->>'chatProjectId' is not distinct from n.payload->>'chatProjectId'
                 and s.email_status = 'sent' and s.emailed_at > now() - interval '1 hour'
             ) as recently_emailed
      from notifications n
@@ -213,9 +221,12 @@ export async function dueDigestRecipients(): Promise<DigestRecipient[]> {
      left join digest_runs d on d.tenant_id = m.tenant_id and d.user_id = m.user_id
      where coalesce(p.email_digest, 'daily') = 'daily'
        and (d.sent_at is null or d.sent_at < now() - interval '23 hours')
-       and exists (select 1 from notifications n
-                   where n.tenant_id = m.tenant_id and n.user_id = m.user_id
-                     and n.read_at is null)`
+       and (exists (select 1 from notifications n
+                    where n.tenant_id = m.tenant_id and n.user_id = m.user_id
+                      and n.read_at is null)
+            or exists (select 1 from work_items w
+                       where w.tenant_id = m.tenant_id and w.assignee_id = m.user_id
+                         and w.status <> 'done' and w.due_on < current_date))`
   );
 }
 
@@ -227,6 +238,14 @@ export interface DigestContent {
   }>;
   /** Tickets whose current version has had open flags for 3+ days. */
   stuck: Array<{ ticket_id: string; external_key: string; title: string; open_flags: number }>;
+  /** Tasks assigned to this user that are past their due date and not done. */
+  overdue: Array<{
+    project_id: string;
+    number: number;
+    task_key: string | null;
+    title: string;
+    due_on: string;
+  }>;
 }
 
 export async function digestContent(tenantId: TenantId, userId: string): Promise<DigestContent> {
@@ -250,7 +269,17 @@ export async function digestContent(tenantId: TenantId, userId: string): Promise
      limit 10`,
     [tenantId]
   );
-  return { unread, stuck };
+  const overdue = await query<DigestContent['overdue'][number]>(
+    `select w.project_id, w.number, p.task_key, w.title, w.due_on::text as due_on
+     from work_items w
+     join projects p on p.id = w.project_id and p.tenant_id = w.tenant_id
+     where w.tenant_id = $1 and w.assignee_id = $2 and w.status <> 'done'
+       and w.due_on < current_date
+     order by w.due_on
+     limit 10`,
+    [tenantId, userId]
+  );
+  return { unread, stuck, overdue };
 }
 
 export async function recordDigestSent(tenantId: TenantId, userId: string): Promise<void> {

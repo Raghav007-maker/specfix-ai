@@ -88,6 +88,8 @@ describe('task input rules', () => {
       components: [],
       ticketId: null,
       scenarioId: null,
+      parentId: null,
+      storyPoints: null,
     });
     expect(() => normalizeTaskInput({ title: ' ' })).toThrow(/needs a title/);
     expect(() => normalizeTaskInput({ title: 'x'.repeat(201) })).toThrow(/200/);

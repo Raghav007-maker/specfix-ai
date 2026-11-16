@@ -19,7 +19,10 @@ export async function markReadAction(formData: FormData): Promise<void> {
   await markNotificationsRead(tenantId, userId, /^[0-9a-f-]{36}$/i.test(id) ? id : null);
   const to = String(formData.get('to') ?? '');
   // Only ever an in-app path, so a crafted form cannot redirect off-site.
-  redirect(/^\/tickets\/[0-9a-f-]{36}$/i.test(to) ? to : '/inbox');
+  const inApp =
+    /^\/tickets\/[0-9a-f-]{36}$/i.test(to) ||
+    /^\/projects\/[0-9a-f-]{36}\/tasks\/\d{1,9}$/.test(to);
+  redirect(inApp ? to : '/inbox');
 }
 
 export async function markAllReadAction(): Promise<void> {

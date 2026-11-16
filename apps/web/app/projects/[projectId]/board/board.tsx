@@ -21,6 +21,10 @@ export interface BoardCard {
   labels: string[];
   dueOn: string | null;
   overdue: boolean;
+  points: number | null;
+  /** The parent's task id ("CF-3") and title, when it has one. */
+  parentKey: string | null;
+  parentTitle: string | null;
 }
 
 type Drop = { status: string; beforeId: string | null };
@@ -223,8 +227,25 @@ function CardView({
         >
           {card.key}
         </Link>
-        <span>{card.typeLabel}</span>
+        <span>
+          {card.typeLabel}
+          {card.points !== null ? (
+            <span
+              className="ml-1.5 rounded-sm bg-raised px-1.5 py-0.5 tabular-nums text-text"
+              title="Story points"
+            >
+              {card.points}
+              <span className="sr-only"> story points</span>
+            </span>
+          ) : null}
+        </span>
       </div>
+      {card.parentKey ? (
+        <p className="truncate text-xs text-muted-foreground" title={card.parentTitle ?? undefined}>
+          <span className="sr-only">Parent: </span>
+          <span className="font-mono">{card.parentKey}</span> {card.parentTitle}
+        </p>
+      ) : null}
       <p className="font-medium leading-5">
         <Link
           href={href}

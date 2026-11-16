@@ -35,6 +35,7 @@ import {
   Pill,
   Select,
   Textarea,
+  buttonClasses,
   linkClasses,
   type PillTone,
 } from '@/components/ui';
@@ -52,6 +53,7 @@ import {
   ActivityList,
   NotMigrated,
   PriorityPill,
+  ProgressBar,
   StatusPill,
   TaskFormFields,
 } from '../../../work-ui';
@@ -124,6 +126,19 @@ export default async function TaskPage({
   const keyOf = (n: number) => taskKeyOf(project.task_key, n);
   const canManage = tenant.role !== 'reviewer';
   const scenarioCi = ci.find((r) => r.scenario_id === task.scenario_id) ?? null;
+  const children = projectTasks
+    .filter((c) => c.parent_id === task.id)
+    .sort((a, b) => a.number - b.number);
+  const formProps = {
+    task,
+    members,
+    tickets,
+    scenarios,
+    tasks: projectTasks,
+    taskKey: project.task_key,
+  };
+  const childrenDone = children.filter((c) => c.status === 'done');
+  const points = (list: typeof children) => list.reduce((n, c) => n + (c.story_points ?? 0), 0);
   // Hidden fields every collaboration form sends, so its action can return here.
   const here = { projectId, taskId: task.id, number: String(task.number) };
   const hidden = (extra: Record<string, string> = {}) =>
@@ -135,12 +150,31 @@ export default async function TaskPage({
     key,
     <>
       <div className="mb-6">
-        <p className="font-mono text-[13px] text-muted-foreground">{key}</p>
+        <p className="font-mono text-[13px] text-muted-foreground">
+          {task.parent_number !== null ? (
+            <>
+              <Link
+                href={`/projects/${projectId}/tasks/${task.parent_number}`}
+                className={linkClasses}
+                title={task.parent_title ?? undefined}
+              >
+                {keyOf(task.parent_number)}
+              </Link>
+              {' / '}
+            </>
+          ) : null}
+          {key}
+        </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-[-0.012em]">{task.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           <StatusPill status={task.status} />
           <PriorityPill priority={task.priority} />
           <span className="text-muted-foreground">{WORK_TYPE_LABELS[task.type]}</span>
+          {task.story_points !== null ? (
+            <span className="text-muted-foreground tabular-nums">
+              {task.story_points} {task.story_points === 1 ? 'point' : 'points'}
+            </span>
+          ) : null}
           {task.overdue ? <span className="text-negative">Overdue</span> : null}
         </div>
       </div>
@@ -156,26 +190,84 @@ export default async function TaskPage({
         </Notice>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="min-w-0 space-y-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form action={updateTaskAction} className="space-y-4">
-                {hidden()}
-                <TaskFormFields
-                  task={task}
-                  members={members}
-                  tickets={tickets}
-                  scenarios={scenarios}
-                  idPrefix="edit"
-                />
-                <SubmitButton pendingLabel="Saving…">Save changes</SubmitButton>
-              </form>
+            <CardContent className="space-y-4 pt-5">
+              {/* Part of the Details form on the right, so one Save keeps every field. */}
+              <TaskFormFields {...formProps} part="main" formId="task-edit" idPrefix="edit-main" />
+              <div className="flex justify-end">
+                <Button type="submit" form="task-edit" variant="outline" size="sm">
+                  Save changes
+                </Button>
+              </div>
             </CardContent>
           </Card>
+
+          {task.type !== 'subtask' ? (
+            <Card id="children">
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-base">
+                    {task.type === 'epic' ? 'Tasks in this epic' : 'Sub-tasks'}{' '}
+                    <span className="font-normal tabular-nums text-muted-foreground">
+                      {children.length}
+                    </span>
+                  </CardTitle>
+                  <Link
+                    href={`/projects/${projectId}/tasks/new?parent=${task.id}`}
+                    className={buttonClasses('outline', 'sm')}
+                  >
+                    {task.type === 'epic' ? 'Add task' : 'Add sub-task'}
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {children.length === 0 ? (
+                  <EmptyNote>
+                    {task.type === 'epic' ? 'No tasks in this epic yet.' : 'No sub-tasks yet.'}
+                  </EmptyNote>
+                ) : (
+                  <>
+                    <ProgressBar
+                      done={childrenDone.length}
+                      total={children.length}
+                      label={
+                        points(children)
+                          ? `Progress · ${points(childrenDone)} of ${points(children)} points done`
+                          : 'Progress'
+                      }
+                    />
+                    <ul className="divide-y divide-rule rounded-lg border border-border">
+                      {children.map((c) => (
+                        <li
+                          key={c.id}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm"
+                        >
+                          <Link
+                            href={`/projects/${projectId}/tasks/${c.number}`}
+                            className={`${linkClasses} font-mono text-[13px]`}
+                          >
+                            {keyOf(c.number)}
+                          </Link>
+                          <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {WORK_TYPE_LABELS[c.type]}
+                          </span>
+                          {c.story_points !== null ? (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {c.story_points} pt
+                            </span>
+                          ) : null}
+                          <StatusPill status={c.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card id="comments">
             <CardHeader>
@@ -223,16 +315,47 @@ export default async function TaskPage({
               <form action={addCommentAction} className="space-y-2">
                 {hidden()}
                 <Label htmlFor="comment-body">Add a comment</Label>
-                <Textarea id="comment-body" name="body" rows={3} maxLength={10000} required />
+                <Textarea
+                  id="comment-body"
+                  name="body"
+                  rows={3}
+                  maxLength={10000}
+                  required
+                  placeholder="Type @name to notify a teammate by email."
+                />
                 <SubmitButton variant="outline" pendingLabel="Posting…">
                   Post comment
                 </SubmitButton>
               </form>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ActivityList events={events} projectId={projectId} empty="No activity yet." />
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="text-base">Details</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <form id="task-edit" action={updateTaskAction} className="space-y-4">
+                {hidden()}
+                <TaskFormFields {...formProps} part="details" idPrefix="edit" />
+                <SubmitButton pendingLabel="Saving…" className="w-full">
+                  Save changes
+                </SubmitButton>
+              </form>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="pt-5">
               <dl className="space-y-3 text-sm">
@@ -352,15 +475,6 @@ export default async function TaskPage({
                   </SubmitButton>
                 </form>
               ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ActivityList events={events} projectId={projectId} empty="No activity yet." />
             </CardContent>
           </Card>
 

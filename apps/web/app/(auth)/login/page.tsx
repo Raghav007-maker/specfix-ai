@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getUser } from '@/lib/session';
 import { PublicSignIn } from '@/components/public-pages';
+import { googleSignInEnabled } from '@/lib/auth';
 
 export const metadata: Metadata = { title: 'Sign in · SpecFix' };
 
@@ -20,6 +21,7 @@ export default async function LoginPage({
       error={error}
       message={message}
       initialMode={mode === 'sign-up' ? 'sign-up' : 'sign-in'}
+      google={googleSignInEnabled()}
     />
   );
 }

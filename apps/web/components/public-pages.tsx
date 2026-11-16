@@ -44,10 +44,13 @@ export function PublicSignIn({
   error,
   message,
   initialMode = 'sign-in',
+  google = false,
 }: {
   error?: string;
   message?: string;
   initialMode?: AuthMode;
+  /** Offer "Continue with Google" (only once the provider is set up in Supabase). */
+  google?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -60,6 +63,7 @@ export function PublicSignIn({
         goHome={() => router.push('/')}
         error={error}
         message={message}
+        google={google}
       />
     </Root>
   );

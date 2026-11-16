@@ -3,15 +3,21 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { AuthError } from '@supabase/supabase-js';
-import { AttemptLimiter } from '@specfix/shared';
+import { normalizeTotpCode } from '@specfix/shared';
+import { RateLimiter } from '@/lib/repos';
 import { createClient } from '@/lib/supabase/server';
+import { getSession } from '@/lib/session';
+import { appOrigin, googleSignInEnabled } from '@/lib/auth';
 
 const TOO_MANY = 'Too many attempts. Please wait a few minutes and try again.';
 
-// shortcut: counters live in this server process; with several instances, move them to Postgres.
-const signInByIp = new AttemptLimiter(20, 15 * 60_000);
-const signInByEmail = new AttemptLimiter(10, 15 * 60_000);
-const signUpByIp = new AttemptLimiter(5, 60 * 60_000);
+// Shared by every server through Postgres (migration 0025).
+const signInByIp = new RateLimiter('signin-ip', 20, 15 * 60_000);
+const signInByEmail = new RateLimiter('signin-email', 10, 15 * 60_000);
+const signUpByIp = new RateLimiter('signup-ip', 5, 60 * 60_000);
+// Six digits are a million guesses; five tries per quarter hour keeps guessing hopeless.
+const secondStepByUser = new RateLimiter('2fa-user', 5, 15 * 60_000);
+const secondStepByIp = new RateLimiter('2fa-ip', 20, 15 * 60_000);
 
 /** Emails over 254 chars are invalid; Supabase rejects passwords over 72. Refused without a call. */
 const tooLong = (email: string, password: string) => email.length > 254 || password.length > 72;
@@ -62,7 +68,9 @@ export async function signIn(formData: FormData): Promise<void> {
   let reason: string | null = null;
   if (tooLong(email, password)) {
     reason = 'Incorrect email or password.';
-  } else if (!(signInByIp.take(await clientIp()) && signInByEmail.take(email.toLowerCase()))) {
+  } else if (!(
+    (await signInByIp.take(await clientIp())) && (await signInByEmail.take(email.toLowerCase()))
+  )) {
     reason = TOO_MANY;
   } else {
     try {
@@ -98,7 +106,8 @@ export async function signUp(formData: FormData): Promise<void> {
   if (tooLong(email, password)) {
     redirect(`/login?error=${encodeURIComponent('Use a shorter email or password.')}`);
   }
-  if (!signUpByIp.take(await clientIp())) redirect(`/login?error=${encodeURIComponent(TOO_MANY)}`);
+  if (!(await signUpByIp.take(await clientIp())))
+    redirect(`/login?error=${encodeURIComponent(TOO_MANY)}`);
 
   let destination = '/';
   try {
@@ -124,4 +133,71 @@ export async function signOut(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect('/login');
+}
+
+/**
+ * The second sign-in step: the 6-digit code from the user's authenticator app. Supabase checks
+ * it and raises the session to aal2; until then getUser sends every page here.
+ */
+export async function verifySecondFactor(formData: FormData): Promise<void> {
+  const session = await getSession();
+  if (!session) redirect('/login');
+  if (!session.pending) redirect('/');
+  const back = (message: string): never =>
+    redirect(`/login/verify?error=${encodeURIComponent(message)}`);
+
+  const code = normalizeTotpCode(formData.get('code'));
+  if (!code) return back('Enter the 6-digit code from your authenticator app.');
+  if (!(
+    (await secondStepByUser.take(session.user.id)) && (await secondStepByIp.take(await clientIp()))
+  )) {
+    back(TOO_MANY);
+  }
+  const factor = session.user.factors?.find(
+    (f) => f.factor_type === 'totp' && f.status === 'verified'
+  );
+  if (!factor) redirect('/');
+
+  let verified = false;
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
+    if (error) console.error('[auth] second step failed:', error.name, error.status ?? 0);
+    else verified = true;
+  } catch (err) {
+    console.error('[auth] second step threw:', err instanceof Error ? err.message : err);
+  }
+  if (!verified) {
+    back('That code did not work. Use the newest code, and check the time on your phone is right.');
+  }
+  redirect('/');
+}
+
+/**
+ * "Continue with Google": Supabase sends the browser to Google and back to /auth/callback,
+ * which finishes the sign-in. Off unless GOOGLE_SIGN_IN_ENABLED=1, because the Google provider
+ * has to be set up in the Supabase dashboard first.
+ */
+export async function signInWithGoogle(): Promise<void> {
+  if (!googleSignInEnabled()) {
+    redirect(`/login?error=${encodeURIComponent('Google sign-in is not available yet.')}`);
+  }
+  let url: string | null = null;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${appOrigin()}/auth/callback` },
+    });
+    if (error) console.error('[auth] Google sign-in failed:', error.name, error.status ?? 0);
+    else url = data.url;
+  } catch (err) {
+    console.error('[auth] Google sign-in threw:', err instanceof Error ? err.message : err);
+  }
+  if (!url) {
+    redirect(
+      `/login?error=${encodeURIComponent('Could not start Google sign-in. Please try again.')}`
+    );
+  }
+  redirect(url);
 }

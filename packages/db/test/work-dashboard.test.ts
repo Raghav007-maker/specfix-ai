@@ -13,6 +13,7 @@ import {
   createSprint,
   createTenant,
   createWorkItem,
+  listAssignedWorkItems,
   listWorkEvents,
   query,
   setWorkItemSprint,
@@ -91,6 +92,25 @@ describe.skipIf(!hasDatabase)('dashboard figures', () => {
     expect((await activeSprintSummaries(tenantA, p2)).map((s) => s.name)).toEqual(['Beta 1']);
     expect(await activeSprintSummaries(tenantB, p1)).toEqual([]);
     expect(await activeSprintSummaries(tenantA, 'nope')).toEqual([]);
+  });
+
+  it("lists a person's open tasks across projects, overdue first, never another tenant's", async () => {
+    const mine = (projectId: string, title: string, extra: Record<string, string> = {}) =>
+      createWorkItem(tenantA, owner, projectId, { title, assigneeId: owner, ...extra });
+    await mine(p2, 'Mine soon', { dueOn: '2099-01-01' });
+    await mine(p1, 'Mine late', { dueOn: '2020-01-02' });
+    await mine(p1, 'Mine done', { status: 'done' });
+    await mine(p2, 'Mine undated');
+    expect((await listAssignedWorkItems(tenantA, owner)).map((r) => r.title)).toEqual([
+      'Mine late',
+      'Mine soon',
+      'Mine undated',
+    ]);
+    // The same user id read through another workspace sees nothing.
+    expect(await listAssignedWorkItems(tenantB, owner)).toEqual([]);
+    expect(await listAssignedWorkItems(tenantA, otherOwner)).toEqual([]);
+    expect(await listAssignedWorkItems(tenantA, "' or 1=1 --")).toEqual([]);
+    expect(await listAssignedWorkItems(tenantA, owner, 1)).toHaveLength(1);
   });
 
   it('lists recent activity across the workspace without other tenants', async () => {

@@ -3,7 +3,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { signIn, signUp } from '@/app/(auth)/actions';
+import { signIn, signInWithGoogle, signUp } from '@/app/(auth)/actions';
 import type { Settings } from './settings';
 import { Logo } from './logo';
 import { ParticleFigure } from './particles';
@@ -28,6 +28,7 @@ export function LoginPreview({
   goHome,
   error,
   message,
+  google = false,
 }: {
   settings: Settings;
   mode: AuthMode;
@@ -36,6 +37,8 @@ export function LoginPreview({
   /** The auth actions' own `?error=` / `?message=` text, on the real sign-in page. */
   error?: string;
   message?: string;
+  /** Show "Continue with Google" under the form; the real sign-in page only. */
+  google?: boolean;
 }) {
   const b = settings.brand;
   const state = settings.tweaks.loginState;
@@ -213,8 +216,33 @@ export function LoginPreview({
             Your gaps stay private to you until you lock them.
           </p>
         </form>
+
+        {google ? (
+          // Its own form: the email form's validation must not block it.
+          <form action={signInWithGoogle} className={s.loginForm} style={{ paddingTop: 0 }}>
+            <p className={s.muted} style={{ textAlign: 'center', margin: 0 }}>
+              or
+            </p>
+            <GoogleButton />
+          </form>
+        ) : null}
       </main>
     </div>
+  );
+}
+
+function GoogleButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      className={`${s.btn} ${s.btnLine} ${s.btnBlock}`}
+      disabled={pending}
+      aria-busy={pending || undefined}
+    >
+      {pending ? <span className={s.spin} aria-hidden="true" /> : null}
+      {pending ? 'Opening Google…' : 'Continue with Google'}
+    </button>
   );
 }
 

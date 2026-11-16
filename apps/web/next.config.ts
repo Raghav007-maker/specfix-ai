@@ -43,6 +43,27 @@ const nextConfig: NextConfig = {
   // The workspace is linted at the root with typescript-eslint; don't run Next's
   // separate eslint pass during builds.
   eslint: { ignoreDuringBuilds: true },
+
+  // Don't advertise the framework.
+  poweredByHeader: false,
+
+  // Baseline security headers on every response. The Content-Security-Policy, which needs a
+  // per-request nonce, is set by middleware.ts (see lib/csp.ts).
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // Browsers ignore HSTS over plain http, so this is harmless on localhost.
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

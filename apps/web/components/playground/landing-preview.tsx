@@ -199,14 +199,15 @@ export function LandingPreview({ settings, go }: { settings: Settings; go: Go })
       <main>
         <section id="pg-top" className={s.hero} aria-labelledby="pg-hero-h">
           <div className={s.heroCopy}>
-            <Label>Requirements review / for product teams</Label>
+            <Label>Requirements review and project tracking / for product teams</Label>
             <h1 id="pg-hero-h" className={s.display}>
               <span>Catch what a ticket leaves unsaid.</span>{' '}
               <span className={s.voice}>Before anyone builds it.</span>
             </h1>
             <p className={s.lead}>
               SpecFix reads each ticket for vague language, missing information and criteria no test
-              could fail, then hands every flag to a person to decide.
+              could fail, then hands every flag to a person to decide. Then plan the work on a board
+              with sprints, linked to the specs and tests it came from.
             </p>
             {heroCta ? (
               <div className={s.ctaRow}>
@@ -277,7 +278,8 @@ export function LandingPreview({ settings, go }: { settings: Settings; go: Go })
             </h2>
             <p className={s.lead}>
               Decide each flag, accept or rewrite its question for the PM, and mark the ticket
-              ready. Every decision stays in the audit trail.
+              ready. Every decision stays in the audit trail, and every sign-in can ask for a code
+              from Google Authenticator.
             </p>
             {closingCta ? (
               <div className={s.ctaRow}>

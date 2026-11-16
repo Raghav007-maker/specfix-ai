@@ -18,8 +18,9 @@
 import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
 import type { Role } from './members.ts';
+import { notifyMentions, parseMentions } from './chat.ts';
 
-export const WORK_TYPES = ['task', 'bug', 'story', 'epic'] as const;
+export const WORK_TYPES = ['task', 'bug', 'story', 'epic', 'subtask'] as const;
 export const WORK_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
 export const WORK_STATUSES = ['todo', 'in_progress', 'in_review', 'done'] as const;
 export const PROJECT_STATUSES = ['active', 'on_hold', 'completed', 'archived'] as const;
@@ -34,7 +35,23 @@ export const WORK_TYPE_LABELS: Record<WorkType, string> = {
   bug: 'Bug',
   story: 'Story',
   epic: 'Epic',
+  subtask: 'Sub-task',
 };
+
+/**
+ * The hierarchy, one level per type: an epic has no parent, a story, task or bug may sit
+ * under an epic, and a sub-task under a story, task or bug. Levels never repeat, so no
+ * chain of parents can loop back on itself.
+ */
+/** "an epic", "a story". */
+const aType = (t: WorkType) => `${t === 'epic' ? 'an' : 'a'} ${WORK_TYPE_LABELS[t].toLowerCase()}`;
+
+export function parentTypesFor(type: WorkType): readonly WorkType[] {
+  if (type === 'epic') return [];
+  if (type === 'subtask') return ['story', 'task', 'bug'];
+  return ['epic'];
+}
+
 export const WORK_PRIORITY_LABELS: Record<WorkPriority, string> = {
   low: 'Low',
   medium: 'Medium',
@@ -152,7 +169,9 @@ export type RawTaskInput = Partial<
     | 'labels'
     | 'components'
     | 'ticketId'
-    | 'scenarioId',
+    | 'scenarioId'
+    | 'parentId'
+    | 'storyPoints',
     string | null
   >
 >;
@@ -169,6 +188,18 @@ export interface TaskFields {
   components: string[];
   ticketId: string | null;
   scenarioId: string | null;
+  parentId: string | null;
+  storyPoints: number | null;
+}
+
+/** '' → null; otherwise a whole number from 0 to 100. */
+export function parseStoryPoints(raw: string | null | undefined): number | null {
+  const value = (raw ?? '').trim();
+  if (!value) return null;
+  if (!/^\d{1,3}$/.test(value) || Number(value) > 100) {
+    throw new WorkError('Story points are a whole number from 0 to 100.');
+  }
+  return Number(value);
 }
 
 const optionalId = (raw: string | null | undefined, what: string): string | null => {
@@ -204,6 +235,8 @@ export function normalizeTaskInput(raw: RawTaskInput): TaskFields {
     components: parseTagList(raw.components, 'components'),
     ticketId: optionalId(raw.ticketId, 'ticket'),
     scenarioId: optionalId(raw.scenarioId, 'scenario'),
+    parentId: optionalId(raw.parentId, 'parent task'),
+    storyPoints: parseStoryPoints(raw.storyPoints),
   };
 }
 
@@ -215,7 +248,15 @@ export interface TaskChange {
 }
 
 const asText = (v: TaskFields[TaskField]): string | null =>
-  Array.isArray(v) ? (v.length ? v.join(', ') : null) : v === '' ? null : v;
+  Array.isArray(v)
+    ? v.length
+      ? v.join(', ')
+      : null
+    : typeof v === 'number'
+      ? String(v)
+      : v === ''
+        ? null
+        : v;
 
 /** What changed between two versions of a task, one entry per field, in form order. */
 export function diffTask(before: TaskFields, after: TaskFields): TaskChange[] {
@@ -283,6 +324,8 @@ export interface BoardQuery {
   /** 'me', 'none' (unassigned), or a member's user id. */
   assignee: string | null;
   label: string | null;
+  /** 'none' (in no epic) or an epic's id: its children and their sub-tasks. */
+  epic: string | null;
   sort: BoardSort;
 }
 
@@ -296,6 +339,7 @@ export function parseBoardQuery(params: Record<string, string | string[] | undef
   const sort = one('sort');
   const type = one('type');
   const priority = one('priority');
+  const epic = one('epic');
   return {
     q: one('q').slice(0, 100),
     type: oneOf(WORK_TYPES, type) ? type : null,
@@ -305,6 +349,7 @@ export function parseBoardQuery(params: Record<string, string | string[] | undef
         ? assignee.toLowerCase()
         : null,
     label: one('label').slice(0, MAX_TAG_LENGTH) || null,
+    epic: epic === 'none' || UUID.test(epic) ? epic.toLowerCase() : null,
     sort: oneOf(BOARD_SORTS, sort) ? sort : 'rank',
   };
 }
@@ -313,6 +358,8 @@ const PRIORITY_ORDER: Record<WorkPriority, number> = { critical: 0, high: 1, med
 
 type BoardRow = Pick<
   WorkItemRow,
+  | 'id'
+  | 'parent_id'
   | 'number'
   | 'title'
   | 'type'
@@ -340,8 +387,18 @@ export function applyBoardQuery<T extends BoardRow>(
   const q = query.q.toLowerCase();
   const label = query.label?.toLowerCase() ?? null;
   const assignee = query.assignee === 'me' ? context.userId : query.assignee;
+  const parentOf = new Map(rows.map((r) => [r.id, r.parent_id]));
+  // The epic above a row: its parent when that is an epic, else its grandparent (a sub-task).
+  const epicOf = (r: T): string | null => {
+    if (r.type === 'epic' || !r.parent_id) return null;
+    return r.type === 'subtask' ? (parentOf.get(r.parent_id) ?? null) : r.parent_id;
+  };
   const filtered = rows.filter(
     (r) =>
+      (!query.epic ||
+        (query.epic === 'none'
+          ? r.type !== 'epic' && epicOf(r) === null
+          : epicOf(r) === query.epic)) &&
       (!query.type || r.type === query.type) &&
       (!query.priority || r.priority === query.priority) &&
       (!assignee || (assignee === 'none' ? r.assignee_id === null : r.assignee_id === assignee)) &&
@@ -364,11 +421,13 @@ export function applyBoardQuery<T extends BoardRow>(
 
 let workTablesSeen = false;
 
-/** Whether migration 0019 has been applied, so pages can say so instead of failing. */
+/** Whether migrations 0019 and 0021 have been applied, so pages can say so instead of failing. */
 export async function workTablesAvailable(): Promise<boolean> {
   if (workTablesSeen) return true;
   const [row] = await query<{ available: boolean }>(
-    `select to_regclass('public.work_items') is not null as available`,
+    `select exists (select 1 from information_schema.columns
+                    where table_schema = 'public' and table_name = 'work_items'
+                      and column_name = 'parent_id') as available`,
     []
   );
   workTablesSeen = row?.available === true;
@@ -451,6 +510,10 @@ export interface WorkItemRow {
   ticket_title: string | null;
   scenario_id: string | null;
   scenario_title: string | null;
+  parent_id: string | null;
+  parent_number: number | null;
+  parent_title: string | null;
+  story_points: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -463,8 +526,11 @@ const WORK_ITEM_SELECT = `
          (w.due_on is not null and w.due_on < current_date and w.status <> 'done') as overdue,
          w.labels, w.components, w.sprint_id, sp.name as sprint_name, w.rank,
          w.ticket_id, t.external_key as ticket_key, t.title as ticket_title,
-         w.scenario_id, s.title as scenario_title, w.created_at, w.updated_at
+         w.scenario_id, s.title as scenario_title,
+         w.parent_id, pw.number as parent_number, pw.title as parent_title, w.story_points,
+         w.created_at, w.updated_at
   from work_items w
+  left join work_items pw on pw.id = w.parent_id and pw.tenant_id = w.tenant_id
   left join auth.users au on au.id = w.assignee_id
   left join auth.users ru on ru.id = w.reporter_id
   left join tickets t on t.id = w.ticket_id and t.tenant_id = w.tenant_id
@@ -479,6 +545,28 @@ export async function listWorkItems(tenantId: TenantId, projectId: string): Prom
      where w.tenant_id = $1 and w.project_id = $2
      order by w.number desc`,
     [tenantId, projectId]
+  );
+}
+
+/**
+ * A person's unfinished tasks across every project of the workspace, for Home's "Assigned to
+ * me": overdue first, then by due date (undated last), then by priority.
+ */
+export async function listAssignedWorkItems(
+  tenantId: TenantId,
+  userId: string,
+  limit = 50
+): Promise<WorkItemRow[]> {
+  if (!UUID.test(userId)) return [];
+  return query<WorkItemRow>(
+    `${WORK_ITEM_SELECT}
+     where w.tenant_id = $1 and w.assignee_id = $2 and w.status <> 'done'
+     order by (w.due_on < current_date) desc nulls last, w.due_on nulls last,
+              case w.priority when 'critical' then 0 when 'high' then 1
+                              when 'medium' then 2 else 3 end,
+              w.updated_at desc
+     limit $3`,
+    [tenantId, userId, Math.min(Math.max(limit, 1), 200)]
   );
 }
 
@@ -594,6 +682,27 @@ async function resolveReferences(
     );
     if (!rowCount) throw new WorkError('The assignee must be a member of this workspace.');
   }
+  if (fields.parentId) {
+    // `for share` holds the parent's type steady until this transaction commits.
+    const {
+      rows: [parent],
+    } = await client.query<{ type: WorkType }>(
+      `select type from work_items where tenant_id = $1 and project_id = $2 and id = $3
+       for share`,
+      [tenantId, projectId, fields.parentId]
+    );
+    if (!parent) throw new WorkError('That parent task is not in this project.');
+    const allowed = parentTypesFor(fields.type);
+    if (!allowed.includes(parent.type)) {
+      throw new WorkError(
+        allowed.length === 0
+          ? 'An epic cannot have a parent.'
+          : `A ${WORK_TYPE_LABELS[fields.type].toLowerCase()} can only sit under ${allowed
+              .map(aType)
+              .join(' or ')}.`
+      );
+    }
+  }
   let ticketId = fields.ticketId;
   if (fields.scenarioId) {
     const {
@@ -634,7 +743,17 @@ async function describeChanges(
   const people = ids('assigneeId');
   const tickets = ids('ticketId');
   const scenarios = ids('scenarioId');
+  const parents = ids('parentId');
   const names = new Map<string, string>();
+  if (parents.length) {
+    const { rows } = await client.query<{ id: string; key: string }>(
+      `select w.id, coalesce(p.task_key, 'TASK') || '-' || w.number as key
+       from work_items w join projects p on p.id = w.project_id and p.tenant_id = w.tenant_id
+       where w.tenant_id = $1 and w.id = any($2::uuid[])`,
+      [tenantId, parents]
+    );
+    for (const r of rows) names.set(r.id, r.key);
+  }
   if (people.length) {
     const { rows } = await client.query<{ id: string; email: string | null }>(
       `select id, email from auth.users where id = any($1::uuid[])`,
@@ -658,10 +777,69 @@ async function describeChanges(
   }
   const show = (v: string | null) => (v === null ? null : (names.get(v) ?? v));
   return changes.map((c) =>
-    c.field === 'assigneeId' || c.field === 'ticketId' || c.field === 'scenarioId'
+    c.field === 'assigneeId' ||
+    c.field === 'ticketId' ||
+    c.field === 'scenarioId' ||
+    c.field === 'parentId'
       ? { ...c, from: show(c.from), to: show(c.to) }
       : c
   );
+}
+
+/**
+ * Inbox notifications (and so emails) about a task, written in the caller's transaction. Never
+ * to the actor, only to members of the workspace. Inside a savepoint, so a database without
+ * migration 0020 skips the notification instead of failing the change it is about.
+ */
+async function notifyTask(
+  client: PoolClient,
+  tenantId: TenantId,
+  input: {
+    kind: 'task_assigned' | 'task_commented';
+    itemId: string;
+    projectId: string;
+    number: number;
+    title: string;
+    actorId: string;
+    recipients: readonly (string | null)[];
+  }
+): Promise<void> {
+  const to = [
+    ...new Set(input.recipients.filter((r): r is string => Boolean(r) && r !== input.actorId)),
+  ];
+  if (to.length === 0) return;
+  await client.query('savepoint task_notify');
+  try {
+    await client.query(
+      `insert into notifications (tenant_id, user_id, kind, payload)
+       select m.tenant_id, m.user_id, $2,
+              jsonb_build_object(
+                'taskId', $3::text, 'projectId', $4::text, 'number', $5::int,
+                'key', (select coalesce(task_key, 'TASK') from projects
+                         where tenant_id = $1 and id = $4::uuid) || '-' || $5::int,
+                'title', $6::text,
+                'by', (select email from auth.users where id = $7::uuid))
+       from memberships m
+       where m.tenant_id = $1 and m.user_id = any($8::uuid[])`,
+      [
+        tenantId,
+        input.kind,
+        input.itemId,
+        input.projectId,
+        input.number,
+        input.title,
+        input.actorId,
+        to,
+      ]
+    );
+    await client.query('release savepoint task_notify');
+  } catch (error) {
+    await client.query('rollback to savepoint task_notify');
+    console.warn(
+      '[work] task notification skipped:',
+      error instanceof Error ? error.message : error
+    );
+  }
 }
 
 async function insertEvent(
@@ -770,8 +948,9 @@ async function insertWorkItem(
   } = await client.query<{ id: string }>(
     `insert into work_items
          (tenant_id, project_id, number, type, priority, status, title, description,
-          assignee_id, reporter_id, due_on, labels, components, ticket_id, scenario_id, rank)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+          assignee_id, reporter_id, due_on, labels, components, ticket_id, scenario_id,
+          parent_id, story_points, rank)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
                (select coalesce(max(rank), 0) + 1 from work_items
                  where tenant_id = $1 and project_id = $2 and status = $6))
        returning id`,
@@ -791,6 +970,8 @@ async function insertWorkItem(
       fields.components,
       fields.ticketId,
       fields.scenarioId,
+      fields.parentId,
+      fields.storyPoints,
     ]
   );
   if (!item) throw new Error('work_items insert returned no row');
@@ -801,6 +982,15 @@ async function insertWorkItem(
     title: fields.title,
     actorId,
     kind: 'created',
+  });
+  await notifyTask(client, tenantId, {
+    kind: 'task_assigned',
+    itemId: item.id,
+    projectId,
+    number: seq.task_seq,
+    title: fields.title,
+    actorId,
+    recipients: [fields.assigneeId],
   });
   return {
     id: item.id,
@@ -825,6 +1015,8 @@ interface LockedItem {
   components: string[];
   ticket_id: string | null;
   scenario_id: string | null;
+  parent_id: string | null;
+  story_points: number | null;
 }
 
 async function lockItem(
@@ -837,7 +1029,8 @@ async function lockItem(
     rows: [item],
   } = await client.query<LockedItem>(
     `select id, project_id, number, title, description, type, priority, status, assignee_id,
-            due_on::text as due_on, labels, components, ticket_id, scenario_id
+            due_on::text as due_on, labels, components, ticket_id, scenario_id,
+            parent_id, story_points
      from work_items where tenant_id = $1 and id = $2
      for update`,
     [tenantId, itemId]
@@ -858,6 +1051,8 @@ const fieldsOf = (item: LockedItem): TaskFields => ({
   components: item.components,
   ticketId: item.ticket_id,
   scenarioId: item.scenario_id,
+  parentId: item.parent_id,
+  storyPoints: item.story_points,
 });
 
 /**
@@ -878,12 +1073,25 @@ export async function updateWorkItem(
     const changes = diffTask(fieldsOf(item), fields);
     if (changes.length === 0) return [];
 
+    if (fields.type !== item.type) {
+      // The row lock above keeps new children out while this check runs.
+      const { rows: children } = await client.query<{ type: WorkType }>(
+        `select distinct type from work_items where tenant_id = $1 and parent_id = $2`,
+        [tenantId, item.id]
+      );
+      if (children.some((c) => !parentTypesFor(c.type).includes(fields.type))) {
+        throw new WorkError(
+          `This ${WORK_TYPE_LABELS[item.type].toLowerCase()} has child tasks that cannot sit under ${aType(fields.type)}. Move them first.`
+        );
+      }
+    }
+
     const moved = fields.status !== item.status;
     await client.query(
       `update work_items
          set title = $3, description = $4, type = $5, priority = $6, status = $7,
              assignee_id = $8, due_on = $9, labels = $10, components = $11, ticket_id = $12,
-             scenario_id = $15,
+             scenario_id = $15, parent_id = $16, story_points = $17,
              rank = case when $13 then (select coalesce(max(rank), 0) + 1 from work_items
                                          where tenant_id = $1 and project_id = $14 and status = $7)
                          else rank end,
@@ -905,6 +1113,8 @@ export async function updateWorkItem(
         moved,
         item.project_id,
         fields.scenarioId,
+        fields.parentId,
+        fields.storyPoints,
       ]
     );
     for (const change of await describeChanges(client, tenantId, changes)) {
@@ -918,6 +1128,17 @@ export async function updateWorkItem(
         field: change.field,
         from: change.from,
         to: change.to,
+      });
+    }
+    if (fields.assigneeId !== item.assignee_id) {
+      await notifyTask(client, tenantId, {
+        kind: 'task_assigned',
+        itemId: item.id,
+        projectId: item.project_id,
+        number: item.number,
+        title: fields.title,
+        actorId,
+        recipients: [fields.assigneeId],
       });
     }
     return changes;
@@ -1305,6 +1526,42 @@ export async function addWorkComment(
       actorId,
       kind: 'commented',
     });
+    const {
+      rows: [people],
+    } = await client.query<{ reporter_id: string | null }>(
+      `select reporter_id from work_items where tenant_id = $1 and id = $2`,
+      [tenantId, item.id]
+    );
+    await notifyTask(client, tenantId, {
+      kind: 'task_commented',
+      itemId: item.id,
+      projectId: item.project_id,
+      number: item.number,
+      title: item.title,
+      actorId,
+      recipients: [item.assignee_id, people?.reporter_id ?? null],
+    });
+    // @mentions reach anyone else named; the assignee and reporter were told above.
+    if (parseMentions(body).length > 0) {
+      const {
+        rows: [project],
+      } = await client.query<{ task_key: string | null }>(
+        `select task_key from projects where tenant_id = $1 and id = $2`,
+        [tenantId, item.project_id]
+      );
+      await notifyMentions(client, tenantId, {
+        body,
+        actorId,
+        payload: {
+          taskId: item.id,
+          projectId: item.project_id,
+          number: item.number,
+          key: taskKeyOf(project?.task_key ?? null, item.number),
+          title: item.title,
+        },
+        skip: [item.assignee_id, people?.reporter_id ?? null],
+      });
+    }
     return { id: comment.id, projectId: item.project_id, number: item.number };
   });
 }
@@ -1834,6 +2091,38 @@ export async function setWorkItemSprint(
   });
 }
 
+export interface SprintVelocity {
+  sprintId: string;
+  name: string;
+  points: number;
+  tasks: number;
+}
+
+/**
+ * Story points and tasks finished in each completed sprint, oldest first, the last `limit`.
+ * Completing a sprint returns its unfinished tasks to the backlog, so every task still in a
+ * completed sprint is one it finished.
+ */
+export function sprintVelocity(
+  sprints: readonly Pick<SprintRow, 'id' | 'name' | 'status' | 'completed_at'>[],
+  tasks: readonly Pick<WorkItemRow, 'sprint_id' | 'story_points'>[],
+  limit = 8
+): SprintVelocity[] {
+  return sprints
+    .filter((s) => s.status === 'completed' && s.completed_at)
+    .sort((a, b) => new Date(a.completed_at!).getTime() - new Date(b.completed_at!).getTime())
+    .slice(-limit)
+    .map((s) => {
+      const done = tasks.filter((t) => t.sprint_id === s.id);
+      return {
+        sprintId: s.id,
+        name: s.name,
+        points: done.reduce((n, t) => n + (t.story_points ?? 0), 0),
+        tasks: done.length,
+      };
+    });
+}
+
 export interface ActiveSprintSummaryRow {
   id: string;
   name: string;
@@ -1862,5 +2151,290 @@ export async function activeSprintSummaries(
      group by sp.id, p.name
      order by p.name`,
     [tenantId, projectId ?? null]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Charts: weekly throughput and sprint burndown, counted from the activity log
+// ---------------------------------------------------------------------------
+
+export interface WeeklyThroughputRow {
+  /** Monday of the week (UTC), YYYY-MM-DD. */
+  week: string;
+  created: number;
+  completed: number;
+}
+
+/**
+ * Tasks created and tasks moved to Done per week, for the last `weeks` weeks including this one.
+ * Read from the activity log, so a task deleted later still counts in the week it was made.
+ */
+export async function weeklyThroughput(
+  tenantId: TenantId,
+  projectId: string,
+  weeks = 12
+): Promise<WeeklyThroughputRow[]> {
+  if (!UUID.test(projectId)) return [];
+  const span = Math.min(Math.max(Math.trunc(weeks), 1), 52);
+  return query<WeeklyThroughputRow>(
+    `with weeks as (
+       select generate_series(date_trunc('week', now()) - make_interval(weeks => $3 - 1),
+                              date_trunc('week', now()), interval '1 week') as week
+     ),
+     counted as (
+       select date_trunc('week', created_at) as week,
+              count(*) filter (where kind = 'created') as created,
+              count(distinct work_item_id) filter (
+                where kind = 'updated' and field = 'status' and to_value = 'done') as completed
+       from work_item_events
+       where tenant_id = $1 and project_id = $2
+         and created_at >= date_trunc('week', now()) - make_interval(weeks => $3 - 1)
+       group by 1
+     )
+     select to_char(w.week, 'YYYY-MM-DD') as week,
+            coalesce(c.created, 0)::int as created, coalesce(c.completed, 0)::int as completed
+     from weeks w left join counted c on c.week = w.week
+     order by w.week`,
+    [tenantId, projectId, span]
+  );
+}
+
+export interface BurndownTask {
+  status: WorkStatus;
+  /** Its story points, or null when not estimated. */
+  points?: number | null;
+  /** Status changes, oldest first; `day` is the UTC date YYYY-MM-DD. */
+  changes: { day: string; from: string | null; to: string | null }[];
+}
+
+/**
+ * Unfinished work at the end of each day: tasks by default, or story points with
+ * `by: 'points'` (an unestimated task counts 0). A task's status on a day is its last change
+ * up to that day; before its first change it had that change's starting status.
+ * shortcut: counts the sprint's current tasks, at their current points, for every day, so a
+ * task added or re-estimated mid-sprint counts from day one; record those changes if that matters.
+ */
+export function burndownSeries(
+  tasks: readonly BurndownTask[],
+  days: readonly string[],
+  by: 'tasks' | 'points' = 'tasks'
+): number[] {
+  return days.map((day) =>
+    tasks.reduce((sum, task) => {
+      let status: string | null = task.changes[0]?.from ?? task.status;
+      for (const change of task.changes) {
+        if (change.day > day) break;
+        status = change.to;
+      }
+      if (status === 'done') return sum;
+      return sum + (by === 'points' ? (task.points ?? 0) : 1);
+    }, 0)
+  );
+}
+
+/** Each UTC date from `start` to `end`, inclusive; at most `max` days. */
+export function dayRange(start: string, end: string, max = 90): string[] {
+  const days: string[] = [];
+  for (
+    let t = Date.parse(`${start}T00:00:00Z`);
+    t <= Date.parse(`${end}T00:00:00Z`) && days.length < max;
+    t += 86_400_000
+  ) {
+    days.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+export interface SprintBurndown {
+  days: string[];
+  remaining: number[];
+  total: number;
+  /** The same in story points; all zero when no task in the sprint is estimated. */
+  remainingPoints: number[];
+  totalPoints: number;
+  /** The sprint's last planned day, when it has one, for the ideal line. */
+  endsOn: string | null;
+}
+
+/** The active or completed sprint's remaining work per day, from its start to today or its end. */
+export async function sprintBurndown(
+  tenantId: TenantId,
+  sprintId: string
+): Promise<SprintBurndown | null> {
+  if (!UUID.test(sprintId)) return null;
+  const [sprint] = await query<{ start: string | null; ends_on: string | null; last: string }>(
+    `select coalesce(starts_on, started_at::date)::text as start, ends_on::text as ends_on,
+            coalesce(completed_at::date, current_date)::text as last
+     from sprints where tenant_id = $1 and id = $2 and status <> 'planned'`,
+    [tenantId, sprintId]
+  );
+  if (!sprint?.start) return null;
+  const rows = await query<{
+    id: string;
+    status: WorkStatus;
+    story_points: number | null;
+    day: string | null;
+    from_value: string | null;
+    to_value: string | null;
+  }>(
+    `select w.id, w.status, w.story_points, (e.created_at at time zone 'UTC')::date::text as day,
+            e.from_value, e.to_value
+     from work_items w
+     left join work_item_events e
+       on e.tenant_id = w.tenant_id and e.work_item_id = w.id and e.field = 'status'
+     where w.tenant_id = $1 and w.sprint_id = $2
+     order by w.id, e.created_at`,
+    [tenantId, sprintId]
+  );
+  const byTask = new Map<string, BurndownTask>();
+  for (const r of rows) {
+    const task = byTask.get(r.id) ?? {
+      status: r.status,
+      points: r.story_points,
+      changes: [],
+    };
+    if (r.day) task.changes.push({ day: r.day, from: r.from_value, to: r.to_value });
+    byTask.set(r.id, task);
+  }
+  const days = dayRange(sprint.start, sprint.last);
+  const tasks = [...byTask.values()];
+  return {
+    days,
+    remaining: burndownSeries(tasks, days),
+    total: tasks.length,
+    remainingPoints: burndownSeries(tasks, days, 'points'),
+    totalPoints: tasks.reduce((n, t) => n + (t.points ?? 0), 0),
+    endsOn: sprint.ends_on,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Calendar and search
+// ---------------------------------------------------------------------------
+
+export type DueTone = 'red' | 'yellow' | 'green';
+
+export const DUE_TONE_LABELS: Record<DueTone, string> = {
+  red: 'Overdue or due now',
+  yellow: 'Due soon',
+  green: 'On track or done',
+};
+
+/**
+ * How urgent a task's due date is, by time left and priority (null when it has none):
+ *   red     overdue, due today, or high/critical and due within 2 days;
+ *   yellow  due within 3 days, or high/critical and due within 7;
+ *   green   more time than that, or done.
+ * `today` is the viewer's day, YYYY-MM-DD.
+ */
+export function dueTone(
+  task: { status: WorkStatus; priority: WorkPriority; due_on: string | null },
+  today: string
+): DueTone | null {
+  if (!task.due_on) return null;
+  if (task.status === 'done') return 'green';
+  const days = Math.round(
+    (Date.parse(`${task.due_on}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000
+  );
+  const urgent = task.priority === 'high' || task.priority === 'critical';
+  if (days <= (urgent ? 2 : 0)) return 'red';
+  if (days <= (urgent ? 7 : 3)) return 'yellow';
+  return 'green';
+}
+
+/** `?month=2026-11` if it is a real month between 2000 and 2100, else the month of `today`. */
+export function parseMonth(raw: string | null | undefined, today: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec((raw ?? '').trim());
+  if (
+    m &&
+    Number(m[1]) >= 2000 &&
+    Number(m[1]) <= 2100 &&
+    Number(m[2]) >= 1 &&
+    Number(m[2]) <= 12
+  ) {
+    return `${m[1]}-${m[2]}`;
+  }
+  return today.slice(0, 7);
+}
+
+/** "2026-11" moved by `delta` months: ("2026-01", -1) → "2025-12". */
+export function shiftMonth(month: string, delta: number): string {
+  const d = new Date(`${month}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + delta);
+  return d.toISOString().slice(0, 7);
+}
+
+/** The weeks (Monday first) that cover a month, as YYYY-MM-DD days; 4 to 6 rows of 7. */
+export function monthGrid(month: string): string[][] {
+  const first = new Date(`${month}-01T00:00:00Z`);
+  const start = new Date(first);
+  start.setUTCDate(1 - ((first.getUTCDay() + 6) % 7));
+  const weeks: string[][] = [];
+  for (const d = new Date(start); weeks.length < 6;) {
+    const week: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    weeks.push(week);
+    if (d.toISOString().slice(0, 7) !== month) break;
+  }
+  return weeks;
+}
+
+/**
+ * Tasks across the workspace whose title contains `q`, or whose id is exactly `q` ("CF-12"),
+ * most recently updated first. Like-wildcards in `q` are matched literally.
+ */
+export async function searchWorkItems(
+  tenantId: TenantId,
+  q: string,
+  limit = 30
+): Promise<WorkItemRow[]> {
+  const text = q.trim().slice(0, 100);
+  if (!text) return [];
+  const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return query<WorkItemRow>(
+    `${WORK_ITEM_SELECT}
+     join projects p on p.id = w.project_id and p.tenant_id = w.tenant_id
+     where w.tenant_id = $1
+       and (w.title ilike $2 escape '\\'
+            or coalesce(p.task_key, 'TASK') || '-' || w.number = upper($3))
+     order by w.updated_at desc
+     limit $4`,
+    [tenantId, like, text, Math.min(Math.max(limit, 1), 100)]
+  );
+}
+
+/**
+ * Tasks of the workspace due between two days (inclusive), for the calendar; only one person's
+ * with `assigneeId`. Both days are YYYY-MM-DD; anything else returns nothing.
+ */
+export async function listWorkItemsDue(
+  tenantId: TenantId,
+  from: string,
+  to: string,
+  assigneeId?: string
+): Promise<WorkItemRow[]> {
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  if (!day.test(from) || !day.test(to) || (assigneeId && !UUID.test(assigneeId))) return [];
+  return query<WorkItemRow>(
+    `${WORK_ITEM_SELECT}
+     where w.tenant_id = $1 and w.due_on between $2::date and $3::date
+       and ($4::uuid is null or w.assignee_id = $4::uuid)
+     order by w.due_on, w.number
+     limit 1000`,
+    [tenantId, from, to, assigneeId ?? null]
+  );
+}
+
+/** Every unfinished task that has an assignee, for the Team page; soonest due first. */
+export async function listOpenAssignedWork(tenantId: TenantId): Promise<WorkItemRow[]> {
+  return query<WorkItemRow>(
+    `${WORK_ITEM_SELECT}
+     where w.tenant_id = $1 and w.assignee_id is not null and w.status <> 'done'
+     order by w.due_on nulls last, w.number
+     limit 2000`,
+    [tenantId]
   );
 }

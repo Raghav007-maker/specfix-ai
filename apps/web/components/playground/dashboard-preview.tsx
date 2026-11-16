@@ -13,6 +13,7 @@ import {
   House,
   LogIn,
   LogOut,
+  ShieldCheck,
   MessagesSquare,
   Plug,
   UserRound,
@@ -156,7 +157,7 @@ export function DashboardPreview({
             <Link
               key={p.id}
               className={s.navItem}
-              href={`/?project=${p.id}`}
+              href={`/projects/${p.id}`}
               aria-current={p.id === activeProjectId ? 'page' : undefined}
             >
               <Folder aria-hidden />
@@ -189,12 +190,18 @@ export function DashboardPreview({
           </nav>
           <div className={s.sideFoot}>
             {live ? (
-              <form action={signOut}>
-                <button type="submit" className={s.navItem}>
-                  <LogOut aria-hidden />
-                  <span>Sign out</span>
-                </button>
-              </form>
+              <>
+                <Link className={s.navItem} href="/settings/security">
+                  <ShieldCheck aria-hidden />
+                  <span>Security</span>
+                </Link>
+                <form action={signOut}>
+                  <button type="submit" className={s.navItem}>
+                    <LogOut aria-hidden />
+                    <span>Sign out</span>
+                  </button>
+                </form>
+              </>
             ) : (
               <button type="button" className={s.navItem} onClick={goLogin}>
                 <LogIn aria-hidden />
@@ -939,6 +946,14 @@ function Profile({
             >
               <BarChart3 aria-hidden />
             </button>
+            <Link
+              href="/settings/security"
+              className={s.roundBtn}
+              aria-label="Security"
+              title="Security"
+            >
+              <ShieldCheck aria-hidden />
+            </Link>
             <form action={signOut}>
               <button type="submit" className={s.roundBtn} aria-label="Sign out" title="Sign out">
                 <LogOut aria-hidden />

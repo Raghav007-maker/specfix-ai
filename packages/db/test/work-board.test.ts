@@ -29,9 +29,11 @@ afterAll(async () => {
 describe('board filters', () => {
   const me = '11111111-1111-4111-8111-111111111111';
   const row = (n: number, extra: Record<string, unknown> = {}) => ({
+    id: `id-${n}`,
+    parent_id: null as string | null,
     number: n,
     title: `Task ${n}`,
-    type: 'task' as 'task' | 'bug' | 'story' | 'epic',
+    type: 'task' as 'task' | 'bug' | 'story' | 'epic' | 'subtask',
     priority: 'medium' as 'low' | 'medium' | 'high' | 'critical',
     assignee_id: null as string | null,
     labels: [] as string[],
@@ -59,7 +61,15 @@ describe('board filters', () => {
   it('drops unknown or malformed filter values', () => {
     expect(
       parseBoardQuery({ type: 'incident', priority: ['high', 'low'], assignee: 'x', sort: 'evil' })
-    ).toEqual({ q: '', type: null, priority: 'high', assignee: null, label: null, sort: 'rank' });
+    ).toEqual({
+      q: '',
+      type: null,
+      priority: 'high',
+      assignee: null,
+      label: null,
+      epic: null,
+      sort: 'rank',
+    });
     expect(parseBoardQuery({ q: 'x'.repeat(500) }).q).toHaveLength(100);
     expect(parseBoardQuery({ assignee: me.toUpperCase() }).assignee).toBe(me);
   });
@@ -75,6 +85,24 @@ describe('board filters', () => {
     expect(numbers({ assignee: 'none' })).toEqual([3, 1]);
     expect(numbers({ label: 'ui' })).toEqual([1]);
     expect(numbers({ q: 'nothing like this' })).toEqual([]);
+  });
+
+  it('filters by epic: its children and their sub-tasks, or tasks in no epic', () => {
+    const tree = [
+      row(1, { type: 'epic' }),
+      row(2, { type: 'story', parent_id: 'id-1' }),
+      row(3, { type: 'subtask', parent_id: 'id-2' }),
+      row(4, { type: 'task' }),
+      row(5, { type: 'subtask', parent_id: 'id-4' }),
+    ];
+    const pick = (epic: string) =>
+      applyBoardQuery(tree, { ...parseBoardQuery({}), epic }, { userId: me, taskKey: 'CF' }).map(
+        (r) => r.number
+      );
+    expect(pick('id-1')).toEqual([2, 3]);
+    expect(pick('none')).toEqual([4, 5]);
+    expect(parseBoardQuery({ epic: 'x' }).epic).toBeNull();
+    expect(parseBoardQuery({ epic: 'NONE' }).epic).toBeNull();
   });
 
   it('sorts by priority and by due date, undated last', () => {

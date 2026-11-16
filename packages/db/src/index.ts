@@ -23,3 +23,5 @@ export * from './repositories/github.ts';
 export * from './repositories/plans.ts';
 export * from './repositories/payments.ts';
 export * from './repositories/work.ts';
+export * from './repositories/chat.ts';
+export * from './repositories/rate-limits.ts';

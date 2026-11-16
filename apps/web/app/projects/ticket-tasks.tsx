@@ -24,7 +24,7 @@ export function TicketTasks({
             <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>
           </CardTitle>
           <Link
-            href={`/projects/${project.id}?ticket=${ticketId}#new-task`}
+            href={`/projects/${project.id}/tasks/new?ticket=${ticketId}`}
             className={`${linkClasses} text-sm`}
           >
             New task for this ticket

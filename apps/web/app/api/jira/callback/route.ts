@@ -33,7 +33,12 @@ export async function GET(request: NextRequest) {
     );
     response.cookies.delete({ name: JIRA_STATE_COOKIE, path: '/api/jira' });
     if (tenantId) {
-      response.cookies.set(TENANT_COOKIE, tenantId, { httpOnly: true, sameSite: 'lax', path: '/' });
+      response.cookies.set(TENANT_COOKIE, tenantId, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      });
     }
     return response;
   };

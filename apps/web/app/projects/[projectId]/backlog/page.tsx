@@ -4,12 +4,19 @@ import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
+  BOARD_SORTS,
   WORK_TYPE_LABELS,
+  applyBoardQuery,
   getProjectDetail,
+  listMembers,
+  parseBoardQuery,
+  sprintVelocity,
   listProjects,
   listSprints,
   listWorkItems,
   sprintCountRows,
+  sprintBurndown,
+  dayRange,
   summarizeCounts,
   taskKeyOf,
   workTablesAvailable,
@@ -42,7 +49,18 @@ import {
   startSprintAction,
   updateSprintAction,
 } from '../../actions';
-import { NotMigrated, PriorityPill, ProgressBar, ProjectTabs, StatusPill } from '../../work-ui';
+import {
+  NotMigrated,
+  PriorityPill,
+  ProgressBar,
+  ProjectHeader,
+  StatusPill,
+  TaskFilters,
+  epicsOf,
+  isFiltered,
+  shortDay,
+} from '../../work-ui';
+import { LineChart } from '../../line-chart';
 
 /** "5 days left", "ends today", "ended 2 days ago" from a YYYY-MM-DD end date (UTC days). */
 function daysLeft(endsOn: string): string {
@@ -63,13 +81,15 @@ export default async function BacklogPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ projectId }, { error, notice }, user] = await Promise.all([
-    params,
-    searchParams,
-    requireUser(),
-  ]);
+  const [{ projectId }, search, user] = await Promise.all([params, searchParams, requireUser()]);
+  const one = (k: string) => {
+    const v = search[k];
+    return Array.isArray(v) ? v[0] : v;
+  };
+  const error = one('error');
+  const notice = one('notice');
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
@@ -83,6 +103,7 @@ export default async function BacklogPage({
       tenant={tenant}
       projects={projects}
       activeProjectId={projectId}
+      projectView="backlog"
       current="projects"
       breadcrumb={
         <Breadcrumb
@@ -91,28 +112,59 @@ export default async function BacklogPage({
         />
       }
     >
-      <h1 className="mb-4 text-2xl font-semibold tracking-[-0.012em]">{sidebarProject.name}</h1>
-      <ProjectTabs projectId={projectId} active="backlog" />
+      <ProjectHeader
+        projectId={projectId}
+        name={sidebarProject.name}
+        active="backlog"
+        canManage={tenant.role !== 'reviewer'}
+      />
       {children}
     </AppShell>
   );
   if (!migrated) return shell(<NotMigrated />);
 
-  const [project, sprints, tasks, countRows] = await Promise.all([
+  const [project, sprints, tasks, countRows, members] = await Promise.all([
     getProjectDetail(t, projectId),
     listSprints(t, projectId),
     listWorkItems(t, projectId),
     sprintCountRows(t, projectId),
+    listMembers(t),
   ]);
   if (!project) notFound();
 
+  // The backlog has no column order, so its default is newest first (the old fixed order).
+  const parsed = parseBoardQuery(search);
+  const query = { ...parsed, sort: parsed.sort === 'rank' ? ('created' as const) : parsed.sort };
+  const filtered = isFiltered(query, 'created');
+  const shown = applyBoardQuery(tasks, query, { userId: user.id, taskKey: project.task_key });
+  const labels = [...new Set(tasks.flatMap((task) => task.labels))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+  const velocity = sprintVelocity(sprints, tasks);
+  const pointsOf = (list: WorkItemRow[]) => list.reduce((n, x) => n + (x.story_points ?? 0), 0);
+
   const canManage = tenant.role !== 'reviewer';
   const active = sprints.find((s) => s.status === 'active') ?? null;
+  const burn = active ? await sprintBurndown(t, active.id) : null;
+  // Burn story points when the sprint has any estimates, else count tasks.
+  const byPoints = Boolean(burn && burn.totalPoints > 0);
+  const burnTotal = burn ? (byPoints ? burn.totalPoints : burn.total) : 0;
+  const burnRemaining = burn ? (byPoints ? burn.remainingPoints : burn.remaining) : [];
+  const burnUnit = byPoints ? 'points' : 'tasks';
+  // Ideal line: straight from all work open on day one to none on the planned last day.
+  const plannedDays = burn?.endsOn && burn.days[0] ? dayRange(burn.days[0], burn.endsOn).length : 0;
+  const ideal = burn
+    ? burn.days.map((_, i) =>
+        plannedDays > 1 ? Math.max(0, burnTotal * (1 - i / (plannedDays - 1))) : null
+      )
+    : [];
   const planned = sprints.filter((s) => s.status === 'planned');
   const completed = sprints.filter((s) => s.status === 'completed');
   const open = sprints.filter((s) => s.status !== 'completed');
-  const bySprint = (id: string) => tasks.filter((task) => task.sprint_id === id);
-  const backlog = tasks.filter((task) => !task.sprint_id && task.status !== 'done');
+  // Lists show the filtered tasks; counts, points and charts always cover the whole sprint.
+  const allInSprint = (id: string) => tasks.filter((task) => task.sprint_id === id);
+  const bySprint = (id: string) => shown.filter((task) => task.sprint_id === id);
+  const backlog = shown.filter((task) => !task.sprint_id && task.status !== 'done');
   const doneOutside = tasks.filter((task) => !task.sprint_id && task.status === 'done').length;
   const countsOf = (id: string) => summarizeCounts(countRows.filter((r) => r.sprint_id === id));
   const keyOf = (n: number) => taskKeyOf(project.task_key, n);
@@ -135,6 +187,11 @@ export default async function BacklogPage({
             </Link>
             <span className="min-w-0 flex-1 truncate">{task.title}</span>
             <span className="text-xs text-muted-foreground">{WORK_TYPE_LABELS[task.type]}</span>
+            {task.story_points !== null ? (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {task.story_points} pt
+              </span>
+            ) : null}
             <PriorityPill priority={task.priority} />
             <StatusPill status={task.status} />
             <form action={setTaskSprintAction} className="flex items-center gap-1.5">
@@ -240,6 +297,23 @@ export default async function BacklogPage({
         </Notice>
       ) : null}
 
+      <TaskFilters
+        action={`/projects/${projectId}/backlog`}
+        query={query}
+        members={members}
+        labels={labels}
+        epics={epicsOf(tasks)}
+        taskKey={project.task_key}
+        sorts={BOARD_SORTS.filter((v) => v !== 'rank')}
+        filtered={filtered}
+      />
+      {filtered ? (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Showing {shown.length} of {tasks.length} tasks. Sprint progress and points still count
+          every task.
+        </p>
+      ) : null}
+
       <div className="space-y-8">
         <section aria-labelledby="active-h" className="space-y-3">
           <SectionHeading id="active-h">Active sprint</SectionHeading>
@@ -284,7 +358,31 @@ export default async function BacklogPage({
                       total={counts.total}
                       label="Sprint progress"
                     />
-                    <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    {burn && burn.days.length > 1 ? (
+                      <div>
+                        <h3 className="mb-1 text-sm font-medium">
+                          Burndown{' '}
+                          <span className="font-normal text-muted-foreground">
+                            ({byPoints ? 'story points' : 'tasks'})
+                          </span>
+                        </h3>
+                        <LineChart
+                          ariaLabel={`Unfinished ${burnUnit} per day: ${burn.days
+                            .map((d, i) => `${shortDay(d)} ${burnRemaining[i]}`)
+                            .join('; ')}`}
+                          labels={burn.days.map(shortDay)}
+                          series={[
+                            {
+                              name: byPoints ? 'Points left' : 'Remaining',
+                              color: '#2b5fd9',
+                              values: burnRemaining,
+                            },
+                          ]}
+                          reference={plannedDays > 1 ? { name: 'Ideal', values: ideal } : undefined}
+                        />
+                      </div>
+                    ) : null}
+                    <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
                       <Figure label="Done" value={counts.byStatus.done} />
                       <Figure label="Remaining" value={remaining} />
                       <Figure
@@ -292,6 +390,10 @@ export default async function BacklogPage({
                         value={counts.byStatus.in_progress + counts.byStatus.in_review}
                       />
                       <Figure label="Overdue" value={counts.overdue} warn={counts.overdue > 0} />
+                      <Figure
+                        label="Points done"
+                        value={`${pointsOf(allInSprint(active.id).filter((x) => x.status === 'done'))} of ${pointsOf(allInSprint(active.id))}`}
+                      />
                     </dl>
                     {taskList(
                       bySprint(active.id),
@@ -332,7 +434,9 @@ export default async function BacklogPage({
                           {list.length}
                         </span>
                       </CardTitle>
-                      <p className="mt-1 text-xs text-muted-foreground">{dates(sprint)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {dates(sprint)} · {pointsOf(allInSprint(sprint.id))} points planned
+                      </p>
                       {sprint.goal ? (
                         <p className="mt-2 whitespace-pre-wrap text-sm">{sprint.goal}</p>
                       ) : null}
@@ -385,7 +489,7 @@ export default async function BacklogPage({
           {taskList(
             backlog,
             tasks.length === 0
-              ? 'No tasks in this project yet. Create them on the Overview or Board.'
+              ? 'No tasks in this project yet. Use Create at the top to add one.'
               : 'The backlog is empty.'
           )}
         </section>
@@ -395,16 +499,37 @@ export default async function BacklogPage({
             <SectionHeading id="completed-h" count={completed.length}>
               Completed sprints
             </SectionHeading>
+            {velocity.length > 1 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Velocity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <LineChart
+                    ariaLabel={`Finished per completed sprint: ${velocity
+                      .map((v) => `${v.name} ${v.points} points, ${v.tasks} tasks`)
+                      .join('; ')}`}
+                    labels={velocity.map((v) => v.name)}
+                    series={[
+                      { name: 'Points', color: '#2b5fd9', values: velocity.map((v) => v.points) },
+                      { name: 'Tasks', color: '#c07a2c', values: velocity.map((v) => v.tasks) },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+            ) : null}
             <ul className="space-y-2">
               {completed.map((sprint) => {
-                const list = bySprint(sprint.id);
+                const list = allInSprint(sprint.id);
                 return (
                   <li key={sprint.id}>
                     <details className="rounded-lg border border-border bg-sheet">
                       <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal">
                         <span className="font-medium">{sprint.name}</span>
                         <span className="text-muted-foreground">{dates(sprint)}</span>
-                        <Pill tone="positive">{list.length} done</Pill>
+                        <Pill tone="positive">
+                          {list.length} done · {pointsOf(list)} pts
+                        </Pill>
                         {sprint.completed_at ? (
                           <span className="text-xs text-muted-foreground">
                             completed {sprint.completed_at.toLocaleDateString('en-GB')}
@@ -442,7 +567,7 @@ export default async function BacklogPage({
   );
 }
 
-function Figure({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+function Figure({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>

@@ -23,13 +23,18 @@ export function sslFor(connectionString: string): { ca: string } | undefined {
   return isRemote ? { ca: SUPABASE_ROOT_CA } : undefined;
 }
 
+// The dev server re-evaluates this module on every hot reload; keeping the pool on globalThis
+// stops each reload from opening another pool and using up Supabase's 15 pooler connections.
+const shared = globalThis as typeof globalThis & { __specfixPool?: Pool };
+
 export function getPool(): Pool {
+  pool ??= shared.__specfixPool;
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error('DATABASE_URL is not set.');
     }
-    pool = new Pool({
+    pool = shared.__specfixPool = new Pool({
       connectionString,
       max: Number(process.env.PGPOOL_MAX ?? 10),
       // Supabase's pooler drops idle connections; allow sufficient time for cold connections.
@@ -44,7 +49,7 @@ export function getPool(): Pool {
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end();
-    pool = undefined;
+    pool = shared.__specfixPool = undefined;
   }
 }
 

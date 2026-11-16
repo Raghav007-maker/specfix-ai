@@ -5,7 +5,10 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
+  ChatError,
+  RateLimiter,
   WorkError,
+  postProjectMessage,
   addWorkComment,
   addWorkLink,
   completeSprint,
@@ -51,6 +54,8 @@ function taskInput(formData: FormData): RawTaskInput {
     'components',
     'ticketId',
     'scenarioId',
+    'parentId',
+    'storyPoints',
   ] as const;
   return Object.fromEntries(keys.map((k) => [k, field(formData, k)]));
 }
@@ -90,7 +95,7 @@ export async function createTaskAction(formData: FormData): Promise<void> {
   const fromBoard = field(formData, 'from') === 'board';
   const result = await run(() => createWorkItem(tenantId, user.id, projectId, taskInput(formData)));
   if ('error' in result) {
-    back(projectPath(projectId, fromBoard ? '/board' : ''), { error: result.error });
+    back(projectPath(projectId, fromBoard ? '/board' : '/tasks/new'), { error: result.error });
   }
   back(projectPath(projectId, fromBoard ? '/board' : `/tasks/${result.ok.number}`), {
     notice: `Created ${result.ok.key}.`,
@@ -153,8 +158,8 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
       taskKey: field(formData, 'taskKey') ?? '',
     })
   );
-  if ('error' in result) back(projectPath(projectId), { error: result.error });
-  back(projectPath(projectId), { notice: 'Project details saved.' });
+  if ('error' in result) back(projectPath(projectId, '/settings'), { error: result.error });
+  back(projectPath(projectId, '/settings'), { notice: 'Project details saved.' });
 }
 
 /** The task page a collaboration form came from, rebuilt from validated parts only. */
@@ -240,6 +245,7 @@ const sprintInput = (formData: FormData) => ({
 
 const backlogPath = (formData: FormData) => projectPath(field(formData, 'projectId'), '/backlog');
 
+/** Creates a planned sprint (owners and admins), then returns to the backlog. */
 export async function createSprintAction(formData: FormData): Promise<void> {
   const { user, tenantId } = await actor();
   const result = await run(() =>
@@ -286,4 +292,30 @@ export async function setTaskSprintAction(formData: FormData): Promise<void> {
   );
   if ('error' in result) back(backlogPath(formData), { error: result.error });
   redirect(backlogPath(formData));
+}
+
+const messagesByUser = new RateLimiter('chat-user', 20, 60_000);
+
+/** Posts to a project's team conversation; @mentions notify (and email) those members. */
+export async function postMessageAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId');
+  const here = projectPath(projectId, '/conversation');
+  // At most 20 messages a minute per person, so one account cannot flood a team (or its inboxes).
+  if (!(await messagesByUser.take(user.id))) {
+    back(here, { error: 'You are sending messages too fast. Wait a minute and try again.' });
+  }
+  let sent = { mentioned: 0, everyone: 0 };
+  try {
+    sent = await postProjectMessage(tenantId, user.id, projectId ?? '', field(formData, 'body'));
+  } catch (error) {
+    if (error instanceof ChatError) back(here, { error: error.message });
+    throw error;
+  }
+  revalidatePath(here);
+  const parts = [
+    sent.mentioned ? `${sent.mentioned} mentioned member(s) will get an email` : '',
+    sent.everyone ? `${sent.everyone} more see it in their inbox (@all is never emailed)` : '',
+  ].filter(Boolean);
+  back(here, parts.length ? { notice: `Sent. ${parts.join('; ')}.` } : {});
 }
