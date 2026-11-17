@@ -58,7 +58,7 @@ async function context(formData: FormData): Promise<Context> {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
 
-  const ticket = await getTicket(tenant.tenant_id, posted);
+  const ticket = await getTicket(tenant.tenant_id, posted, user.id);
   if (!ticket) redirect('/');
 
   return { userId: user.id, tenantId: tenant.tenant_id, ticketId: ticket.id };
@@ -98,7 +98,7 @@ async function settle(ticketId: string, work: () => Promise<void>): Promise<neve
 export async function generateScenarios(formData: FormData): Promise<void> {
   const ctx = await context(formData);
   await settle(ctx.ticketId, async () => {
-    const ticket = await getTicket(ctx.tenantId, ctx.ticketId);
+    const ticket = await getTicket(ctx.tenantId, ctx.ticketId, ctx.userId);
     if (!ticket) throw new ActionError('Ticket not found.');
 
     const version = await latestVersion(ctx.tenantId, ctx.ticketId);
@@ -228,7 +228,7 @@ export async function emitScaffoldAction(formData: FormData): Promise<void> {
       throw new ActionError('Accept the scenario before emitting a scaffold from it.');
     }
 
-    const ticket = await getTicket(ctx.tenantId, ctx.ticketId);
+    const ticket = await getTicket(ctx.tenantId, ctx.ticketId, ctx.userId);
     if (!ticket) throw new ActionError('Ticket not found.');
 
     const parsed = parseGherkin(scenario.gherkin_raw);

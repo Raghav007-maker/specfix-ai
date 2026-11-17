@@ -24,6 +24,7 @@ import {
   sprintVelocity,
   updateWorkItem,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -110,6 +111,7 @@ describe.skipIf(!hasDatabase)('hierarchy in the database', () => {
     pA = (await createProject(A, { name: 'Alpha', sourceType: 'file' }, opts)).id;
     pA2 = (await createProject(A, { name: 'Beta', sourceType: 'file' }, opts)).id;
     pB = (await createProject(B, { name: 'Bravo', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(A);
   });
 
   it('builds epic → story → sub-task with points, and shows the parent on read', async () => {

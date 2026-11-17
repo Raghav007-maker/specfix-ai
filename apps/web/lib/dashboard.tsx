@@ -9,6 +9,7 @@ import {
   findAgentConversation,
   findSession,
   flagBreakdown,
+  projectScope,
   latestVersion,
   listAgentMessages,
   listDecisionsForTicket,
@@ -43,7 +44,7 @@ export function profileOf(user: User, tenant: MembershipRow | null): DashboardDa
 /**
  * Everything the workspace dashboard shows, read through the same tenant-scoped repositories the
  * app's other pages use. Nothing here writes. `projectId` narrows the queue to one project; the
- * workspace-wide figures (activity, breakdown, time to ready) stay workspace-wide.
+ * workspace-wide figures (activity, breakdown, time to ready) cover the projects the user sees.
  * Throws when a read fails; callers decide what to show instead.
  */
 export async function loadWorkspaceDashboard(
@@ -56,9 +57,9 @@ export async function loadWorkspaceDashboard(
   const scoped = projects.filter((p) => !projectId || p.id === projectId);
   const [queues, weeks, breakdown, ttr, access] = await Promise.all([
     Promise.all(scoped.map((p) => ticketQueue(t, p.id))),
-    weeklyActivity(t, 12),
-    flagBreakdown(t),
-    timeToReady(t),
+    weeklyActivity(t, 12, projectScope(tenant, projects)),
+    flagBreakdown(t, projectScope(tenant, projects)),
+    timeToReady(t, projectScope(tenant, projects)),
     agentAccess(user, t),
   ]);
   const queue: QueueItem[] = scoped.flatMap((p, i) =>

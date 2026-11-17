@@ -28,6 +28,7 @@ import {
   searchWorkItems,
   shiftMonth,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -123,6 +124,7 @@ describe.skipIf(!hasDatabase)('conversations in the database', () => {
     const opts = { unlimited: true };
     pA = (await createProject(A, { name: 'Alpha', sourceType: 'file' }, opts)).id;
     pB = (await createProject(B, { name: 'Bravo', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(A);
   });
 
   it('posts and lists oldest first; a mention notifies members only, never the author', async () => {

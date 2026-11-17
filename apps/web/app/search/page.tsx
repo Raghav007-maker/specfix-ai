@@ -4,6 +4,7 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   listProjectDetails,
   listProjects,
+  projectScope,
   searchWorkItems,
   taskKeyOf,
   workTablesAvailable,
@@ -24,9 +25,14 @@ export default async function SearchPage({
   const t = tenant.tenant_id;
   const raw = Array.isArray(params.q) ? params.q[0] : params.q;
   const q = (raw ?? '').trim().slice(0, 100);
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const [details, tasks] =
-    migrated && q ? await Promise.all([listProjectDetails(t), searchWorkItems(t, q)]) : [[], []];
+    migrated && q
+      ? await Promise.all([
+          listProjectDetails(t),
+          searchWorkItems(t, q, 30, projectScope(tenant, projects)),
+        ])
+      : [[], []];
   const byId = new Map(details.map((p) => [p.id, p]));
   const needle = q.toLowerCase();
   const projectHits = q ? projects.filter((p) => p.name.toLowerCase().includes(needle)) : [];

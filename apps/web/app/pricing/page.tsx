@@ -17,7 +17,7 @@ export default async function PricingPage() {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
   const [projects, plan, payment] = await Promise.all([
-    listProjects(tenant.tenant_id),
+    listProjects(tenant.tenant_id, user.id),
     tenantPlan(tenant.tenant_id),
     latestPayment(tenant.tenant_id),
   ]);

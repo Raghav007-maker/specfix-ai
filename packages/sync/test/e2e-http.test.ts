@@ -184,6 +184,8 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       '/projects/00000000-0000-4000-8000-000000000000/tasks/new',
       '/projects/00000000-0000-4000-8000-000000000000/calendar',
       '/projects/00000000-0000-4000-8000-000000000000/conversation',
+      '/projects/00000000-0000-4000-8000-000000000000/people',
+      '/projects/00000000-0000-4000-8000-000000000000/people?person=x%27%20or%201=1&role=admin',
       '/calendar',
       '/search?q=x',
       '/projects/00000000-0000-4000-8000-000000000000/tasks/1',

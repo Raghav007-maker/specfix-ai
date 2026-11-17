@@ -28,7 +28,7 @@ export default async function ProjectsPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
 
   const breadcrumb = (
     <p className="flex min-w-0 items-center gap-2 text-sm">
@@ -55,7 +55,7 @@ export default async function ProjectsPage({
             queue.
           </p>
         </div>
-        {tenant.role !== 'reviewer' ? (
+        {tenant.role === 'owner' ? (
           <form
             id="new-project"
             action={createProjectForCurrentTenant}
@@ -90,13 +90,16 @@ export default async function ProjectsPage({
 
   if (!migrated) return shell(<NotMigrated />);
 
-  const [details, rows] = await Promise.all([listProjectDetails(t), workCountRows(t)]);
+  const visible = new Set(projects.map((p) => p.id));
+  const [allDetails, allRows] = await Promise.all([listProjectDetails(t), workCountRows(t)]);
+  const details = allDetails.filter((d) => visible.has(d.id));
+  const rows = allRows.filter((r) => visible.has(r.project_id));
   if (details.length === 0) {
     return shell(
       <EmptyNote>
         No projects yet.{' '}
-        {tenant.role === 'reviewer'
-          ? 'Ask an owner or admin to create one.'
+        {tenant.role !== 'owner'
+          ? 'Ask an owner to add you to a project.'
           : 'Create one with “Create project” above.'}
       </EmptyNote>
     );

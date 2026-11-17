@@ -30,6 +30,7 @@ import {
   removeWorkLink,
   updateWorkItem,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -124,6 +125,7 @@ describe.skipIf(!hasDatabase)('collaboration in the database', () => {
     projectP = (await createProject(tenantA, { name: 'Payments', sourceType: 'file' }, opts)).id;
     projectQ = (await createProject(tenantA, { name: 'Queue', sourceType: 'file' }, opts)).id;
     projectR = (await createProject(tenantB, { name: 'Remote', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(tenantA);
 
     const s1 = await specFixture(tenantA, projectP, `${label}-1`);
     const s2 = await specFixture(tenantA, projectP, `${label}-2`);
@@ -221,7 +223,7 @@ describe.skipIf(!hasDatabase)('collaboration in the database', () => {
       /not in this workspace/
     );
     await expect(fileBugFromScenario(tenantA, users.outsider, ids.s1!)).rejects.toThrow(
-      /not a member/
+      /not in this workspace/
     );
     await expect(fileBugFromScenario(tenantA, users.rev, 'nope')).rejects.toThrow(WorkError);
     expect(await listWorkItemsForTicket(tenantB, ids.t1!)).toEqual([]);

@@ -295,7 +295,10 @@ export interface TimeToReady {
   backfilled: boolean;
 }
 
-export async function timeToReady(tenantId: TenantId): Promise<TimeToReady[]> {
+export async function timeToReady(
+  tenantId: TenantId,
+  projectIds: string[] | null = null
+): Promise<TimeToReady[]> {
   const rows = await query<{ ticket_id: string; hours: string; backfilled: boolean }>(
     `select ticket_id,
             (extract(epoch from (max(occurred_at) filter (where event = 'marked_ready')
@@ -303,10 +306,11 @@ export async function timeToReady(tenantId: TenantId): Promise<TimeToReady[]> {
             bool_or(backfilled) as backfilled
      from readiness_events
      where tenant_id = $1
+       and ($2::uuid[] is null or ticket_id in (select id from tickets where tenant_id = $1 and project_id = any($2::uuid[])))
      group by ticket_id
      having count(*) filter (where event = 'marked_ready') > 0
         and count(*) filter (where event = 'ticket_ingested') > 0`,
-    [tenantId]
+    [tenantId, projectIds]
   );
 
   return rows.map((r) => ({

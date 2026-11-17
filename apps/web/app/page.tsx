@@ -5,10 +5,12 @@ import { PublicLanding } from '@/components/public-pages';
 import { requireTenant, currentMemberships } from '@/lib/tenant';
 import {
   activeSprintSummaries,
+  inProjects,
   listAssignedWorkItems,
   listProjectDetails,
   listProjects,
   listWorkEvents,
+  projectScope,
   summarizeCounts,
   taskKeyOf,
   workCountRows,
@@ -73,7 +75,7 @@ export default async function HomePage({
   ]);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
 
   // Only a project of this workspace narrows the queue; anything else shows them all.
   const activeProject = projects.find((p) => p.id === projectParam);
@@ -84,14 +86,23 @@ export default async function HomePage({
         ? 'reviews'
         : 'work';
 
-  const [{ data, agent }, details, countRows, assigned, sprints, events] = await Promise.all([
-    loadWorkspaceDashboard(user, tenant, projects, activeProject?.id),
-    migrated ? listProjectDetails(t) : Promise.resolve([] as ProjectDetailRow[]),
-    migrated ? workCountRows(t) : Promise.resolve([]),
-    migrated ? listAssignedWorkItems(t, user.id) : Promise.resolve([]),
-    migrated ? activeSprintSummaries(t) : Promise.resolve([]),
-    migrated ? listWorkEvents(t, {}, 15) : Promise.resolve([]),
-  ]);
+  const [{ data, agent }, allDetails, allCountRows, allAssigned, allSprints, events] =
+    await Promise.all([
+      loadWorkspaceDashboard(user, tenant, projects, activeProject?.id),
+      migrated ? listProjectDetails(t) : Promise.resolve([] as ProjectDetailRow[]),
+      migrated ? workCountRows(t) : Promise.resolve([]),
+      migrated ? listAssignedWorkItems(t, user.id) : Promise.resolve([]),
+      migrated ? activeSprintSummaries(t) : Promise.resolve([]),
+      migrated
+        ? listWorkEvents(t, { projectIds: projectScope(tenant, projects) }, 15)
+        : Promise.resolve([]),
+    ]);
+  // Tenant-wide reads, kept to the projects this person can see.
+  const visible = new Set(projects.map((p) => p.id));
+  const details = allDetails.filter((p) => visible.has(p.id));
+  const countRows = inProjects(allCountRows, projects);
+  const assigned = inProjects(allAssigned, projects);
+  const sprints = inProjects(allSprints, projects);
 
   const byId = new Map(details.map((p) => [p.id, p]));
   const keyOf = (projectId: string, n: number) =>
@@ -100,7 +111,7 @@ export default async function HomePage({
   const openFlags = data.queue.reduce((n, r) => n + r.openFlags, 0);
   const ready = data.queue.filter((r) => r.ready).length;
   const overdueMine = assigned.filter((task) => task.overdue).length;
-  const canCreate = tenant.role !== 'reviewer';
+  const canCreate = tenant.role === 'owner';
 
   const tabLink = (key: Tab, label: string, count?: number) => {
     const params = new URLSearchParams({ tab: key });

@@ -6,7 +6,11 @@ import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import {
   ChatError,
+  ProjectAccessError,
   RateLimiter,
+  deleteTimeEntry,
+  logTime,
+  setProjectMember,
   WorkError,
   postProjectMessage,
   addWorkComment,
@@ -83,7 +87,9 @@ async function run<T>(write: () => Promise<T>): Promise<{ ok: T } | { error: str
   try {
     return { ok: await write() };
   } catch (error) {
-    if (error instanceof WorkError) return { error: error.message };
+    if (error instanceof WorkError || error instanceof ProjectAccessError) {
+      return { error: error.message };
+    }
     throw error;
   }
 }
@@ -318,4 +324,48 @@ export async function postMessageAction(formData: FormData): Promise<void> {
     sent.everyone ? `${sent.everyone} more see it in their inbox (@all is never emailed)` : '',
   ].filter(Boolean);
   back(here, parts.length ? { notice: `Sent. ${parts.join('; ')}.` } : {});
+}
+
+/**
+ * Adds a team member to a project, changes their project role, or removes them (`role=remove`).
+ * The repository decides what the actor may do (owner: anything; project admin: reviewers).
+ */
+export async function setProjectMemberAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId') ?? '';
+  const userId = field(formData, 'userId') ?? '';
+  const raw = field(formData, 'role');
+  const role = raw === 'admin' || raw === 'reviewer' ? raw : raw === 'remove' ? null : undefined;
+  const here = projectPath(projectId, '/people');
+  if (role === undefined) back(here, { error: 'Choose admin or reviewer.' });
+  const result = await run(() => setProjectMember(tenantId, user.id, { projectId, userId, role }));
+  if ('error' in result) back(here, { error: result.error });
+  back(here, {
+    notice: role
+      ? `Saved: now ${role === 'admin' ? 'an admin' : 'a reviewer'}.`
+      : 'Removed from the project.',
+  });
+}
+
+/** Logs the signed-in person's time on a task. */
+export async function logTimeAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const result = await run(() =>
+    logTime(tenantId, user.id, field(formData, 'taskId') ?? '', {
+      minutes: Number(field(formData, 'hours') || 0) * 60 + Number(field(formData, 'minutes') || 0),
+      spentOn: field(formData, 'spentOn'),
+      note: field(formData, 'note'),
+    })
+  );
+  if ('error' in result) back(taskPath(formData), { error: result.error });
+  redirect(`${taskPath(formData)}#time`);
+}
+
+export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const result = await run(() =>
+    deleteTimeEntry(tenantId, user.id, field(formData, 'entryId') ?? '')
+  );
+  if ('error' in result) back(taskPath(formData), { error: result.error });
+  redirect(`${taskPath(formData)}#time`);
 }

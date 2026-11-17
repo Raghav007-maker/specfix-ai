@@ -27,6 +27,7 @@ import {
   summarizeCounts,
   updateSprint,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -82,6 +83,7 @@ describe.skipIf(!hasDatabase)('sprints in the database', () => {
     projectP = (await createProject(tenantA, { name: 'Plan', sourceType: 'file' }, opts)).id;
     projectQ = (await createProject(tenantA, { name: 'Quick', sourceType: 'file' }, opts)).id;
     projectB = (await createProject(tenantB, { name: 'Bee', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(tenantA);
   });
 
   it('lets only owners and admins create and edit sprints', async () => {
@@ -168,6 +170,7 @@ describe.skipIf(!hasDatabase)('sprints in the database', () => {
     const project = (
       await createProject(tenantA, { name: 'Race', sourceType: 'file' }, { unlimited: true })
     ).id;
+    await grantAllProjects(tenantA);
     const x = (await createSprint(tenantA, users.owner, project, { name: 'X' })).id;
     const y = (await createSprint(tenantA, users.owner, project, { name: 'Y' })).id;
     const results = await Promise.allSettled([

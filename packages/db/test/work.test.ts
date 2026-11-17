@@ -31,6 +31,7 @@ import {
   updateWorkItem,
   workCountRows,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -173,6 +174,7 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
       await createProject(tenantA, { name: 'Customer Feedback', sourceType: 'file' }, opts)
     ).id;
     projectB = (await createProject(tenantB, { name: 'Billing', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(tenantA);
     ticketA = await insertTicket(tenantA, projectA, `${label}-1`);
     ticketA2 = await insertTicket(tenantA, projectA2, `${label}-2`);
   });
@@ -228,7 +230,7 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
   it('refuses references outside the workspace or the task project', async () => {
     await expect(
       createWorkItem(tenantA, users.owner, projectA, { title: 't', assigneeId: users.otherOwner })
-    ).rejects.toThrow(/member of this workspace/);
+    ).rejects.toThrow(/member of this project/);
     await expect(
       createWorkItem(tenantA, users.owner, projectA, { title: 't', ticketId: ticketA2 })
     ).rejects.toThrow(/not in this project/);
@@ -242,11 +244,11 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
 
   it('refuses people who are not members of the tenant', async () => {
     await expect(createWorkItem(tenantA, users.outsider, projectA, { title: 't' })).rejects.toThrow(
-      /not a member/
+      /not in this workspace/
     );
     await expect(
       createWorkItem(tenantA, users.otherOwner, projectA, { title: 't' })
-    ).rejects.toThrow(/not a member/);
+    ).rejects.toThrow(/not in this workspace/);
   });
 
   it('keeps another tenant from reading or changing the tasks', async () => {

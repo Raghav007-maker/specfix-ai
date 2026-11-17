@@ -8,7 +8,7 @@ import {
   WORK_TYPE_LABELS,
   applyBoardQuery,
   getProjectDetail,
-  listMembers,
+  listProjectPeople,
   parseBoardQuery,
   sprintVelocity,
   listProjects,
@@ -93,7 +93,7 @@ export default async function BacklogPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   if (!sidebarProject) notFound();
 
@@ -116,7 +116,7 @@ export default async function BacklogPage({
         projectId={projectId}
         name={sidebarProject.name}
         active="backlog"
-        canManage={tenant.role !== 'reviewer'}
+        canManage={sidebarProject.role !== 'reviewer'}
       />
       {children}
     </AppShell>
@@ -128,7 +128,7 @@ export default async function BacklogPage({
     listSprints(t, projectId),
     listWorkItems(t, projectId),
     sprintCountRows(t, projectId),
-    listMembers(t),
+    listProjectPeople(t, projectId),
   ]);
   if (!project) notFound();
 
@@ -143,7 +143,7 @@ export default async function BacklogPage({
   const velocity = sprintVelocity(sprints, tasks);
   const pointsOf = (list: WorkItemRow[]) => list.reduce((n, x) => n + (x.story_points ?? 0), 0);
 
-  const canManage = tenant.role !== 'reviewer';
+  const canManage = sidebarProject.role !== 'reviewer';
   const active = sprints.find((s) => s.status === 'active') ?? null;
   const burn = active ? await sprintBurndown(t, active.id) : null;
   // Burn story points when the sprint has any estimates, else count tasks.

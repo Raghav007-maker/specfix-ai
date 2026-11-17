@@ -80,7 +80,7 @@ async function context(formData: FormData): Promise<Context> {
   // A malformed id is answered like an unknown one, not with a database error.
   if (!UUID.test(posted)) redirect('/');
 
-  const ticket = await getTicket(tenant.tenant_id, posted);
+  const ticket = await getTicket(tenant.tenant_id, posted, user.id);
   if (!ticket) redirect('/');
 
   return {
@@ -272,7 +272,7 @@ export async function declineProposalAction(formData: FormData): Promise<void> {
  * and this is checked before any flag is read, mirroring the Review page.
  */
 async function loadOpenFlag(ctx: Context, flagId: string) {
-  const ticket = await getTicket(ctx.tenantId, ctx.ticketId);
+  const ticket = await getTicket(ctx.tenantId, ctx.ticketId, ctx.userId);
   if (!ticket) throw new SendError('Ticket not found.');
   const version = await latestVersion(ctx.tenantId, ctx.ticketId);
   if (!version) throw new SendError('This ticket has no analyzable version yet.');

@@ -28,7 +28,7 @@ export default async function ProfilePage({
   const [user, { error, notice }] = await Promise.all([requireUser(), searchParams]);
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
-  const projects = await listProjects(tenant.tenant_id);
+  const projects = await listProjects(tenant.tenant_id, user.id);
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const name =

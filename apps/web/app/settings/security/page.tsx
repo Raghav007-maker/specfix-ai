@@ -33,7 +33,7 @@ export default async function SecurityPage({
   ]);
   const tenant = await requireTenant(user.id, memberships);
   const [projects, factors] = await Promise.all([
-    listProjects(tenant.tenant_id),
+    listProjects(tenant.tenant_id, user.id),
     supabase.auth.mfa.listFactors(),
   ]);
   const enabled = factors.data?.totp.some((f) => f.status === 'verified') ?? false;

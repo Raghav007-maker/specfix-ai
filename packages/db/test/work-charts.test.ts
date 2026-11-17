@@ -24,6 +24,7 @@ import {
   updateWorkItem,
   weeklyThroughput,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -104,6 +105,7 @@ describe.skipIf(!hasDatabase)('charts and task notifications in the database', (
     projectId = (
       await createProject(tenantId, { name: 'Charts', sourceType: 'file' }, { unlimited: true })
     ).id;
+    await grantAllProjects(tenantId);
   });
 
   it('counts tasks created and completed this week', async () => {

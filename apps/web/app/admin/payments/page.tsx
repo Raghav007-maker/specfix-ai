@@ -37,7 +37,7 @@ export default async function PaymentsPage({
   if (!isAppOwner(user)) notFound();
   const [tenant, { notice, error }] = await Promise.all([requireTenant(user.id), searchParams]);
   const [projects, payments] = await Promise.all([
-    listProjects(tenant.tenant_id),
+    listProjects(tenant.tenant_id, user.id),
     listPaymentsForReview(),
   ]);
   const waiting = payments.filter((p) => p.status === 'pending').length;

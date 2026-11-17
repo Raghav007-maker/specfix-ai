@@ -7,6 +7,7 @@ import {
   agentTablesAvailable,
   flagBreakdown,
   listProjects,
+  projectScope,
   resolutionArmMetrics,
   ticketQueue,
   timeToReady,
@@ -49,15 +50,15 @@ export default async function AnalyticsPage({
 }) {
   const [user, { project: projectParam }] = await Promise.all([requireUser(), searchParams]);
   const tenant = await requireTenant(user.id);
-  const projects = await listProjects(tenant.tenant_id);
+  const projects = await listProjects(tenant.tenant_id, user.id);
 
   const [queues, breakdown, weeks, ttr, arms] = await Promise.all([
     Promise.all(projects.map((p) => ticketQueue(tenant.tenant_id, p.id))),
-    flagBreakdown(tenant.tenant_id),
-    weeklyActivity(tenant.tenant_id, 12),
-    timeToReady(tenant.tenant_id),
-    // Only with the agent on and its tables migrated; workspace-wide, not per project.
-    resolutionAgentEnabled()
+    flagBreakdown(tenant.tenant_id, projectScope(tenant, projects)),
+    weeklyActivity(tenant.tenant_id, 12, projectScope(tenant, projects)),
+    timeToReady(tenant.tenant_id, projectScope(tenant, projects)),
+    // Only with the agent on and its tables migrated; workspace-wide, so owners only.
+    resolutionAgentEnabled() && tenant.role === 'owner'
       ? agentTablesAvailable().then((ok) => (ok ? resolutionArmMetrics(tenant.tenant_id) : null))
       : Promise.resolve(null),
   ]);

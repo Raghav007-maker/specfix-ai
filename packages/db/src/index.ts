@@ -25,3 +25,4 @@ export * from './repositories/payments.ts';
 export * from './repositories/work.ts';
 export * from './repositories/chat.ts';
 export * from './repositories/rate-limits.ts';
+export * from './repositories/project-members.ts';

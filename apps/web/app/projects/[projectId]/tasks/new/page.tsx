@@ -7,7 +7,7 @@ import {
   getProjectDetail,
   listLinkableScenarios,
   listLinkableTickets,
-  listMembers,
+  listProjectPeople,
   listProjects,
   listWorkItems,
   workTablesAvailable,
@@ -38,7 +38,7 @@ export default async function NewTaskPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   if (!sidebarProject) notFound();
 
@@ -64,7 +64,7 @@ export default async function NewTaskPage({
   const [project, tasks, members, tickets, scenarios] = await Promise.all([
     getProjectDetail(t, projectId),
     listWorkItems(t, projectId),
-    listMembers(t),
+    listProjectPeople(t, projectId),
     listLinkableTickets(t, projectId),
     listLinkableScenarios(t, projectId),
   ]);
