@@ -30,7 +30,7 @@ export async function switchTenant(formData: FormData): Promise<void> {
 }
 
 /**
- * Add a project to the current tenant. Owners and admins only; Free allows five. Posted from Home
+ * Add a project to the current tenant. Owners only (they then assign each project's admin); Free allows five. Posted from Home
  * (the first project) or the Projects page (`from=projects`), and a refusal returns there.
  */
 export async function createProjectForCurrentTenant(formData: FormData): Promise<void> {
@@ -41,8 +41,8 @@ export async function createProjectForCurrentTenant(formData: FormData): Promise
     .replace(/\s+/g, ' ');
   const back = formData.get('from') === 'projects' ? '/projects' : '/';
 
-  if (tenant.role === 'reviewer') {
-    redirect(`${back}?error=` + encodeURIComponent('Only owners and admins can create projects.'));
+  if (tenant.role !== 'owner') {
+    redirect(`${back}?error=` + encodeURIComponent('Only owners can create projects.'));
   }
 
   if (!name) {

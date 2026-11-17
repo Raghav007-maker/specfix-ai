@@ -12,8 +12,10 @@ import {
   linkLabel,
   listLinkableScenarios,
   listLinkableTickets,
-  listMembers,
+  listProjectPeople,
   listProjects,
+  formatMinutes,
+  listTimeEntries,
   listWorkComments,
   listWorkEvents,
   listWorkItems,
@@ -30,6 +32,7 @@ import {
   CardHeader,
   CardTitle,
   EmptyNote,
+  Input,
   Label,
   Notice,
   Pill,
@@ -45,6 +48,8 @@ import {
   addCommentAction,
   addLinkAction,
   deleteCommentAction,
+  deleteTimeEntryAction,
+  logTimeAction,
   deleteTaskAction,
   removeLinkAction,
   updateTaskAction,
@@ -82,7 +87,7 @@ export default async function TaskPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   const number = /^\d{1,9}$/.test(numberParam) ? Number(numberParam) : NaN;
   if (!sidebarProject || !Number.isSafeInteger(number)) notFound();
@@ -111,20 +116,22 @@ export default async function TaskPage({
     getWorkItemByNumber(t, projectId, number),
   ]);
   if (!project || !task) notFound();
-  const [events, members, tickets, scenarios, comments, links, projectTasks, ci] =
+  const [events, members, tickets, scenarios, comments, links, projectTasks, ci, time] =
     await Promise.all([
       listWorkEvents(t, { workItemId: task.id }, 50),
-      listMembers(t),
+      listProjectPeople(t, projectId),
       listLinkableTickets(t, projectId),
       listLinkableScenarios(t, projectId),
       listWorkComments(t, task.id),
       listWorkLinks(t, task.id),
       listWorkItems(t, projectId),
       task.scenario_id && task.ticket_id ? latestCiForTicket(t, task.ticket_id) : [],
+      listTimeEntries(t, task.id),
     ]);
+  const totalMinutes = time.reduce((n, e) => n + e.minutes, 0);
   const key = taskKeyOf(project.task_key, task.number);
   const keyOf = (n: number) => taskKeyOf(project.task_key, n);
-  const canManage = tenant.role !== 'reviewer';
+  const canManage = sidebarProject.role !== 'reviewer';
   const scenarioCi = ci.find((r) => r.scenario_id === task.scenario_id) ?? null;
   const children = projectTasks
     .filter((c) => c.parent_id === task.id)
@@ -325,6 +332,83 @@ export default async function TaskPage({
                 />
                 <SubmitButton variant="outline" pendingLabel="Posting…">
                   Post comment
+                </SubmitButton>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card id="time" className="scroll-mt-20">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Time logged{' '}
+                <span className="font-normal tabular-nums text-muted-foreground">
+                  {formatMinutes(totalMinutes)}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {time.length === 0 ? (
+                <EmptyNote>No time logged yet.</EmptyNote>
+              ) : (
+                <ul className="divide-y divide-rule text-sm">
+                  {time.map((e) => (
+                    <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                      <span className="tabular-nums font-medium">{formatMinutes(e.minutes)}</span>
+                      <span className="text-muted-foreground">
+                        {e.email ?? 'Former member'} · {e.spent_on}
+                      </span>
+                      {e.note ? <span className="min-w-0 flex-1 truncate">{e.note}</span> : null}
+                      {e.user_id === user.id ? (
+                        <form action={deleteTimeEntryAction} className="ml-auto">
+                          {hidden()}
+                          <input type="hidden" name="entryId" value={e.id} />
+                          <SubmitButton variant="ghost" size="sm" pendingLabel="…">
+                            Delete
+                          </SubmitButton>
+                        </form>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form
+                action={logTimeAction}
+                className="grid gap-2 sm:grid-cols-[5rem_5rem_9rem_1fr_auto]"
+              >
+                {hidden()}
+                <Input
+                  type="number"
+                  name="hours"
+                  min={0}
+                  max={24}
+                  step={1}
+                  placeholder="h"
+                  aria-label="Hours"
+                />
+                <Input
+                  type="number"
+                  name="minutes"
+                  min={0}
+                  max={1440}
+                  step={1}
+                  placeholder="min"
+                  aria-label="Minutes"
+                />
+                <Input
+                  type="date"
+                  name="spentOn"
+                  required
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  aria-label="Day"
+                />
+                <Input
+                  name="note"
+                  maxLength={200}
+                  placeholder="What you did (optional)"
+                  aria-label="Note"
+                />
+                <SubmitButton variant="outline" pendingLabel="Logging…">
+                  Log time
                 </SubmitButton>
               </form>
             </CardContent>

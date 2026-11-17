@@ -24,7 +24,7 @@ export async function GET(
   const scaffold = await getScaffold(tenant.tenant_id, scaffoldId);
   if (!scaffold) return new Response('Not found', { status: 404 });
 
-  const ticket = await getTicket(tenant.tenant_id, scaffold.ticket_id);
+  const ticket = await getTicket(tenant.tenant_id, scaffold.ticket_id, user.id);
   const key = ticket?.external_key ?? 'scenario';
   const filename = `${slug(key)}-${scaffoldId.slice(0, 8)}.spec.ts`;
 

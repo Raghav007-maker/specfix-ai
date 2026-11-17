@@ -24,7 +24,7 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { signOut } from '@/app/(auth)/actions';
 import type { MembershipRow } from '@/lib/tenant';
-import { unreadNotificationCount, type ProjectRow } from '@/lib/repos';
+import { unreadNotificationCount, type VisibleProjectRow } from '@/lib/repos';
 import { cn } from '@/lib/cn';
 import { safeAvatarUrl } from '@/lib/avatar';
 import { buttonClasses } from '@/components/ui';
@@ -34,7 +34,15 @@ import { PlanNotice } from '@/components/plan-notice';
 import { isAppOwner, planNoticeFor } from '@/lib/plan';
 
 export type ProjectView =
-  'summary' | 'board' | 'backlog' | 'list' | 'calendar' | 'conversation' | 'settings' | 'queue';
+  | 'summary'
+  | 'board'
+  | 'backlog'
+  | 'list'
+  | 'calendar'
+  | 'conversation'
+  | 'people'
+  | 'settings'
+  | 'queue';
 
 /** The top-level page a screen is, for the sidebar's and settings menu's active state. */
 export type ShellPage =
@@ -101,6 +109,7 @@ export function projectViews(
     { key: 'list' as const, label: 'List', href: `${base}/list` },
     { key: 'calendar' as const, label: 'Calendar', href: `${base}/calendar` },
     { key: 'conversation' as const, label: 'Conversation', href: `${base}/conversation` },
+    { key: 'people' as const, label: 'People', href: `${base}/people` },
     { key: 'queue' as const, label: 'Spec queue', href: `/?project=${projectId}` },
     ...(canManage
       ? [{ key: 'settings' as const, label: 'Settings', href: `${base}/settings` }]
@@ -127,7 +136,7 @@ export async function AppShell({
 }: {
   user: User;
   tenant: MembershipRow;
-  projects: ProjectRow[];
+  projects: VisibleProjectRow[];
   activeProjectId?: string;
   /** Which view of the active project this page is; its views are listed under it. */
   projectView?: ProjectView;
@@ -138,8 +147,8 @@ export async function AppShell({
 }) {
   const sidebarHidden = (await cookies()).get('sf_sidebar')?.value === 'hidden';
   // Create says what it makes: inside a project, a task in it; elsewhere, a new project for
-  // owners and admins, or (reviewers, who cannot make projects) a task in the first project.
-  const canCreateProject = tenant.role !== 'reviewer';
+  // owners, or (admins and reviewers, who cannot make projects) a task in the first project.
+  const canCreateProject = tenant.role === 'owner';
   const taskProject = activeProjectId ?? (canCreateProject ? undefined : projects[0]?.id);
   const create = taskProject
     ? { href: `/projects/${taskProject}/tasks/new`, label: 'Create task' }
@@ -324,7 +333,7 @@ function AccountMenu({
 }: {
   user: User;
   tenant: MembershipRow;
-  projects: ProjectRow[];
+  projects: VisibleProjectRow[];
 }) {
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const name =
@@ -464,7 +473,7 @@ function Nav({
   appOwner,
 }: {
   tenant: MembershipRow;
-  projects: ProjectRow[];
+  projects: VisibleProjectRow[];
   activeProjectId?: string;
   projectView?: ProjectView;
   current?: ShellPage;
@@ -541,7 +550,7 @@ function Nav({
                     aria-label={`${project.name} views`}
                     className="mb-1 ml-[1.15rem] mt-0.5 space-y-0.5 border-l border-border pl-2"
                   >
-                    {projectViews(project.id, tenant.role !== 'reviewer').map((view) => (
+                    {projectViews(project.id, project.role !== 'reviewer').map((view) => (
                       <li key={view.key}>
                         <Link
                           href={view.href}

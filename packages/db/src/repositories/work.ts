@@ -18,6 +18,7 @@
 import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
 import type { Role } from './members.ts';
+import { projectRoleWith } from './project-members.ts';
 import { notifyMentions, parseMentions } from './chat.ts';
 
 export const WORK_TYPES = ['task', 'bug', 'story', 'epic', 'subtask'] as const;
@@ -599,15 +600,25 @@ export interface WorkEventRow {
   created_at: Date;
 }
 
-/** Recent activity of a project, of one task, or of the whole workspace, newest first. */
+/**
+ * Recent activity of a project, of one task, or of the whole workspace, newest first.
+ * `projectIds` keeps it to those projects; `actorId` to what one person did.
+ */
 export async function listWorkEvents(
   tenantId: TenantId,
-  scope: { projectId?: string; workItemId?: string },
+  scope: {
+    projectId?: string;
+    workItemId?: string;
+    projectIds?: string[] | null;
+    actorId?: string;
+  },
   limit = 30
 ): Promise<WorkEventRow[]> {
   if (
     (scope.projectId && !UUID.test(scope.projectId)) ||
-    (scope.workItemId && !UUID.test(scope.workItemId))
+    (scope.workItemId && !UUID.test(scope.workItemId)) ||
+    (scope.actorId && !UUID.test(scope.actorId)) ||
+    scope.projectIds?.some((id) => !UUID.test(id))
   ) {
     return [];
   }
@@ -621,9 +632,18 @@ export async function listWorkEvents(
      where e.tenant_id = $1
        and ($2::uuid is null or e.project_id = $2::uuid)
        and ($3::uuid is null or e.work_item_id = $3::uuid)
+       and ($5::uuid[] is null or e.project_id = any($5::uuid[]))
+       and ($6::uuid is null or e.actor_id = $6::uuid)
      order by e.created_at desc, e.id
      limit $4`,
-    [tenantId, scope.projectId ?? null, scope.workItemId ?? null, Math.min(Math.max(limit, 1), 200)]
+    [
+      tenantId,
+      scope.projectId ?? null,
+      scope.workItemId ?? null,
+      Math.min(Math.max(limit, 1), 200),
+      scope.projectIds ?? null,
+      scope.actorId ?? null,
+    ]
   );
 }
 
@@ -651,16 +671,23 @@ export async function listLinkableTickets(
 // Writes
 // ---------------------------------------------------------------------------
 
-async function memberRole(client: PoolClient, tenantId: TenantId, userId: string): Promise<Role> {
-  const {
-    rows: [row],
-  } = await client.query<{ role: Role }>(
-    `select role from memberships where tenant_id = $1 and user_id = $2`,
-    [tenantId, userId]
-  );
-  if (!row) throw new WorkError('You are not a member of this workspace.');
-  return row.role;
+/**
+ * The actor's role in the project ('owner' for a workspace owner, else their project role).
+ * A project they cannot see is refused with `missing`, the same words as a wrong id.
+ */
+async function memberRole(
+  client: PoolClient,
+  tenantId: TenantId,
+  userId: string,
+  projectId: string,
+  missing = 'That project is not in this workspace.'
+): Promise<Role> {
+  const role = await projectRoleWith(client, tenantId, projectId, userId);
+  if (!role) throw new WorkError(missing);
+  return role;
 }
+
+const TASK_MISSING = 'That task is not in this workspace.';
 
 const canManage = (role: Role) => role === 'owner' || role === 'admin';
 
@@ -676,11 +703,9 @@ async function resolveReferences(
   fields: TaskFields
 ): Promise<TaskFields> {
   if (fields.assigneeId) {
-    const { rowCount } = await client.query(
-      `select 1 from memberships where tenant_id = $1 and user_id = $2`,
-      [tenantId, fields.assigneeId]
-    );
-    if (!rowCount) throw new WorkError('The assignee must be a member of this workspace.');
+    if (!(await projectRoleWith(client, tenantId, projectId, fields.assigneeId))) {
+      throw new WorkError('The assignee must be a member of this project.');
+    }
   }
   if (fields.parentId) {
     // `for share` holds the parent's type steady until this transaction commits.
@@ -820,7 +845,11 @@ async function notifyTask(
                 'title', $6::text,
                 'by', (select email from auth.users where id = $7::uuid))
        from memberships m
-       where m.tenant_id = $1 and m.user_id = any($8::uuid[])`,
+       where m.tenant_id = $1 and m.user_id = any($8::uuid[])
+         and (m.role = 'owner' or exists (
+               select 1 from project_members pm
+               where pm.tenant_id = m.tenant_id and pm.project_id = $4::uuid
+                 and pm.user_id = m.user_id))`,
       [
         tenantId,
         input.kind,
@@ -894,7 +923,7 @@ export async function createWorkItem(
   const fields = normalizeTaskInput(raw);
   if (!UUID.test(projectId)) throw new WorkError('That project is not in this workspace.');
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
+    await memberRole(client, tenantId, actorId, projectId);
     return insertWorkItem(client, tenantId, actorId, projectId, fields);
   });
 }
@@ -1067,8 +1096,8 @@ export async function updateWorkItem(
 ): Promise<TaskChange[]> {
   const input = normalizeTaskInput(raw);
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     const item = await lockItem(client, tenantId, itemId);
+    await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING);
     const fields = await resolveReferences(client, tenantId, item.project_id, input);
     const changes = diffTask(fieldsOf(item), fields);
     if (changes.length === 0) return [];
@@ -1164,8 +1193,8 @@ export async function moveWorkItem(
       : null;
 
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     const item = await lockItem(client, tenantId, itemId);
+    await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING);
     const column: unknown[] = [tenantId, item.project_id, status, item.id];
 
     const rankFor = async (): Promise<number | null> => {
@@ -1245,10 +1274,10 @@ export async function deleteWorkItem(
   itemId: string
 ): Promise<{ projectId: string; number: number }> {
   return tx(async (client) => {
-    if (!canManage(await memberRole(client, tenantId, actorId))) {
+    const item = await lockItem(client, tenantId, itemId);
+    if (!canManage(await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING))) {
       throw new WorkError('Only owners and admins can delete tasks.');
     }
-    const item = await lockItem(client, tenantId, itemId);
     await insertEvent(client, tenantId, {
       projectId: item.project_id,
       workItemId: item.id,
@@ -1281,7 +1310,7 @@ export async function updateProjectDetails(
   if (!UUID.test(projectId)) throw new WorkError('That project is not in this workspace.');
 
   await tx(async (client) => {
-    if (!canManage(await memberRole(client, tenantId, actorId))) {
+    if (!canManage(await memberRole(client, tenantId, actorId, projectId))) {
       throw new WorkError('Only owners and admins can change project details.');
     }
     await client.query(`select pg_advisory_xact_lock(hashtext('specfix_task_key:' || $1))`, [
@@ -1400,7 +1429,6 @@ export async function fileBugFromScenario(
 ): Promise<CreatedWorkItem & { existing: boolean }> {
   if (!UUID.test(scenarioId)) throw new WorkError('That scenario is not in this workspace.');
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     await client.query(`select pg_advisory_xact_lock(hashtext('specfix_scenario_bug:' || $1))`, [
       scenarioId,
     ]);
@@ -1414,6 +1442,13 @@ export async function fileBugFromScenario(
       [tenantId, scenarioId]
     );
     if (!scenario) throw new WorkError('That scenario is not in this workspace.');
+    await memberRole(
+      client,
+      tenantId,
+      actorId,
+      scenario.project_id,
+      'That scenario is not in this workspace.'
+    );
 
     const {
       rows: [open],
@@ -1508,8 +1543,8 @@ export async function addWorkComment(
 ): Promise<{ id: string; projectId: string; number: number }> {
   const body = normalizeComment(rawBody);
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     const item = await lockItem(client, tenantId, itemId);
+    await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING);
     const {
       rows: [comment],
     } = await client.query<{ id: string }>(
@@ -1552,6 +1587,7 @@ export async function addWorkComment(
       await notifyMentions(client, tenantId, {
         body,
         actorId,
+        projectId: item.project_id,
         payload: {
           taskId: item.id,
           projectId: item.project_id,
@@ -1574,7 +1610,6 @@ export async function deleteWorkComment(
 ): Promise<{ projectId: string; number: number }> {
   if (!UUID.test(commentId)) throw new WorkError('That comment is not in this workspace.');
   return tx(async (client) => {
-    const role = await memberRole(client, tenantId, actorId);
     const {
       rows: [comment],
     } = await client.query<{ author_id: string | null; project_id: string; number: number }>(
@@ -1586,6 +1621,13 @@ export async function deleteWorkComment(
       [tenantId, commentId]
     );
     if (!comment) throw new WorkError('That comment is not in this workspace.');
+    const role = await memberRole(
+      client,
+      tenantId,
+      actorId,
+      comment.project_id,
+      'That comment is not in this workspace.'
+    );
     if (comment.author_id !== actorId && !canManage(role)) {
       throw new WorkError('Only its author, an owner or an admin can delete a comment.');
     }
@@ -1645,8 +1687,8 @@ export async function addWorkLink(
   if (!UUID.test(input.toId)) throw new WorkError('Choose a task to link to.');
   if (input.fromId === input.toId) throw new WorkError('A task cannot be linked to itself.');
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     const from = await lockItem(client, tenantId, input.fromId);
+    await memberRole(client, tenantId, actorId, from.project_id, TASK_MISSING);
     const {
       rows: [to],
     } = await client.query<{ id: string; number: number; task_key: string | null }>(
@@ -1696,7 +1738,14 @@ export async function removeWorkLink(
     throw new WorkError('That link is not in this workspace.');
   }
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
+    const {
+      rows: [owner],
+    } = await client.query<{ project_id: string }>(
+      `select project_id from work_items where tenant_id = $1 and id = $2`,
+      [tenantId, input.fromId]
+    );
+    if (!owner) return { removed: false };
+    await memberRole(client, tenantId, actorId, owner.project_id, TASK_MISSING);
     const {
       rows: [gone],
     } = await client.query<{ to_id: string }>(
@@ -1831,8 +1880,13 @@ export async function sprintCountRows(
   );
 }
 
-async function requireManager(client: PoolClient, tenantId: TenantId, actorId: string) {
-  if (!canManage(await memberRole(client, tenantId, actorId))) {
+async function requireManager(
+  client: PoolClient,
+  tenantId: TenantId,
+  actorId: string,
+  projectId: string
+) {
+  if (!canManage(await memberRole(client, tenantId, actorId, projectId))) {
     throw new WorkError('Only owners and admins can plan sprints.');
   }
 }
@@ -1883,7 +1937,7 @@ export async function createSprint(
   const fields = normalizeSprintInput(raw);
   if (!UUID.test(projectId)) throw new WorkError('That project is not in this workspace.');
   return tx(async (client) => {
-    await requireManager(client, tenantId, actorId);
+    await requireManager(client, tenantId, actorId, projectId);
     const { rowCount } = await client.query(
       `select 1 from projects where tenant_id = $1 and id = $2`,
       [tenantId, projectId]
@@ -1915,8 +1969,8 @@ export async function updateSprint(
 ): Promise<void> {
   const fields = normalizeSprintInput(raw);
   await tx(async (client) => {
-    await requireManager(client, tenantId, actorId);
     const sprint = await lockSprint(client, tenantId, sprintId);
+    await requireManager(client, tenantId, actorId, sprint.project_id);
     if (sprint.status === 'completed') throw new WorkError('A completed sprint cannot be changed.');
     await client.query(
       `update sprints set name = $3, goal = $4, starts_on = $5, ends_on = $6
@@ -1942,8 +1996,8 @@ export async function startSprint(
 ): Promise<void> {
   try {
     await tx(async (client) => {
-      await requireManager(client, tenantId, actorId);
       const sprint = await lockSprint(client, tenantId, sprintId);
+      await requireManager(client, tenantId, actorId, sprint.project_id);
       if (sprint.status !== 'planned') throw new WorkError('Only a planned sprint can be started.');
       const { rowCount } = await client.query(
         `select 1 from sprints where tenant_id = $1 and project_id = $2 and status = 'active'`,
@@ -1979,8 +2033,8 @@ export async function completeSprint(
   sprintId: string
 ): Promise<{ done: number; returned: number }> {
   return tx(async (client) => {
-    await requireManager(client, tenantId, actorId);
     const sprint = await lockSprint(client, tenantId, sprintId);
+    await requireManager(client, tenantId, actorId, sprint.project_id);
     if (sprint.status !== 'active') throw new WorkError('Only the active sprint can be completed.');
     const { rows: returnedRows } = await client.query<{
       id: string;
@@ -2044,8 +2098,8 @@ export async function setWorkItemSprint(
   sprintId: string | null
 ): Promise<{ projectId: string; changed: boolean }> {
   return tx(async (client) => {
-    await memberRole(client, tenantId, actorId);
     const item = await lockItem(client, tenantId, itemId);
+    await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING);
     let target: { id: string; name: string } | null = null;
     if (sprintId) {
       if (!UUID.test(sprintId)) throw new WorkError('That sprint is not in this project.');
@@ -2389,7 +2443,8 @@ export function monthGrid(month: string): string[][] {
 export async function searchWorkItems(
   tenantId: TenantId,
   q: string,
-  limit = 30
+  limit = 30,
+  projectIds: string[] | null = null
 ): Promise<WorkItemRow[]> {
   const text = q.trim().slice(0, 100);
   if (!text) return [];
@@ -2400,9 +2455,10 @@ export async function searchWorkItems(
      where w.tenant_id = $1
        and (w.title ilike $2 escape '\\'
             or coalesce(p.task_key, 'TASK') || '-' || w.number = upper($3))
+       and ($5::uuid[] is null or w.project_id = any($5::uuid[]))
      order by w.updated_at desc
      limit $4`,
-    [tenantId, like, text, Math.min(Math.max(limit, 1), 100)]
+    [tenantId, like, text, Math.min(Math.max(limit, 1), 100), projectIds]
   );
 }
 
@@ -2414,7 +2470,8 @@ export async function listWorkItemsDue(
   tenantId: TenantId,
   from: string,
   to: string,
-  assigneeId?: string
+  assigneeId?: string,
+  projectIds: string[] | null = null
 ): Promise<WorkItemRow[]> {
   const day = /^\d{4}-\d{2}-\d{2}$/;
   if (!day.test(from) || !day.test(to) || (assigneeId && !UUID.test(assigneeId))) return [];
@@ -2422,9 +2479,10 @@ export async function listWorkItemsDue(
     `${WORK_ITEM_SELECT}
      where w.tenant_id = $1 and w.due_on between $2::date and $3::date
        and ($4::uuid is null or w.assignee_id = $4::uuid)
+       and ($5::uuid[] is null or w.project_id = any($5::uuid[]))
      order by w.due_on, w.number
      limit 1000`,
-    [tenantId, from, to, assigneeId ?? null]
+    [tenantId, from, to, assigneeId ?? null, projectIds]
   );
 }
 

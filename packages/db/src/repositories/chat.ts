@@ -11,6 +11,7 @@
  */
 import type { PoolClient } from 'pg';
 import { query, tx, type TenantId } from '../client.ts';
+import { projectRoleWith } from './project-members.ts';
 
 /** A refusal whose message is safe to show the user. */
 export class ChatError extends Error {}
@@ -51,7 +52,8 @@ async function mentionedMembers(
   client: PoolClient,
   tenantId: TenantId,
   body: string,
-  authorId: string
+  authorId: string,
+  projectId: string
 ): Promise<{ direct: string[]; everyone: string[] }> {
   const handles = parseMentions(body);
   if (handles.length === 0) return { direct: [], everyone: [] };
@@ -63,8 +65,11 @@ async function mentionedMembers(
              or lower(split_part(u.email, '@', 1)) = any($2::text[])) as named
      from memberships m
      join auth.users u on u.id = m.user_id
-     where m.tenant_id = $1 and m.user_id <> $3`,
-    [tenantId, named, authorId]
+     where m.tenant_id = $1 and m.user_id <> $3
+       and (m.role = 'owner' or exists (
+             select 1 from project_members pm
+             where pm.tenant_id = m.tenant_id and pm.project_id = $4 and pm.user_id = m.user_id))`,
+    [tenantId, named, authorId, projectId]
   );
   const direct = rows.filter((r) => r.named).map((r) => r.user_id);
   const everyone = toAll ? rows.filter((r) => !r.named).map((r) => r.user_id) : [];
@@ -83,13 +88,21 @@ export async function notifyMentions(
   input: {
     body: string;
     actorId: string;
+    /** Only people who can see this project are notified. */
+    projectId: string;
     payload: Record<string, unknown>;
     skip?: readonly (string | null)[];
   }
 ): Promise<{ direct: string[]; everyone: string[] }> {
   const none = { direct: [], everyone: [] };
   const skip = new Set(input.skip ?? []);
-  const found = await mentionedMembers(client, tenantId, input.body, input.actorId);
+  const found = await mentionedMembers(
+    client,
+    tenantId,
+    input.body,
+    input.actorId,
+    input.projectId
+  );
   const direct = found.direct.filter((id) => !skip.has(id));
   const everyone = found.everyone.filter((id) => !skip.has(id));
   if (direct.length + everyone.length === 0) return none;
@@ -187,11 +200,9 @@ export async function postProjectMessage(
   const body = normalizeMessage(rawBody);
   if (!UUID.test(projectId)) throw new ChatError('That project is not in this workspace.');
   return tx(async (client) => {
-    const { rowCount: member } = await client.query(
-      `select 1 from memberships where tenant_id = $1 and user_id = $2`,
-      [tenantId, authorId]
-    );
-    if (!member) throw new ChatError('You are not a member of this workspace.');
+    if (!(await projectRoleWith(client, tenantId, projectId, authorId))) {
+      throw new ChatError('That project is not in this workspace.');
+    }
     const {
       rows: [project],
     } = await client.query<{ name: string }>(
@@ -210,6 +221,7 @@ export async function postProjectMessage(
     const mentioned = await notifyMentions(client, tenantId, {
       body,
       actorId: authorId,
+      projectId,
       payload: { chatProjectId: projectId, title: `${project.name} conversation` },
     });
     return {

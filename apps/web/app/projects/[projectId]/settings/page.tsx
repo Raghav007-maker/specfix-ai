@@ -41,10 +41,10 @@ export default async function ProjectSettingsPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   if (!sidebarProject) notFound();
-  const canManage = tenant.role !== 'reviewer';
+  const canManage = sidebarProject.role !== 'reviewer';
 
   const shell = (children: ReactNode) => (
     <AppShell

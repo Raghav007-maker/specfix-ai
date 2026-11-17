@@ -47,7 +47,11 @@ async function loadLive(user: User): Promise<{ data: DashboardData; agent: React
         agent: null,
       };
     }
-    return await loadWorkspaceDashboard(user, tenant, await listProjects(tenant.tenant_id));
+    return await loadWorkspaceDashboard(
+      user,
+      tenant,
+      await listProjects(tenant.tenant_id, user.id)
+    );
   } catch (err) {
     console.error(
       '[design-playground] workspace read failed:',

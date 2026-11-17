@@ -51,8 +51,8 @@ export default async function ConversationPage({
   const tenant = await requireTenant(user.id);
 
   const [ticket, projects] = await Promise.all([
-    getTicket(tenant.tenant_id, ticketId),
-    listProjects(tenant.tenant_id),
+    getTicket(tenant.tenant_id, ticketId, user.id),
+    listProjects(tenant.tenant_id, user.id),
   ]);
   if (!ticket) notFound();
 

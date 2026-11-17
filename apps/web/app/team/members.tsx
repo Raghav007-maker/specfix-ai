@@ -15,17 +15,25 @@ import { addMemberAction, changeRoleAction, removeMemberAction } from './actions
 const ROLE_INFO: Record<Role, { title: string; summary: string; can: string[] }> = {
   owner: {
     title: 'Owner',
-    summary: 'Runs the workspace.',
-    can: ['Everything an admin can do', 'Grant or revoke the owner role', 'Manage other owners'],
+    summary: 'Runs the workspace and sees every project.',
+    can: [
+      'Add people to the team',
+      'Create projects and assign their admins',
+      'Make an admin an owner',
+    ],
   },
   admin: {
     title: 'Admin',
-    summary: 'Organisation admin: manages people, projects and analysis.',
-    can: ['Add and remove admins and reviewers', 'Change their roles', 'Create projects'],
+    summary: 'Runs the projects they are assigned to, and sees only those.',
+    can: [
+      'Add reviewers from the team',
+      'Make a reviewer an admin',
+      'Track reviewers’ work and hours',
+    ],
   },
   reviewer: {
     title: 'Reviewer',
-    summary: 'Product manager / reviewer: does the review work.',
+    summary: 'Does the review work in the projects they are added to.',
     can: [
       'Blind-first gap lists',
       'Accept, edit and dismiss flags',
@@ -187,6 +195,7 @@ export function RoleRules() {
       </CardHeader>
       <CardContent>
         <ul className="list-disc space-y-1.5 pl-4 text-sm text-muted-foreground">
+          <li>Admins and reviewers see only the projects they are added to.</li>
           <li>Admins manage admins and reviewers, never owners.</li>
           <li>Only an owner can make someone an owner.</li>
           <li>No one can change their own role or remove themselves.</li>

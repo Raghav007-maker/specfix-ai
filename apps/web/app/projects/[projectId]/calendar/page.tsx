@@ -34,7 +34,7 @@ export default async function ProjectCalendarPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   if (!sidebarProject) notFound();
 
@@ -57,7 +57,7 @@ export default async function ProjectCalendarPage({
         projectId={projectId}
         name={sidebarProject.name}
         active="calendar"
-        canManage={tenant.role !== 'reviewer'}
+        canManage={sidebarProject.role !== 'reviewer'}
       />
       {children}
     </AppShell>

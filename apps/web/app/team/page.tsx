@@ -4,6 +4,8 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   ROLES,
   assignableRoles,
+  inProjects,
+  listProjectMemberships,
   listMembers,
   listOpenAssignedWork,
   listProjectDetails,
@@ -18,6 +20,7 @@ import { AppShell } from '@/components/app-shell';
 import {
   Button,
   Card,
+  CardContent,
   CardHeader,
   CardTitle,
   EmptyNote,
@@ -55,14 +58,35 @@ export default async function TeamPage({
   const [memberships, params] = await Promise.all([currentMemberships(user.id), searchParams]);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [members, projects, migrated] = await Promise.all([
+  const [members, projects, migrated, allProjectRoles] = await Promise.all([
     listMembers(t),
-    listProjects(t),
+    listProjects(t, user.id),
     workTablesAvailable(),
+    listProjectMemberships(t),
   ]);
-  const [details, work]: [ProjectDetailRow[], WorkItemRow[]] = migrated
+  const [details, allWork]: [ProjectDetailRow[], WorkItemRow[]] = migrated
     ? await Promise.all([listProjectDetails(t), listOpenAssignedWork(t)])
     : [[], []];
+  // Only what happens in projects this viewer can see.
+  const work = inProjects(allWork, projects);
+  const projectRoles = inProjects(allProjectRoles, projects);
+  const rolesOf = (userId: string) => projectRoles.filter((r) => r.user_id === userId);
+  /** Owner, else admin of any project here, else reviewer of one, else their workspace role. */
+  const roleOf = (m: { user_id: string; role: Role }): Role => {
+    if (m.role === 'owner') return 'owner';
+    const mine = rolesOf(m.user_id);
+    if (mine.some((r) => r.role === 'admin')) return 'admin';
+    return mine.length > 0 ? 'reviewer' : m.role;
+  };
+  // Owner tracks the admins; an admin tracks the reviewers of the projects they run.
+  const adminOf = new Set(
+    projectRoles.filter((r) => r.user_id === user.id && r.role === 'admin').map((r) => r.project_id)
+  );
+  const tracked =
+    tenant.role === 'owner'
+      ? projectRoles.filter((r) => r.role === 'admin')
+      : projectRoles.filter((r) => r.role === 'reviewer' && adminOf.has(r.project_id));
+  const nameOf = new Map(members.map((m) => [m.user_id, m.name ?? m.email ?? 'Member']));
 
   const { error, notice } = params;
   const q = (params.q ?? '').trim().slice(0, 100).toLowerCase();
@@ -77,7 +101,7 @@ export default async function TeamPage({
     );
 
   const people = members.filter((m) => {
-    if (roleFilter && m.role !== roleFilter) return false;
+    if (roleFilter && roleOf(m) !== roleFilter) return false;
     if (q && ![m.email ?? '', m.name ?? ''].some((s) => s.toLowerCase().includes(q))) return false;
     if (projectFilter && workOf(m.user_id).length === 0) return false;
     return true;
@@ -87,7 +111,7 @@ export default async function TeamPage({
   const myRole = tenant.role;
   const grantable = assignableRoles(myRole);
   const counts = members.reduce<Record<Role, number>>(
-    (acc, m) => ({ ...acc, [m.role]: acc[m.role] + 1 }),
+    (acc, m) => ({ ...acc, [roleOf(m)]: acc[roleOf(m)] + 1 }),
     { owner: 0, admin: 0, reviewer: 0 }
   );
 
@@ -176,6 +200,41 @@ export default async function TeamPage({
         </div>
       </form>
 
+      {tenant.role === 'owner' || adminOf.size > 0 ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">
+              {tenant.role === 'owner' ? 'Project admins' : 'Reviewers in your projects'}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Open a project&apos;s People page to see their tasks, hours and activity.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {tracked.length === 0 ? (
+              <EmptyNote>
+                {tenant.role === 'owner'
+                  ? 'No project has an admin yet. Assign one on the project’s People page.'
+                  : 'No reviewers yet. Add them on your project’s People page.'}
+              </EmptyNote>
+            ) : (
+              <ul className="divide-y divide-rule text-sm">
+                {tracked.map((r) => (
+                  <li key={`${r.project_id}:${r.user_id}`} className="flex gap-2 py-2">
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {nameOf.get(r.user_id) ?? 'Member'}
+                    </span>
+                    <Link href={`/projects/${r.project_id}/people`} className={linkClasses}>
+                      {r.project_name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <p className="mb-3 text-sm font-medium">
         {people.length} {people.length === 1 ? 'person' : 'people'}
         {filtered ? (
@@ -224,8 +283,21 @@ export default async function TeamPage({
                         <p className="truncate text-xs text-muted-foreground">{m.email}</p>
                       ) : null}
                     </div>
-                    <RoleBadge role={m.role} />
+                    <RoleBadge role={roleOf(m)} />
                   </div>
+                  {rolesOf(m.user_id).length > 0 ? (
+                    <p className="mt-2 flex flex-wrap gap-1 text-xs">
+                      {rolesOf(m.user_id).map((r) => (
+                        <Link
+                          key={r.project_id}
+                          href={`/projects/${r.project_id}/people`}
+                          className="rounded bg-raised px-1.5 py-0.5 text-muted-foreground hover:text-text"
+                        >
+                          {r.project_name} · {r.role}
+                        </Link>
+                      ))}
+                    </p>
+                  ) : null}
                   <p className="mt-3 flex gap-4 text-xs text-muted-foreground">
                     <span>
                       <span className="font-semibold tabular-nums text-text">{tasks.length}</span>{' '}

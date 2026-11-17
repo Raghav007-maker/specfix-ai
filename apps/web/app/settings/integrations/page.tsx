@@ -62,7 +62,7 @@ export default async function IntegrationsPage({
   ]);
   const tenant = await requireTenant(user.id, memberships);
   const [projects, connection] = await Promise.all([
-    listProjects(tenant.tenant_id),
+    listProjects(tenant.tenant_id, user.id),
     getJiraConnection(tenant.tenant_id),
   ]);
 

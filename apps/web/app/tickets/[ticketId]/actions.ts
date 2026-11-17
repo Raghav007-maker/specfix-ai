@@ -53,7 +53,7 @@ async function context(formData: FormData): Promise<Context> {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
 
-  const ticket = await getTicket(tenant.tenant_id, posted);
+  const ticket = await getTicket(tenant.tenant_id, posted, user.id);
   if (!ticket) redirect('/');
 
   return { userId: user.id, tenantId: tenant.tenant_id, ticketId: ticket.id };

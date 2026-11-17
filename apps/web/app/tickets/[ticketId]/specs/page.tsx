@@ -72,8 +72,8 @@ export default async function SpecsPage({
 
   // The project list feeds the sidebar; it reads no ticket data.
   const [ticket, projects] = await Promise.all([
-    getTicket(tenant.tenant_id, ticketId),
-    listProjects(tenant.tenant_id),
+    getTicket(tenant.tenant_id, ticketId, user.id),
+    listProjects(tenant.tenant_id, user.id),
   ]);
   if (!ticket) notFound();
 

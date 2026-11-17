@@ -4,6 +4,7 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   listProjectDetails,
   listProjects,
+  projectScope,
   listWorkItemsDue,
   monthGrid,
   parseMonth,
@@ -29,7 +30,7 @@ export default async function WorkspaceCalendarPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t), workTablesAvailable()]);
+  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
 
   const today = new Date().toISOString().slice(0, 10);
   const month = parseMonth(monthParam, today);
@@ -38,7 +39,13 @@ export default async function WorkspaceCalendarPage({
   const [details, tasks] = migrated
     ? await Promise.all([
         listProjectDetails(t),
-        listWorkItemsDue(t, grid[0]![0]!, grid.at(-1)!.at(-1)!, onlyMine ? user.id : undefined),
+        listWorkItemsDue(
+          t,
+          grid[0]![0]!,
+          grid.at(-1)!.at(-1)!,
+          onlyMine ? user.id : undefined,
+          projectScope(tenant, projects)
+        ),
       ])
     : [[], []];
   const byId = new Map(details.map((p) => [p.id, p]));

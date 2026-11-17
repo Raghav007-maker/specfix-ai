@@ -19,6 +19,7 @@ import {
   parseBoardQuery,
   query,
 } from '../src/index.ts';
+import { grantAllProjects } from './grant-projects.ts';
 
 const hasDatabase = Boolean(process.env.SPECFIX_TEST_DATABASE_URL);
 
@@ -148,6 +149,7 @@ describe.skipIf(!hasDatabase)('moving tasks on the board', () => {
     const opts = { unlimited: true };
     projectId = (await createProject(tenantId, { name: 'Board', sourceType: 'file' }, opts)).id;
     otherProject = (await createProject(tenantId, { name: 'Other', sourceType: 'file' }, opts)).id;
+    await grantAllProjects(tenantId);
   });
 
   it('reorders within a column without an event, and moves across with one', async () => {
@@ -192,7 +194,7 @@ describe.skipIf(!hasDatabase)('moving tasks on the board', () => {
       /not in this workspace/
     );
     await expect(moveWorkItem(tenantId, otherUser, e, { status: 'done' })).rejects.toThrow(
-      /not a member/
+      /not in this workspace/
     );
     await expect(moveWorkItem(tenantId, userId, 'nope', { status: 'done' })).rejects.toThrow(
       WorkError

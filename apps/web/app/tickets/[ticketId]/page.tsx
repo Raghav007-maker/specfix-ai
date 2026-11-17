@@ -66,8 +66,8 @@ export default async function TicketPage({
   // The project list feeds the sidebar. It reads no ticket or flag data, so it is safe here,
   // ahead of the blind-first branch below.
   const [ticket, projects] = await Promise.all([
-    getTicket(tenant.tenant_id, ticketId),
-    listProjects(tenant.tenant_id),
+    getTicket(tenant.tenant_id, ticketId, user.id),
+    listProjects(tenant.tenant_id, user.id),
   ]);
   if (!ticket) notFound();
 

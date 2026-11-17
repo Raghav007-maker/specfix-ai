@@ -59,11 +59,17 @@ export default async function InboxPage({
   const user = await requireUser();
   const [memberships, { saved }] = await Promise.all([currentMemberships(user.id), searchParams]);
   const tenant = await requireTenant(user.id, memberships);
-  const [projects, notifications, prefs] = await Promise.all([
-    listProjects(tenant.tenant_id),
+  const [projects, all, prefs] = await Promise.all([
+    listProjects(tenant.tenant_id, user.id),
     listNotifications(tenant.tenant_id, user.id),
     getNotificationPrefs(tenant.tenant_id, user.id),
   ]);
+  // A notice about a project the user has since been removed from is not shown.
+  const visible = new Set(projects.map((p) => p.id));
+  const notifications = all.filter((n) => {
+    const project = n.payload.projectId ?? n.payload.chatProjectId;
+    return typeof project !== 'string' || visible.has(project);
+  });
   const unread = notifications.filter((n) => !n.read_at).length;
 
   return (

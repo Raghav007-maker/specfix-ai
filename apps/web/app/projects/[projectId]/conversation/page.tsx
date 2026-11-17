@@ -7,7 +7,7 @@ import {
   MAX_MESSAGE_LENGTH,
   chatTablesAvailable,
   handleOf,
-  listMembers,
+  listProjectPeople,
   listProjectMessages,
   listProjects,
 } from '@/lib/repos';
@@ -76,7 +76,7 @@ export default async function ProjectConversationPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, ready] = await Promise.all([listProjects(t), chatTablesAvailable()]);
+  const [projects, ready] = await Promise.all([listProjects(t, user.id), chatTablesAvailable()]);
   const sidebarProject = projects.find((p) => p.id === projectId);
   if (!sidebarProject) notFound();
 
@@ -99,7 +99,7 @@ export default async function ProjectConversationPage({
         projectId={projectId}
         name={sidebarProject.name}
         active="conversation"
-        canManage={tenant.role !== 'reviewer'}
+        canManage={sidebarProject.role !== 'reviewer'}
       />
       {children}
     </AppShell>
@@ -114,7 +114,7 @@ export default async function ProjectConversationPage({
 
   const [messages, members] = await Promise.all([
     listProjectMessages(t, projectId),
-    listMembers(t),
+    listProjectPeople(t, projectId),
   ]);
   const handles = new Set([
     ...EVERYONE_HANDLES,
