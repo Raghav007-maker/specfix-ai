@@ -42,11 +42,14 @@ export function payerCode(userId: string): string {
   return `P-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
-/** A code typed by the team from the bank note, normalised for comparison; null if not one. */
+/**
+ * A code typed by the team from the bank note, normalised for comparison; null if not one.
+ * The "P-" is optional: some bank apps drop the hyphen, and the 8 characters are the code.
+ */
 export function normalizePayerCode(input: unknown): string | null {
   if (typeof input !== 'string' || input.length > 40) return null;
-  const code = input.replace(/\s/g, '').toUpperCase();
-  return /^P-[0-9A-F]{8}$/.test(code) ? code : null;
+  const hex = /^(?:P-?)?([0-9A-F]{8})$/.exec(input.replace(/\s/g, '').toUpperCase())?.[1];
+  return hex ? `P-${hex}` : null;
 }
 
 /** A UPI ID such as name@bank. */
