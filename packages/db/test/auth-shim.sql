@@ -11,8 +11,28 @@ create schema if not exists auth;
 
 create table if not exists auth.users (
   id    uuid primary key default gen_random_uuid(),
-  email text unique
+  email text unique,
+  raw_user_meta_data jsonb not null default '{}'
 );
+-- A test database made before this column existed gets it too.
+alter table auth.users add column if not exists raw_user_meta_data jsonb not null default '{}';
+
+-- 2FA factors; Supabase's status is an enum whose verified value is 'verified'.
+create table if not exists auth.mfa_factors (
+  id      uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  status  text not null default 'unverified'
+);
+
+-- The request's JWT claims; tests set them with:
+--   set local specfix.test_jwt = '{"aal":"aal2"}';
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(nullif(current_setting('specfix.test_jwt', true), ''), '{}')::jsonb;
+$$;
 
 create or replace function auth.uid()
 returns uuid

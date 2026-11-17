@@ -5,3 +5,7 @@ coverage
 fixtures/eval-runs
 package-lock.json
 *.md
+
+.claude
+
+.claude

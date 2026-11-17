@@ -45,12 +45,19 @@ export interface MemberRow {
   email: string | null;
   role: Role;
   created_at: Date;
+  /** The name and photo the person set on their account (user-controlled; check before use). */
+  name: string | null;
+  avatar_url: string | null;
 }
 
 /** Everyone in the workspace, owners first. Identity comes from auth.users. */
 export async function listMembers(tenantId: TenantId): Promise<MemberRow[]> {
   return query<MemberRow>(
-    `select m.user_id, u.email, m.role, m.created_at
+    `select m.user_id, u.email, m.role, m.created_at,
+            left(nullif(trim(coalesce(u.raw_user_meta_data ->> 'full_name',
+                                      u.raw_user_meta_data ->> 'name')), ''), 100) as name,
+            left(nullif(coalesce(u.raw_user_meta_data ->> 'avatar_url',
+                                 u.raw_user_meta_data ->> 'picture'), ''), 500) as avatar_url
      from memberships m
      left join auth.users u on u.id = m.user_id
      where m.tenant_id = $1

@@ -18,12 +18,14 @@ export function WorkspaceDashboard({
   projects,
   activeProjectId,
   top,
+  work,
 }: {
   data: DashboardData;
   agent: ReactNode;
   projects: { id: string; name: string }[];
   activeProjectId?: string;
   top?: ReactNode;
+  work?: ReactNode;
 }) {
   const router = useRouter();
   const settings = WORKSPACE_SETTINGS;
@@ -45,6 +47,7 @@ export function WorkspaceDashboard({
           projects={projects}
           activeProjectId={activeProjectId}
           top={top}
+          work={work}
         />
       </div>
     </div>

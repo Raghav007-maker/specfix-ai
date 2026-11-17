@@ -15,6 +15,9 @@ describe('pricing helpers', () => {
     const code = payerCode('0a1b2c3d-4e5f-6789-abcd-ef0123456789');
     expect(code).toBe('P-0A1B2C3D');
     expect(normalizePayerCode(' p-0a1b 2c3d ')).toBe(code);
+    // Bank apps may show the note without the hyphen, or the team types only the 8 characters.
+    expect(normalizePayerCode('P0A1B2C3D')).toBe(code);
+    expect(normalizePayerCode('0a1b2c3d')).toBe(code);
     for (const bad of [
       undefined,
       42,
@@ -22,6 +25,9 @@ describe('pricing helpers', () => {
       'W-0A1B2C',
       'P-0A1B2C3G',
       'P-0A1B2C3D9',
+      '0A1B2C3D9',
+      'PP-0A1B2C3D',
+      '-0A1B2C3D',
       'x'.repeat(41),
     ]) {
       expect(normalizePayerCode(bad)).toBeNull();

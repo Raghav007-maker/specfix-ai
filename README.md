@@ -101,6 +101,27 @@ npm run typecheck && npm test
 Copy `.env.example` to `.env` and fill it in before running anything that talks to OpenAI or
 Postgres.
 
+## Sign-in: Google and two-step verification
+
+Both run on Supabase Auth; SpecFix stores no secrets for them.
+
+- **Two-step verification** (Settings → Security): a 6-digit code from Google Authenticator,
+  Microsoft Authenticator or Authy after the password or Google sign-in. Supabase's
+  authenticator (TOTP) factor is on by default; check Authentication → Multi-Factor if not. A
+  user who loses their phone is unlocked by deleting their factor in the Supabase dashboard
+  (Authentication → Users → the user → MFA factors).
+- **Continue with Google**: create an OAuth client in Google Cloud (Web application, redirect
+  URI `https://<project>.supabase.co/auth/v1/callback`), paste its ID and secret into Supabase
+  (Authentication → Sign In / Providers → Google), and add `<app address>/auth/callback` to
+  Authentication → URL Configuration → Redirect URLs. Then set in `.env`:
+
+  ```
+  # Shows "Continue with Google" on the sign-in page. 1 = on; leave unset until Supabase is set up.
+  GOOGLE_SIGN_IN_ENABLED=1
+  ```
+
+  The return address is `PUBLIC_BASE_URL` (or `http://localhost:3000` when unset).
+
 ## The two arms
 
 The analysis pipeline runs in one of two arms, and the eval harness scores them separately.

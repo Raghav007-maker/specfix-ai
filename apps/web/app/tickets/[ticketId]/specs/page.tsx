@@ -23,6 +23,11 @@ import {
   type TicketPullRequestRow,
   type ScenarioCiRow,
   untestedResolvedFlags,
+  getProjectDetail,
+  listWorkItemsForTicket,
+  workTablesAvailable,
+  type ProjectDetailRow,
+  type WorkItemRow,
   type CoverageCounts,
   type DriftedScenario,
   type ScaffoldRow,
@@ -44,6 +49,7 @@ import {
 } from './specs';
 import { CiPanel } from './ci-panel';
 import { PullRequestPanel } from './pr-panel';
+import { FileBugControl, TicketTasks } from '@/app/projects/ticket-tasks';
 
 /**
  * The Specs tab: compile Gherkin scenarios from the approved requirement, then review
@@ -88,6 +94,8 @@ export default async function SpecsPage({
   let pulls: TicketPullRequestRow[] = [];
   let prRepos: GithubRepositoryRow[] = [];
   let approvedScaffolds = 0;
+  // Project tasks that point at this ticket; absent until migration 0019 is applied.
+  let work: { project: ProjectDetailRow; tasks: WorkItemRow[] } | null = null;
   const canOpenPr = tenant.role === 'owner' || tenant.role === 'admin';
 
   if (version) {
@@ -95,6 +103,13 @@ export default async function SpecsPage({
     ready = events.some((e) => e.event === 'marked_ready' && e.ticket_version_id === version.id);
     scenarios = await listScenariosForVersion(tenant.tenant_id, version.id);
     ci = await latestCiForTicket(tenant.tenant_id, ticket.id);
+    if (await workTablesAvailable()) {
+      const [project, tasks] = await Promise.all([
+        getProjectDetail(tenant.tenant_id, ticket.project_id),
+        listWorkItemsForTicket(tenant.tenant_id, ticket.id),
+      ]);
+      if (project) work = { project, tasks };
+    }
     const [prs, prContext] = await Promise.all([
       pullRequestsForTicket(tenant.tenant_id, ticket.id),
       scaffoldPrContext(tenant.tenant_id, ticket.id),
@@ -226,7 +241,28 @@ export default async function SpecsPage({
 
       {version ? (
         <div className="mt-6">
-          <CiPanel scenarios={scenarios} rows={ci} />
+          <CiPanel
+            scenarios={scenarios}
+            rows={ci}
+            failedAction={
+              work
+                ? (scenarioId) => (
+                    <FileBugControl
+                      ticketId={ticket.id}
+                      scenarioId={scenarioId}
+                      project={work.project}
+                      tasks={work.tasks}
+                    />
+                  )
+                : undefined
+            }
+          />
+        </div>
+      ) : null}
+
+      {version && work ? (
+        <div className="mt-6">
+          <TicketTasks ticketId={ticket.id} project={work.project} tasks={work.tasks} />
         </div>
       ) : null}
 

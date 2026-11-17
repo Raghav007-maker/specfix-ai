@@ -20,22 +20,38 @@ export async function switchTenant(formData: FormData): Promise<void> {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(TENANT_COOKIE, tenantId, { httpOnly: true, sameSite: 'lax', path: '/' });
+  cookieStore.set(TENANT_COOKIE, tenantId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+  });
   redirect('/');
 }
 
-/** Add a project to the current tenant. Owners and admins only; Free allows five. */
+/**
+ * Add a project to the current tenant. Owners and admins only; Free allows five. Posted from Home
+ * (the first project) or the Projects page (`from=projects`), and a refusal returns there.
+ */
 export async function createProjectForCurrentTenant(formData: FormData): Promise<void> {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
-  const name = String(formData.get('name') ?? '').trim();
+  const name = String(formData.get('name') ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  const back = formData.get('from') === 'projects' ? '/projects' : '/';
 
   if (tenant.role === 'reviewer') {
-    redirect('/?error=' + encodeURIComponent('Only owners and admins can create projects.'));
+    redirect(`${back}?error=` + encodeURIComponent('Only owners and admins can create projects.'));
   }
 
   if (!name) {
-    redirect('/?error=' + encodeURIComponent('A project name is required.'));
+    redirect(`${back}?error=` + encodeURIComponent('A project name is required.'));
+  }
+  if (name.length > 100) {
+    redirect(
+      `${back}?error=` + encodeURIComponent('A project name can be at most 100 characters.')
+    );
   }
 
   let projectId: string;
@@ -49,8 +65,8 @@ export async function createProjectForCurrentTenant(formData: FormData): Promise
     ).id;
   } catch (error) {
     if (error instanceof ProjectLimitError)
-      redirect('/?error=' + encodeURIComponent(error.message));
+      redirect(`${back}?error=` + encodeURIComponent(error.message));
     throw error;
   }
-  redirect(`/?project=${projectId}`);
+  redirect(back === '/projects' ? `/projects/${projectId}` : `/?project=${projectId}`);
 }

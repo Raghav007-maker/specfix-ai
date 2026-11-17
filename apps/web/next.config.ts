@@ -10,6 +10,11 @@ import { resolve } from 'node:path';
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 
 const nextConfig: NextConfig = {
+  // Azure deploys the self-contained server (.next/standalone) so the host never runs npm
+  // install or a build. The tracing root is the monorepo root so @specfix/* get traced in.
+  output: 'standalone',
+  outputFileTracingRoot: resolve(process.cwd(), '../../'),
+
   // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
   // has to compile them itself rather than treat them as opaque deps. @specfix/compiler
   // and @specfix/core are here because the Specs tab's generate action calls the Spec
@@ -43,6 +48,27 @@ const nextConfig: NextConfig = {
   // The workspace is linted at the root with typescript-eslint; don't run Next's
   // separate eslint pass during builds.
   eslint: { ignoreDuringBuilds: true },
+
+  // Don't advertise the framework.
+  poweredByHeader: false,
+
+  // Baseline security headers on every response. The Content-Security-Policy, which needs a
+  // per-request nonce, is set by middleware.ts (see lib/csp.ts).
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // Browsers ignore HSTS over plain http, so this is harmless on localhost.
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

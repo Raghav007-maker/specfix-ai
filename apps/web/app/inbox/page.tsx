@@ -18,6 +18,7 @@ import {
   type PillTone,
 } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
+import { notificationPath } from '@specfix/sync';
 import { markAllReadAction, markReadAction, savePrefsAction } from './actions';
 
 const KIND: Record<NotificationRow['kind'], { label: string; tone: PillTone }> = {
@@ -25,6 +26,9 @@ const KIND: Record<NotificationRow['kind'], { label: string; tone: PillTone }> =
   flags_stale: { label: 'Changed in Jira', tone: 'accent' },
   signed_off: { label: 'Ready for dev', tone: 'positive' },
   ci_failed: { label: 'CI failed', tone: 'negative' },
+  task_assigned: { label: 'Assigned to you', tone: 'accent' },
+  task_commented: { label: 'New comment', tone: 'neutral' },
+  mentioned: { label: 'Mentioned you', tone: 'accent' },
 };
 
 function describe(n: NotificationRow): string {
@@ -38,6 +42,12 @@ function describe(n: NotificationRow): string {
       return 'Marked ready for development.';
     case 'ci_failed':
       return `${p.failed ?? 'Some'} of ${p.total ?? '?'} acceptance scenario(s) failed in CI.`;
+    case 'task_assigned':
+      return `${typeof p.by === 'string' ? p.by : 'Someone'} assigned you this task.`;
+    case 'task_commented':
+      return `${typeof p.by === 'string' ? p.by : 'Someone'} commented on this task.`;
+    case 'mentioned':
+      return `${typeof p.by === 'string' ? p.by : 'Someone'} ${p.everyone === true ? 'wrote to everyone (@all)' : 'mentioned you'}${typeof p.excerpt === 'string' ? `: “${p.excerpt}”` : '.'}`;
   }
 }
 
@@ -116,7 +126,7 @@ export default async function InboxPage({
                       <input
                         type="hidden"
                         name="to"
-                        value={n.ticket_id ? `/tickets/${n.ticket_id}` : ''}
+                        value={notificationPath(n.ticket_id, n.payload)}
                       />
                       <span className="mt-0.5 flex-none">
                         <Pill tone={KIND[n.kind].tone}>{KIND[n.kind].label}</Pill>

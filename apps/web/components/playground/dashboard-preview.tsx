@@ -13,12 +13,14 @@ import {
   House,
   LogIn,
   LogOut,
+  ShieldCheck,
   MessagesSquare,
   Plug,
   UserRound,
   Users,
   Flag,
   Folder,
+  FolderKanban,
   Gem,
 } from 'lucide-react';
 import { signOut } from '@/app/(auth)/actions';
@@ -67,6 +69,7 @@ export function DashboardPreview({
   projects,
   activeProjectId,
   top,
+  work,
   pricing = false,
 }: {
   settings: Settings;
@@ -79,6 +82,8 @@ export function DashboardPreview({
   activeProjectId?: string;
   /** Server-rendered notices and forms shown above the queue (errors, switchers, setup). */
   top?: ReactNode;
+  /** Server-rendered project-work summary, shown under the review queue on Home. */
+  work?: ReactNode;
   /** Shows the Pricing prototype in the sidebar (design playground only, until plans ship). */
   pricing?: boolean;
 }) {
@@ -108,6 +113,11 @@ export function DashboardPreview({
       <Link className={s.navItem} href="/inbox">
         <Bell aria-hidden />
         <span>Inbox</span>
+        <ArrowUpRight aria-hidden className={s.navOut} />
+      </Link>
+      <Link className={s.navItem} href="/projects">
+        <FolderKanban aria-hidden />
+        <span>Projects</span>
         <ArrowUpRight aria-hidden className={s.navOut} />
       </Link>
       <Link className={s.navItem} href="/team">
@@ -147,7 +157,7 @@ export function DashboardPreview({
             <Link
               key={p.id}
               className={s.navItem}
-              href={`/?project=${p.id}`}
+              href={`/projects/${p.id}`}
               aria-current={p.id === activeProjectId ? 'page' : undefined}
             >
               <Folder aria-hidden />
@@ -180,12 +190,18 @@ export function DashboardPreview({
           </nav>
           <div className={s.sideFoot}>
             {live ? (
-              <form action={signOut}>
-                <button type="submit" className={s.navItem}>
-                  <LogOut aria-hidden />
-                  <span>Sign out</span>
-                </button>
-              </form>
+              <>
+                <Link className={s.navItem} href="/settings/security">
+                  <ShieldCheck aria-hidden />
+                  <span>Security</span>
+                </Link>
+                <form action={signOut}>
+                  <button type="submit" className={s.navItem}>
+                    <LogOut aria-hidden />
+                    <span>Sign out</span>
+                  </button>
+                </form>
+              </>
             ) : (
               <button type="button" className={s.navItem} onClick={goLogin}>
                 <LogIn aria-hidden />
@@ -202,7 +218,7 @@ export function DashboardPreview({
         ) : null}
         {top}
         {view === 'queue' ? (
-          <QueueView data={data} live={live} />
+          <QueueView data={data} live={live} work={work} />
         ) : view === 'analytics' ? (
           <AnalyticsView data={data} live={live} />
         ) : (
@@ -283,7 +299,7 @@ function greeting(name: string | null, email: string | null): string {
  * Home, laid out like the supplied dashboard screenshot: a greeting with the date and its calendar
  * of ticket changes, three figures with their change, and the review queue as a plain list.
  */
-function QueueView({ data, live }: { data: DashboardData; live: boolean }) {
+function QueueView({ data, live, work }: { data: DashboardData; live: boolean; work?: ReactNode }) {
   const [filter, setFilter] = useState<Filter>('all');
   const c = useMemo(() => {
     const out = { need: 0, waiting: 0, resolved: 0, ready: 0, open: 0, total: 0 };
@@ -419,6 +435,7 @@ function QueueView({ data, live }: { data: DashboardData; live: boolean }) {
           </ul>
         )}
       </section>
+      {work}
     </>
   );
 }
@@ -929,6 +946,14 @@ function Profile({
             >
               <BarChart3 aria-hidden />
             </button>
+            <Link
+              href="/settings/security"
+              className={s.roundBtn}
+              aria-label="Security"
+              title="Security"
+            >
+              <ShieldCheck aria-hidden />
+            </Link>
             <form action={signOut}>
               <button type="submit" className={s.roundBtn} aria-label="Sign out" title="Sign out">
                 <LogOut aria-hidden />
