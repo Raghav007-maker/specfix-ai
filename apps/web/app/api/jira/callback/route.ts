@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import {
   JiraAuthError,
   JiraHttpError,
@@ -7,6 +7,7 @@ import {
   verifyState,
 } from '@specfix/ingest';
 import { requireUser } from '@/lib/session';
+import { redirectTo } from '@/lib/redirect';
 import { TENANT_COOKIE } from '@/lib/tenant';
 import { JiraConnectionError, getJiraConnection, saveJiraGrant, setJiraSite } from '@/lib/repos';
 import { JIRA_STATE_COOKIE, jiraConfig, stateKey } from '@/lib/jira';
@@ -28,9 +29,7 @@ export async function GET(request: NextRequest) {
   const cookieState = request.cookies.get(JIRA_STATE_COOKIE)?.value;
 
   const finish = (query: Record<string, string>, tenantId?: string) => {
-    const response = NextResponse.redirect(
-      new URL(`/settings/integrations?${new URLSearchParams(query).toString()}`, request.url)
-    );
+    const response = redirectTo(`/settings/integrations?${new URLSearchParams(query).toString()}`);
     response.cookies.delete({ name: JIRA_STATE_COOKIE, path: '/api/jira' });
     if (tenantId) {
       response.cookies.set(TENANT_COOKIE, tenantId, {

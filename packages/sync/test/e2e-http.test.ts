@@ -193,6 +193,16 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       expect(r.headers.get('location') ?? '').toMatch(/\/login/);
     });
 
+    // Behind a proxy request.url's origin is the server's bind address (https://0.0.0.0:8080),
+    // so these redirects must stay relative to reach the browser's own host.
+    it.each(['/auth/callback', '/auth/callback?code=forged'])(
+      'sends %s back with a relative Location, never the server bind address',
+      async (path) => {
+        const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+        expect(r.headers.get('location') ?? '').toMatch(/^\/login\?error=/);
+      }
+    );
+
     it('refuses /api/jira/connect without a session', async () => {
       const r = await fetch(`${BASE}/api/jira/connect`, { redirect: 'manual' });
       expect(r.headers.get('location') ?? '').toMatch(/\/login/);

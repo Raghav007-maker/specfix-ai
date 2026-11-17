@@ -1,6 +1,7 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createState } from '@specfix/ingest';
 import { requireUser } from '@/lib/session';
+import { redirectTo } from '@/lib/redirect';
 import { requireTenant } from '@/lib/tenant';
 import { GITHUB_STATE_COOKIE, githubConfig, githubReady, githubStateKey } from '@/lib/github';
 
@@ -9,14 +10,12 @@ import { GITHUB_STATE_COOKIE, githubConfig, githubReady, githubStateKey } from '
  * /api/jira/connect, the signed state is also set as an httpOnly cookie scoped to
  * /api/github, so only the browser that started the install can complete it.
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
 
   const back = (error: string) =>
-    NextResponse.redirect(
-      new URL(`/settings/integrations?error=${encodeURIComponent(error)}`, request.url)
-    );
+    redirectTo(`/settings/integrations?error=${encodeURIComponent(error)}`);
 
   if (tenant.role !== 'owner' && tenant.role !== 'admin') {
     return back('Only an owner or admin can connect GitHub.');

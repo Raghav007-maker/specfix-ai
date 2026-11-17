@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { JIRA_WRITE_SCOPES, authorizeUrl, createState } from '@specfix/ingest';
 import { requireUser } from '@/lib/session';
+import { redirectTo } from '@/lib/redirect';
 import { requireTenant } from '@/lib/tenant';
 import { JIRA_STATE_COOKIE, jiraConfig, jiraReady, stateKey } from '@/lib/jira';
 
@@ -14,9 +15,7 @@ export async function GET(request: NextRequest) {
   const tenant = await requireTenant(user.id);
 
   const back = (error: string) =>
-    NextResponse.redirect(
-      new URL(`/settings/integrations?error=${encodeURIComponent(error)}`, request.url)
-    );
+    redirectTo(`/settings/integrations?error=${encodeURIComponent(error)}`);
 
   if (tenant.role !== 'owner' && tenant.role !== 'admin') {
     return back('Only an owner or admin can connect Jira.');
