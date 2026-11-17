@@ -10,6 +10,11 @@ import { resolve } from 'node:path';
 loadEnv({ path: resolve(process.cwd(), '../../.env') });
 
 const nextConfig: NextConfig = {
+  // Azure deploys the self-contained server (.next/standalone) so the host never runs npm
+  // install or a build. The tracing root is the monorepo root so @specfix/* get traced in.
+  output: 'standalone',
+  outputFileTracingRoot: resolve(process.cwd(), '../../'),
+
   // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
   // has to compile them itself rather than treat them as opaque deps. @specfix/compiler
   // and @specfix/core are here because the Specs tab's generate action calls the Spec

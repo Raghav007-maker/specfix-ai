@@ -1,0 +1,87 @@
+# Deploys to Azure App Service when main changes (or on demand).
+#
+# Why it builds here and not on Azure: the B1 plan runs out of memory/time inside
+# Oryx (`npm ci` hung for 20 min). The runner builds a self-contained Next server
+# (output: 'standalone') and a one-file worker bundle, then uploads both zips.
+#
+# Repo secrets needed (Settings -> Secrets and variables -> Actions):
+#   AZURE_WEB_PUBLISH_PROFILE     publish profile XML of specfix-app-ub
+#   AZURE_WORKER_PUBLISH_PROFILE  publish profile XML of specfix-app-ub-worker
+#   SUPABASE_URL, SUPABASE_ANON_KEY  public values baked into the browser bundle at build
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web (standalone)
+        run: npm -w apps/web run build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Assemble web package
+        run: |
+          cp -r apps/web/.next/standalone web-dist
+          mkdir -p web-dist/apps/web/.next
+          cp -r apps/web/.next/static web-dist/apps/web/.next/static
+          if [ -d apps/web/public ]; then cp -r apps/web/public web-dist/apps/web/public; fi
+          cd web-dist && zip -qr ../web.zip .
+
+      - name: Bundle worker
+        run: |
+          mkdir worker-dist
+          npx esbuild scripts/worker.ts --bundle --platform=node --target=node22 --format=esm \
+            --outfile=worker-dist/worker.mjs --external:pg-native \
+            --banner:js="import{createRequire as __cr}from'module';const require=__cr(import.meta.url);"
+          echo '{"name":"specfix-worker","private":true,"type":"module"}' > worker-dist/package.json
+          cat > worker-dist/start.mjs <<'JS'
+          // App Service needs something listening on PORT; the worker has no HTTP surface.
+          import http from 'node:http';
+          http.createServer((_q, r) => r.end('specfix worker ok')).listen(process.env.PORT || 8080);
+          await import('./worker.mjs');
+          JS
+          cd worker-dist && zip -qr ../worker.zip .
+
+      - name: Deploy web
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: specfix-app-ub
+          publish-profile: ${{ secrets.AZURE_WEB_PUBLISH_PROFILE }}
+          package: web.zip
+
+      - name: Deploy worker
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: specfix-app-ub-worker
+          publish-profile: ${{ secrets.AZURE_WORKER_PUBLISH_PROFILE }}
+          package: worker.zip
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://specfix-app-ub.azurewebsites.net/login || true)
+            echo "login -> $code"; [ "$code" = 200 ] && exit 0; sleep 15
+          done
+          exit 1
