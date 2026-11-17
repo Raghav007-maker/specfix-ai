@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import {
   GithubAuthError,
   GithubClient,
@@ -9,6 +9,7 @@ import {
   verifyState,
 } from '@specfix/ingest';
 import { requireUser } from '@/lib/session';
+import { redirectTo } from '@/lib/redirect';
 import { TENANT_COOKIE } from '@/lib/tenant';
 import { GithubConnectionError, saveGithubInstallation } from '@/lib/repos';
 import { GITHUB_STATE_COOKIE, githubConfig, githubStateKey } from '@/lib/github';
@@ -32,9 +33,7 @@ export async function GET(request: NextRequest) {
   const cookieState = request.cookies.get(GITHUB_STATE_COOKIE)?.value;
 
   const finish = (query: Record<string, string>, tenantId?: string) => {
-    const response = NextResponse.redirect(
-      new URL(`/settings/integrations?${new URLSearchParams(query).toString()}`, request.url)
-    );
+    const response = redirectTo(`/settings/integrations?${new URLSearchParams(query).toString()}`);
     response.cookies.delete({ name: GITHUB_STATE_COOKIE, path: '/api/github' });
     if (tenantId) {
       response.cookies.set(TENANT_COOKIE, tenantId, {

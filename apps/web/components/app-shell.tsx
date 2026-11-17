@@ -49,8 +49,8 @@ export type ShellPage =
   | 'pricing'
   | 'payments';
 
-/** Workspace settings, as in Jira's gear menu: not daily navigation, so not in the sidebar. */
-function settingsLinks() {
+/** Workspace settings: not daily navigation, so grouped behind the gear at the sidebar's foot. */
+function settingsLinks(appOwner: boolean) {
   return [
     {
       key: 'team' as const,
@@ -66,6 +66,25 @@ function settingsLinks() {
       note: 'Jira, GitHub and CI',
       icon: Plug,
     },
+    {
+      key: 'pricing' as const,
+      href: '/pricing',
+      label: 'Pricing and plan',
+      note: 'Free or Pro, and paying for it',
+      icon: Gem,
+    },
+    // SpecFix's own team approves payments; nobody else sees this.
+    ...(appOwner
+      ? [
+          {
+            key: 'payments' as const,
+            href: '/admin/payments',
+            label: 'Payments',
+            note: 'Approve UPI payments',
+            icon: IndianRupee,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -190,7 +209,6 @@ export async function AppShell({
         <Suspense fallback={<BellLink count={0} />}>
           <BellSlot user={user} tenant={tenant} />
         </Suspense>
-        <SettingsMenu current={current} />
         <AccountMenu user={user} tenant={tenant} projects={projects} />
       </header>
 
@@ -250,23 +268,29 @@ async function BellSlot({ user, tenant }: { user: User; tenant: MembershipRow })
   return <BellLink count={count} />;
 }
 
-/** The gear at the top right, as in Jira: the workspace's settings pages. */
-function SettingsMenu({ current }: { current?: ShellPage }) {
+/** The gear at the sidebar's foot: the workspace's settings pages, opening upward. */
+function SettingsMenu({ current, appOwner }: { current?: ShellPage; appOwner: boolean }) {
+  const links = settingsLinks(appOwner);
+  const inSettings = links.some((l) => l.key === current);
   return (
     <details className="relative">
       <summary
-        aria-label="Settings"
-        title="Settings"
-        className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal [&::-webkit-details-marker]:hidden"
+        className={cn(
+          'flex h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11 [&::-webkit-details-marker]:hidden',
+          inSettings
+            ? 'bg-active font-medium text-text'
+            : 'text-muted-foreground hover:bg-raised hover:text-text'
+        )}
       >
         <Settings aria-hidden size={18} strokeWidth={1.6} />
+        Settings
       </summary>
-      <div className="absolute right-0 top-11 z-40 w-80 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
+      <div className="absolute bottom-full left-0 z-40 mb-1 w-full min-w-64 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
         <p className="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted-foreground">
           Workspace settings
         </p>
         <nav aria-label="Settings" className="flex flex-col">
-          {settingsLinks().map(({ key, href, label, note, icon: Icon }) => (
+          {links.map(({ key, href, label, note, icon: Icon }) => (
             <Link
               key={key}
               href={href}
@@ -500,23 +524,6 @@ function Nav({
         >
           Team
         </NavLink>
-        <NavLink
-          href="/pricing"
-          active={current === 'pricing'}
-          icon={<Gem aria-hidden size={18} strokeWidth={1.6} />}
-        >
-          Pricing
-        </NavLink>
-        {appOwner ? (
-          <NavLink
-            href="/admin/payments"
-            active={current === 'payments'}
-            icon={<IndianRupee aria-hidden size={18} strokeWidth={1.6} />}
-          >
-            Payments
-          </NavLink>
-        ) : null}
-
         {projects.length > 0 ? (
           <>
             <p className="mb-1 mt-5 px-2 text-xs text-muted-foreground">Projects</p>
@@ -558,40 +565,31 @@ function Nav({
         ) : null}
       </nav>
 
-      {/* A phone has no top bar menus, so notifications, settings and the account live here. */}
-      <div className="mt-auto border-t border-border pt-3 lg:hidden">
-        <p className="truncate px-2 text-xs text-muted-foreground" title={email}>
-          {email}
-        </p>
-        <div className="mt-1">
-          <NavLink
-            href="/inbox"
-            active={current === 'inbox'}
-            icon={<Bell aria-hidden size={18} strokeWidth={1.6} />}
-          >
-            Notifications
-          </NavLink>
-          {settingsLinks()
-            .filter((l) => l.key !== 'team')
-            .map(({ key, href, label, icon: Icon }) => (
-              <NavLink
-                key={key}
-                href={href}
-                active={current === key}
-                icon={<Icon aria-hidden size={18} strokeWidth={1.6} />}
-              >
-                {label}
-              </NavLink>
-            ))}
-          <NavLink
-            href="/settings/security"
-            active={current === 'security'}
-            icon={<ShieldCheck aria-hidden size={18} strokeWidth={1.6} />}
-          >
-            Security
-          </NavLink>
+      <div className="mt-auto border-t border-border pt-3">
+        {/* A phone has no top bar menus, so notifications and the account also live here. */}
+        <div className="lg:hidden">
+          <p className="truncate px-2 text-xs text-muted-foreground" title={email}>
+            {email}
+          </p>
+          <div className="mt-1">
+            <NavLink
+              href="/inbox"
+              active={current === 'inbox'}
+              icon={<Bell aria-hidden size={18} strokeWidth={1.6} />}
+            >
+              Notifications
+            </NavLink>
+            <NavLink
+              href="/settings/security"
+              active={current === 'security'}
+              icon={<ShieldCheck aria-hidden size={18} strokeWidth={1.6} />}
+            >
+              Security
+            </NavLink>
+          </div>
         </div>
-        <form action={signOut}>
+        <SettingsMenu current={current} appOwner={appOwner} />
+        <form action={signOut} className="lg:hidden">
           <button
             type="submit"
             className="flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11"

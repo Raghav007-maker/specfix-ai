@@ -3,6 +3,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
+/** Pages that need a session. Their own checks stay; this only answers a visitor without one
+ * with a real 307 before any rendering, instead of a streamed 200 that redirects in the browser. */
+const SIGNED_IN_ONLY =
+  /^\/(?:admin|analytics|calendar|inbox|onboarding|pricing|projects|search|settings|team|tickets|login\/verify)(?:\/|$)/;
+
+export function needsSession(pathname: string): boolean {
+  return SIGNED_IN_ONLY.test(pathname);
+}
+
 /**
  * Refreshes the Supabase auth session on every request and rewrites the session
  * cookie onto the response. This runs in the Edge middleware, so it touches only
@@ -40,7 +49,19 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     }
   );
 
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
 
+  if (!data?.claims && needsSession(request.nextUrl.pathname)) {
+    // Middleware needs an absolute Location; request.url's origin is the bind address behind
+    // Azure's proxy, so build it from the Host the browser sent (Azure only routes its own hosts).
+    const host = request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
+    const toLogin = NextResponse.redirect(
+      host ? new URL('/login', `${proto}://${host}`) : new URL('/login', request.url)
+    );
+    // Carry any cookie the refresh just cleared, so a dead session does not linger.
+    for (const cookie of response.cookies.getAll()) toLogin.cookies.set(cookie);
+    return toLogin;
+  }
   return response;
 }

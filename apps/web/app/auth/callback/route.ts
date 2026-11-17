@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { redirectTo } from '@/lib/redirect';
 
 /**
  * Where Google sign-in returns. Supabase hands back a one-time `code`, exchanged here for the
@@ -9,11 +10,8 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function GET(request: NextRequest) {
   const failed = () =>
-    NextResponse.redirect(
-      new URL(
-        `/login?error=${encodeURIComponent('Google sign-in did not finish. Please try again.')}`,
-        request.url
-      )
+    redirectTo(
+      `/login?error=${encodeURIComponent('Google sign-in did not finish. Please try again.')}`
     );
 
   const code = request.nextUrl.searchParams.get('code');
@@ -34,5 +32,5 @@ export async function GET(request: NextRequest) {
     console.error('[auth] Google code exchange threw:', err instanceof Error ? err.message : err);
     return failed();
   }
-  return NextResponse.redirect(new URL('/', request.url));
+  return redirectTo('/');
 }
