@@ -28,7 +28,7 @@ import { GITHUB_STATE_COOKIE, githubConfig, githubStateKey } from '@/lib/github'
  *      attached to another workspace.
  */
 export async function GET(request: NextRequest) {
-  const user = await requireUser();
+  const user = await requireUser('/login');
   const params = request.nextUrl.searchParams;
   const cookieState = request.cookies.get(GITHUB_STATE_COOKIE)?.value;
 

@@ -189,10 +189,12 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       '/calendar',
       '/search?q=x',
       '/projects/00000000-0000-4000-8000-000000000000/tasks/1',
-    ])('redirects an anonymous visitor from %s to /login', async (path) => {
+    ])('redirects an anonymous visitor from %s to the landing page or sign-in', async (path) => {
       const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
       expect([302, 303, 307, 308]).toContain(r.status);
-      expect(r.headers.get('location') ?? '').toMatch(/\/login/);
+      const toSignIn = path.startsWith('/login') || path.startsWith('/auth/');
+      const location = r.headers.get('location') ?? '';
+      expect(new URL(location, BASE).pathname).toBe(toSignIn ? '/login' : '/');
     });
 
     // Behind a proxy request.url's origin is the server's bind address (https://0.0.0.0:8080),

@@ -21,7 +21,7 @@ export function contentSecurityPolicy(nonce: string, dev: boolean): string {
     `img-src 'self' data: blob: https:`,
     `font-src 'self' data:`,
     `connect-src 'self'${supabaseHost ? ` https://${supabaseHost} wss://${supabaseHost}` : ''} https://*.razorpay.com${dev ? ' ws:' : ''}`,
-    `frame-src https://api.razorpay.com https://checkout.razorpay.com`,
+    `frame-src https://api.razorpay.com https://checkout.razorpay.com https://challenges.cloudflare.com`,
     `form-action 'self'`,
     `base-uri 'self'`,
     `object-src 'none'`,

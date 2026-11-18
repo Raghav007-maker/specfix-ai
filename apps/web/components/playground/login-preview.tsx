@@ -6,6 +6,7 @@ import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { signIn, signInWithGoogle, signUp } from '@/app/(auth)/actions';
 import type { Settings } from './settings';
 import { Logo } from './logo';
+import { Turnstile } from './turnstile';
 import { ParticleFigure } from './particles';
 import s from './playground.module.css';
 
@@ -29,6 +30,7 @@ export function LoginPreview({
   error,
   message,
   google = false,
+  captchaSiteKey = '',
 }: {
   settings: Settings;
   mode: AuthMode;
@@ -39,6 +41,8 @@ export function LoginPreview({
   message?: string;
   /** Show "Continue with Google" under the form; the real sign-in page only. */
   google?: boolean;
+  /** Show the human check above the submit button when set. */
+  captchaSiteKey?: string;
 }) {
   const b = settings.brand;
   const state = settings.tweaks.loginState;
@@ -209,6 +213,8 @@ export function LoginPreview({
               {shownNotice}
             </p>
           ) : null}
+
+          {captchaSiteKey ? <Turnstile siteKey={captchaSiteKey} /> : null}
 
           <SubmitAuth mode={mode} forceBusy={state === 'loading'} />
 

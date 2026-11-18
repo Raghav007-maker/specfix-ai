@@ -4,7 +4,12 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   ROLES,
   assignableRoles,
+  canRequestProject,
   inProjects,
+  listJoinRequests,
+  listMyJoinRequests,
+  listProjectRequests,
+  searchTeams,
   listProjectMemberships,
   listMembers,
   listOpenAssignedWork,
@@ -35,6 +40,7 @@ import { cn } from '@/lib/cn';
 import { initialsOf, safeAvatarUrl } from '@/lib/avatar';
 import { StatusPill } from '../projects/work-ui';
 import { AddMember, MemberItem, RoleCard, RoleRules } from './members';
+import { FindTeam, OwnerRequests, RequestProject } from './requests';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,17 +58,34 @@ export default async function TeamPage({
     q?: string;
     project?: string;
     role?: string;
+    find?: string;
   }>;
 }) {
   const user = await requireUser();
   const [memberships, params] = await Promise.all([currentMemberships(user.id), searchParams]);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [members, projects, migrated, allProjectRoles] = await Promise.all([
+  const find = (params.find ?? '').trim().slice(0, 100);
+  const [
+    members,
+    projects,
+    migrated,
+    allProjectRoles,
+    hits,
+    myJoins,
+    joins,
+    projectRequests,
+    asks,
+  ] = await Promise.all([
     listMembers(t),
     listProjects(t, user.id),
     workTablesAvailable(),
     listProjectMemberships(t),
+    searchTeams(user.id, find),
+    listMyJoinRequests(user.id),
+    listJoinRequests(t, user.id),
+    listProjectRequests(t, user.id),
+    canRequestProject(t, user.id),
   ]);
   const [details, allWork]: [ProjectDetailRow[], WorkItemRow[]] = migrated
     ? await Promise.all([listProjectDetails(t), listOpenAssignedWork(t)])
@@ -137,6 +160,7 @@ export default async function TeamPage({
           <p className="mt-1 text-sm text-muted-foreground">
             Everyone in <span className="font-medium text-text">{tenant.tenant_name}</span>, what
             they are working on, and what each role may do.
+            {tenant.role === 'owner' ? ' You own this workspace.' : ''}
           </p>
         </div>
         {grantable.length > 0 ? (
@@ -199,6 +223,10 @@ export default async function TeamPage({
           ) : null}
         </div>
       </form>
+
+      <FindTeam find={find} hits={hits} mine={myJoins} />
+      {tenant.role === 'owner' ? <OwnerRequests joins={joins} projects={projectRequests} /> : null}
+      {asks ? <RequestProject mine={projectRequests} /> : null}
 
       {tenant.role === 'owner' || adminOf.size > 0 ? (
         <Card className="mb-6">

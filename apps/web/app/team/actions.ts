@@ -3,12 +3,20 @@
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
+import { isAppOwner } from '@/lib/plan';
 import {
   MembershipError,
+  ProjectLimitError,
+  RateLimiter,
+  RequestError,
   addMemberByEmail,
   changeMemberRole,
+  decideJoinRequest,
+  decideProjectRequest,
   isRole,
   removeMember,
+  requestProject,
+  requestToJoin,
 } from '@/lib/repos';
 
 /**
@@ -62,7 +70,13 @@ async function run(write: () => Promise<unknown>): Promise<string | null> {
     await write();
     return null;
   } catch (error) {
-    if (error instanceof MembershipError) return error.message;
+    if (
+      error instanceof MembershipError ||
+      error instanceof RequestError ||
+      error instanceof ProjectLimitError
+    ) {
+      return error.message;
+    }
     throw error;
   }
 }
@@ -72,4 +86,47 @@ function back(error?: string, notice?: string): never {
   if (error) params.set('error', error);
   if (notice) params.set('notice', notice);
   redirect(`/team?${params.toString()}`);
+}
+
+const joinByUser = new RateLimiter('team-join', 10, 60 * 60_000);
+
+/** Asks to join a team found by name; the owner decides. */
+export async function requestJoinAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!(await joinByUser.take(user.id))) back('Too many requests. Try again in an hour.');
+  const outcome = await run(() => requestToJoin(user.id, String(formData.get('tenantId') ?? '')));
+  if (outcome) back(outcome);
+  back(undefined, 'Request sent. The team owner will see it.');
+}
+
+export async function decideJoinAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const approve = formData.get('decision') === 'approve';
+  const outcome = await run(() =>
+    decideJoinRequest(tenantId, user.id, String(formData.get('requestId') ?? ''), approve)
+  );
+  if (outcome) back(outcome);
+  back(undefined, approve ? 'Added to the team as a reviewer.' : 'Request rejected.');
+}
+
+/** An admin asks the owner for a new project. */
+export async function requestProjectAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const outcome = await run(() =>
+    requestProject(tenantId, user.id, String(formData.get('name') ?? ''))
+  );
+  if (outcome) back(outcome);
+  back(undefined, 'Sent to the owner for approval.');
+}
+
+export async function decideProjectAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const approve = formData.get('decision') === 'approve';
+  const outcome = await run(() =>
+    decideProjectRequest(tenantId, user.id, String(formData.get('requestId') ?? ''), approve, {
+      unlimited: isAppOwner(user),
+    })
+  );
+  if (outcome) back(outcome);
+  back(undefined, approve ? 'Project created. The requester is its admin.' : 'Request rejected.');
 }

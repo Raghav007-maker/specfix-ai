@@ -45,12 +45,15 @@ export function PublicSignIn({
   message,
   initialMode = 'sign-in',
   google = false,
+  captchaSiteKey = '',
 }: {
   error?: string;
   message?: string;
   initialMode?: AuthMode;
   /** Offer "Continue with Google" (only once the provider is set up in Supabase). */
   google?: boolean;
+  /** Show the "verify you are human" check (Cloudflare Turnstile) when set. */
+  captchaSiteKey?: string;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -64,6 +67,7 @@ export function PublicSignIn({
         error={error}
         message={message}
         google={google}
+        captchaSiteKey={captchaSiteKey}
       />
     </Root>
   );
