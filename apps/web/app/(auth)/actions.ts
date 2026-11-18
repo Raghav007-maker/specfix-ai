@@ -90,7 +90,11 @@ export async function signIn(formData: FormData): Promise<void> {
   } else {
     try {
       const supabase = await createClient();
-      const { error } = await supabase.auth.signInWithPassword({ email, password, options: captcha });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: captcha,
+      });
       if (error) {
         // Server-side diagnostics: enough to debug, with no email or password in the log.
         console.error('[auth] sign-in failed:', error.name, error.status ?? 0, error.message);
