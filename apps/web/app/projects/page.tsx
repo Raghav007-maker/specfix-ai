@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
+  listMembers,
   listProjectDetails,
   listProjects,
   summarizeCounts,
@@ -12,7 +13,7 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { Card, EmptyNote } from '@/components/ui';
 import { NotMigrated, ProgressBar, ProjectStatusPill } from './work-ui';
-import { Input, Notice } from '@/components/ui';
+import { Input, Notice, Select } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { cn } from '@/lib/cn';
 import { createProjectForCurrentTenant } from '../actions';
@@ -28,7 +29,12 @@ export default async function ProjectsPage({
   const memberships = await currentMemberships(user.id);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const [projects, migrated] = await Promise.all([listProjects(t, user.id), workTablesAvailable()]);
+  const [projects, migrated, people] = await Promise.all([
+    listProjects(t, user.id),
+    workTablesAvailable(),
+    // Who an owner can name as a new project's admin: everyone but the owners.
+    tenant.role === 'owner' ? listMembers(t) : Promise.resolve([]),
+  ]);
 
   const breadcrumb = (
     <p className="flex min-w-0 items-center gap-2 text-sm">
@@ -75,6 +81,17 @@ export default async function ProjectsPage({
               autoFocus={focusCreate}
               className="w-56"
             />
+            <Select name="adminId" aria-label="Project admin" defaultValue="" className="w-56">
+              <option value="">Admin: choose later</option>
+              {people
+                .filter((m) => m.role !== 'owner')
+                .map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.name ?? m.email ?? 'Member'}
+                    {m.name && m.email ? ` (${m.email})` : ''}
+                  </option>
+                ))}
+            </Select>
             <SubmitButton pendingLabel="Creating…">Create project</SubmitButton>
           </form>
         ) : null}

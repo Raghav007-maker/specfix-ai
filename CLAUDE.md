@@ -19,9 +19,9 @@
 ## Databases
 - `.env` `DATABASE_URL` is the team's real Supabase project. Do not run tests, load tests or
   ad-hoc queries against it. Migrations there are run by a person (`npm run db:migrate`).
-- Tests use a disposable database via `SPECFIX_TEST_DATABASE_URL`, e.g.
-  `docker run -d --name specfix-testdb -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=specfix_test -p 54329:5432 pgvector/pgvector:pg16`
-  then `npm run db:migrate -- --shim` with both URLs pointing at it.
+- Tests use a disposable database via `SPECFIX_TEST_DATABASE_URL`: `docker compose up -d --wait testdb`
+  (port 54329, see `docker-compose.yml`), then `npm run db:migrate -- --shim` with both URLs
+  pointing at `postgres://postgres:postgres@127.0.0.1:54329/specfix_test`.
 
 ## Definition of done — every change
 1. **Unit tests** for pure logic, next to the package (`packages/*/test`).

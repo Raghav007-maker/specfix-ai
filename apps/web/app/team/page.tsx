@@ -7,6 +7,7 @@ import {
   canRequestProject,
   inProjects,
   listJoinRequests,
+  listJoinableProjects,
   listMyJoinRequests,
   listProjectRequests,
   searchTeams,
@@ -40,7 +41,7 @@ import { cn } from '@/lib/cn';
 import { initialsOf, safeAvatarUrl } from '@/lib/avatar';
 import { StatusPill } from '../projects/work-ui';
 import { AddMember, MemberItem, RoleCard, RoleRules } from './members';
-import { FindTeam, OwnerRequests, RequestProject } from './requests';
+import { FindTeam, JoinProjects, OwnerRequests, RequestProject } from './requests';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -76,6 +77,7 @@ export default async function TeamPage({
     joins,
     projectRequests,
     asks,
+    joinable,
   ] = await Promise.all([
     listMembers(t),
     listProjects(t, user.id),
@@ -86,6 +88,7 @@ export default async function TeamPage({
     listJoinRequests(t, user.id),
     listProjectRequests(t, user.id),
     canRequestProject(t, user.id),
+    listJoinableProjects(t, user.id),
   ]);
   const [details, allWork]: [ProjectDetailRow[], WorkItemRow[]] = migrated
     ? await Promise.all([listProjectDetails(t), listOpenAssignedWork(t)])
@@ -225,6 +228,7 @@ export default async function TeamPage({
       </form>
 
       <FindTeam find={find} hits={hits} mine={myJoins} />
+      {joinable.length > 0 ? <JoinProjects projects={joinable} /> : null}
       {tenant.role === 'owner' ? <OwnerRequests joins={joins} projects={projectRequests} /> : null}
       {asks ? <RequestProject mine={projectRequests} /> : null}
 

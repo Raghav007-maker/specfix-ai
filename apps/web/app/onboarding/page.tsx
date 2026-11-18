@@ -2,7 +2,9 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { currentTenant } from '@/lib/tenant';
 import { createTenantAndProject } from './actions';
+import Link from 'next/link';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
+import { profileOf } from '@/lib/dashboard';
 
 export default async function OnboardingPage({
   searchParams,
@@ -26,6 +28,24 @@ export default async function OnboardingPage({
         </CardHeader>
         <CardContent>
           <form action={createTenantAndProject} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="personName">Your name</Label>
+              <Input
+                id="personName"
+                name="personName"
+                maxLength={60}
+                autoComplete="name"
+                defaultValue={profileOf(user, null).name ?? ''}
+                placeholder="How your team will find you"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. You can set it later, with a profile photo, in{' '}
+                <Link href="/settings/profile" className="underline underline-offset-2">
+                  Settings → Profile
+                </Link>
+                .
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="tenant">Workspace name</Label>
               <Input id="tenant" name="tenant" placeholder="Acme Product" required />

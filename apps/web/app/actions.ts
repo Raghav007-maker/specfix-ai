@@ -4,7 +4,12 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
-import { listMembershipsForUser, createProject, ProjectLimitError } from '@/lib/repos';
+import {
+  listMembershipsForUser,
+  createProject,
+  ProjectAdminError,
+  ProjectLimitError,
+} from '@/lib/repos';
 import { isAppOwner } from '@/lib/plan';
 import { TENANT_COOKIE } from '@/lib/tenant';
 
@@ -30,7 +35,7 @@ export async function switchTenant(formData: FormData): Promise<void> {
 }
 
 /**
- * Add a project to the current tenant. Owners only (they then assign each project's admin); Free allows five. Posted from Home
+ * Add a project to the current tenant. Owners only; they may name the project's admin right away. Free allows five. Posted from Home
  * (the first project) or the Projects page (`from=projects`), and a refusal returns there.
  */
 export async function createProjectForCurrentTenant(formData: FormData): Promise<void> {
@@ -60,11 +65,15 @@ export async function createProjectForCurrentTenant(formData: FormData): Promise
       await createProject(
         tenant.tenant_id,
         { name, sourceType: 'file' },
-        { unlimited: isAppOwner(user) }
+        {
+          unlimited: isAppOwner(user),
+          adminId: String(formData.get('adminId') ?? '') || undefined,
+          addedBy: user.id,
+        }
       )
     ).id;
   } catch (error) {
-    if (error instanceof ProjectLimitError)
+    if (error instanceof ProjectLimitError || error instanceof ProjectAdminError)
       redirect(`${back}?error=` + encodeURIComponent(error.message));
     throw error;
   }

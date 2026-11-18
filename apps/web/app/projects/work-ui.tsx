@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { projectViews, type ProjectView } from '@/components/app-shell';
+import { SubmitButton } from '@/components/submit-button';
+import { setProjectStatusAction } from './actions';
 import {
   Button,
   EmptyNote,
@@ -24,6 +26,7 @@ import {
   WORK_STATUS_LABELS,
   WORK_TYPES,
   WORK_TYPE_LABELS,
+  PROJECT_STATUSES,
   PROJECT_STATUS_LABELS,
   dueTone,
   monthGrid,
@@ -117,10 +120,11 @@ const PRIORITY_TONES: Record<WorkPriority, PillTone> = {
   high: 'warning',
   critical: 'negative',
 };
+// Running is yellow, completed is green; the word is always written next to the dot.
 const PROJECT_TONES: Record<ProjectStatus, PillTone> = {
-  active: 'positive',
-  on_hold: 'warning',
-  completed: 'accent',
+  active: 'warning',
+  on_hold: 'negative',
+  completed: 'positive',
   archived: 'neutral',
 };
 
@@ -133,7 +137,49 @@ export function PriorityPill({ priority }: { priority: WorkPriority }) {
 }
 
 export function ProjectStatusPill({ status }: { status: ProjectStatus }) {
-  return <Pill tone={PROJECT_TONES[status]}>{PROJECT_STATUS_LABELS[status]}</Pill>;
+  return (
+    <Pill tone={PROJECT_TONES[status]} className="gap-1.5">
+      <span aria-hidden className="size-2 flex-none rounded-full bg-current" />
+      {PROJECT_STATUS_LABELS[status]}
+    </Pill>
+  );
+}
+
+/**
+ * The owner's control to mark a project running, on hold, completed or archived. It can be
+ * changed back any time. `from` is the page to return to.
+ */
+export function ProjectStatusForm({
+  projectId,
+  status,
+  from,
+}: {
+  projectId: string;
+  status: ProjectStatus;
+  from: 'summary' | 'settings';
+}) {
+  return (
+    <form action={setProjectStatusAction} className="flex items-center gap-2">
+      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name="from" value={from} />
+      <ProjectStatusPill status={status} />
+      <Select
+        name="status"
+        aria-label="Project status"
+        defaultValue={status}
+        className="h-8 w-auto text-xs"
+      >
+        {PROJECT_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {PROJECT_STATUS_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <SubmitButton size="sm" variant="outline" pendingLabel="Saving…">
+        Set
+      </SubmitButton>
+    </form>
+  );
 }
 
 /** A done-of-total bar with its numbers written out; the text carries the meaning. */

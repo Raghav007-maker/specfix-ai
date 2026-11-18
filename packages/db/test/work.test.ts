@@ -321,7 +321,7 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
   });
 
   it('lets only owners and admins change project details', async () => {
-    const input = { description: 'Checkout rebuild', status: 'on_hold', taskKey: 'chk' };
+    const input = { description: 'Checkout rebuild', taskKey: 'chk' };
     await expect(updateProjectDetails(tenantA, users.reviewer, projectA, input)).rejects.toThrow(
       /owners and admins/
     );
@@ -329,16 +329,12 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
       /not in this workspace/
     );
     await expect(
-      updateProjectDetails(tenantA, users.admin, projectA, { ...input, status: 'paused' })
-    ).rejects.toThrow(WorkError);
-    await expect(
       updateProjectDetails(tenantA, users.admin, projectA, { ...input, taskKey: 'CF2' })
     ).rejects.toThrow(/already uses/);
 
     await updateProjectDetails(tenantA, users.admin, projectA, input);
     expect(await getProjectDetail(tenantA, projectA)).toMatchObject({
       description: 'Checkout rebuild',
-      status: 'on_hold',
       task_key: 'CHK',
     });
     // An empty key keeps the current one.

@@ -6,6 +6,8 @@
  *     admin adds them to projects) or rejects.
  *   - An admin (a workspace admin, or admin of a project) can ask for a new project. The owner
  *     approves: the project is created and the requester becomes its admin.
+ *   - A team member can ask to join one of the workspace's projects. That project's admin (or an
+ *     owner) approves, and the person joins it as a reviewer.
  *
  * Every decision runs in one transaction on the locked request row, so two clicks admit a
  * person, or create a project, exactly once. Only owners decide; everyone else gets the same
@@ -13,6 +15,7 @@
  */
 import { tx, query, type TenantId } from '../client.ts';
 import { assertProjectRoom } from './plans.ts';
+import { projectRoleWith } from './project-members.ts';
 
 export class RequestError extends Error {}
 
@@ -293,5 +296,148 @@ export async function decideProjectRequest(
       [tenantId, requestId, approve ? 'approved' : 'rejected', projectId, actorId]
     );
     return { projectId };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Asking to join a project
+// ---------------------------------------------------------------------------
+
+const NO_PROJECT = 'That project was not found.';
+
+export interface JoinableProjectRow {
+  id: string;
+  name: string;
+  /** Whether the user already has a pending request for it. */
+  requested: boolean;
+}
+
+/**
+ * Open projects of the workspace that a (non-owner) member is not in, by name only, so they can
+ * ask to join. Owners see every project already and get none.
+ */
+export async function listJoinableProjects(
+  tenantId: TenantId,
+  userId: string
+): Promise<JoinableProjectRow[]> {
+  if (!UUID.test(userId)) return [];
+  return query<JoinableProjectRow>(
+    `select p.id, p.name,
+            exists (select 1 from project_join_requests r
+                    where r.project_id = p.id and r.user_id = $2 and r.status = 'pending')
+              as requested
+     from projects p
+     where p.tenant_id = $1
+       and p.status in ('active', 'on_hold')
+       and exists (select 1 from memberships m
+                   where m.tenant_id = $1 and m.user_id = $2 and m.role <> 'owner')
+       and not exists (select 1 from project_members pm
+                       where pm.project_id = p.id and pm.user_id = $2)
+     order by p.name
+     limit 50`,
+    [tenantId, userId]
+  );
+}
+
+/** A team member asks to join a project. Refused for a member, a closed project, or a repeat. */
+export async function requestProjectJoin(
+  tenantId: TenantId,
+  userId: string,
+  projectId: string
+): Promise<void> {
+  if (!UUID.test(userId) || !UUID.test(projectId)) throw new RequestError(NO_PROJECT);
+  await tx(async (client) => {
+    const { rowCount: member } = await client.query(
+      `select 1 from memberships where tenant_id = $1 and user_id = $2 and role <> 'owner'`,
+      [tenantId, userId]
+    );
+    const { rowCount: open } = await client.query(
+      `select 1 from projects
+       where tenant_id = $1 and id = $2 and status in ('active', 'on_hold')`,
+      [tenantId, projectId]
+    );
+    if (!member || !open) throw new RequestError(NO_PROJECT);
+    const { rowCount: inProject } = await client.query(
+      `select 1 from project_members where tenant_id = $1 and project_id = $2 and user_id = $3`,
+      [tenantId, projectId, userId]
+    );
+    if (inProject) throw new RequestError('You are already in this project.');
+    const { rowCount } = await client.query(
+      `insert into project_join_requests (tenant_id, project_id, user_id) values ($1, $2, $3)
+       on conflict (project_id, user_id) where status = 'pending' do nothing`,
+      [tenantId, projectId, userId]
+    );
+    if (!rowCount) throw new RequestError('You already asked to join this project.');
+  });
+}
+
+export interface ProjectJoinRequestRow {
+  id: string;
+  user_id: string;
+  email: string | null;
+  name: string | null;
+  created_at: Date;
+}
+
+/** Pending requests to join a project; empty for anyone but its admins and the owners. */
+export async function listProjectJoinRequests(
+  tenantId: TenantId,
+  actorId: string,
+  projectId: string
+): Promise<ProjectJoinRequestRow[]> {
+  if (!UUID.test(actorId) || !UUID.test(projectId)) return [];
+  return query<ProjectJoinRequestRow>(
+    `select r.id, r.user_id, u.email, r.created_at,
+            left(nullif(trim(coalesce(u.raw_user_meta_data ->> 'full_name',
+                                      u.raw_user_meta_data ->> 'name')), ''), 100) as name
+     from project_join_requests r
+     left join auth.users u on u.id = r.user_id
+     where r.tenant_id = $1 and r.project_id = $2 and r.status = 'pending'
+       and (exists (select 1 from memberships m
+                    where m.tenant_id = $1 and m.user_id = $3 and m.role = 'owner')
+            or exists (select 1 from project_members pm
+                       where pm.tenant_id = $1 and pm.project_id = $2
+                         and pm.user_id = $3 and pm.role = 'admin'))
+     order by r.created_at`,
+    [tenantId, projectId, actorId]
+  );
+}
+
+/**
+ * The project's admin or an owner approves (the person joins as a reviewer) or rejects.
+ * Anyone else gets the same answer as for a request that does not exist.
+ */
+export async function decideProjectJoin(
+  tenantId: TenantId,
+  actorId: string,
+  requestId: string,
+  approve: boolean
+): Promise<{ projectId: string }> {
+  if (!UUID.test(requestId) || !UUID.test(actorId)) throw new RequestError(NO_REQUEST);
+  return tx(async (client) => {
+    const {
+      rows: [request],
+    } = await client.query<{ project_id: string; user_id: string }>(
+      `select project_id, user_id from project_join_requests
+       where tenant_id = $1 and id = $2 and status = 'pending' for update`,
+      [tenantId, requestId]
+    );
+    if (!request) throw new RequestError(NO_REQUEST);
+    const role = await projectRoleWith(client, tenantId, request.project_id, actorId);
+    if (role !== 'owner' && role !== 'admin') throw new RequestError(NO_REQUEST);
+    if (approve) {
+      await client.query(
+        `insert into project_members (tenant_id, project_id, user_id, role, added_by)
+         values ($1, $2, $3, 'reviewer', $4)
+         on conflict (project_id, user_id) do nothing`,
+        [tenantId, request.project_id, request.user_id, actorId]
+      );
+    }
+    await client.query(
+      `update project_join_requests set status = $3, decided_by = $4, decided_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, requestId, approve ? 'approved' : 'rejected', actorId]
+    );
+    return { projectId: request.project_id };
   });
 }

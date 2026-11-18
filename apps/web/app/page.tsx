@@ -36,7 +36,13 @@ import {
   type PillTone,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { PriorityPill, ProgressBar, StatusPill, describeEvent } from './projects/work-ui';
+import {
+  PriorityPill,
+  ProgressBar,
+  ProjectStatusPill,
+  StatusPill,
+  describeEvent,
+} from './projects/work-ui';
 
 type Tab = 'work' | 'reviews' | 'activity';
 
@@ -244,6 +250,11 @@ export default async function HomePage({
                           </span>
                         ) : null}
                       </div>
+                      {detail ? (
+                        <div className="mt-1.5">
+                          <ProjectStatusPill status={detail.status} />
+                        </div>
+                      ) : null}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {migrated
                           ? `${open} open task${open === 1 ? '' : 's'}${counts.overdue ? ` · ${counts.overdue} overdue` : ''}`

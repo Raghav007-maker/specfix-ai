@@ -1,0 +1,22 @@
+# A disposable Postgres for tests, the same image CI uses (pgvector, Postgres 16).
+#
+#   docker compose up -d --wait testdb     start it (port 54329 on this machine only)
+#   docker compose down                    stop it; the data is gone (tmpfs)
+#
+# Never point it at, or use it in place of, the team's Supabase database in .env.
+services:
+  testdb:
+    image: pgvector/pgvector:pg16
+    container_name: specfix-testdb
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: specfix_test
+    ports:
+      - '127.0.0.1:54329:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d specfix_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30

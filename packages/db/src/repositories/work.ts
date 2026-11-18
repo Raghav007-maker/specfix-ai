@@ -66,7 +66,7 @@ export const WORK_STATUS_LABELS: Record<WorkStatus, string> = {
   done: 'Done',
 };
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  active: 'Active',
+  active: 'Running',
   on_hold: 'On hold',
   completed: 'Completed',
   archived: 'Archived',
@@ -1294,18 +1294,17 @@ export async function deleteWorkItem(
   });
 }
 
-/** Changes a project's description, status and task key (owners and admins only). */
+/** Changes a project's description and task key (owners and admins only). */
 export async function updateProjectDetails(
   tenantId: TenantId,
   actorId: string,
   projectId: string,
-  input: { description: string; status: string; taskKey: string }
+  input: { description: string; taskKey: string }
 ): Promise<void> {
   const description = input.description.replace(/\r\n/g, '\n').trim();
   if (description.length > 5000) {
     throw new WorkError('A project description can be at most 5,000 characters.');
   }
-  if (!oneOf(PROJECT_STATUSES, input.status)) throw new WorkError('Choose a project status.');
   const taskKey = input.taskKey.trim() ? normalizeTaskKey(input.taskKey) : null;
   if (!UUID.test(projectId)) throw new WorkError('That project is not in this workspace.');
 
@@ -1325,11 +1324,32 @@ export async function updateProjectDetails(
     }
     const { rowCount } = await client.query(
       `update projects
-         set description = $3, status = $4, task_key = coalesce($5, task_key)
+         set description = $3, task_key = coalesce($4, task_key)
        where tenant_id = $1 and id = $2`,
-      [tenantId, projectId, description, input.status, taskKey]
+      [tenantId, projectId, description, taskKey]
     );
     if (!rowCount) throw new WorkError('That project is not in this workspace.');
+  });
+}
+
+/** Marks a project running, on hold, completed or archived. Owners only, and any time. */
+export async function setProjectStatus(
+  tenantId: TenantId,
+  actorId: string,
+  projectId: string,
+  status: string
+): Promise<void> {
+  if (!oneOf(PROJECT_STATUSES, status)) throw new WorkError('Choose a project status.');
+  if (!UUID.test(projectId)) throw new WorkError('That project is not in this workspace.');
+  await tx(async (client) => {
+    if ((await memberRole(client, tenantId, actorId, projectId)) !== 'owner') {
+      throw new WorkError('Only owners can change a project’s status.');
+    }
+    await client.query(`update projects set status = $3 where tenant_id = $1 and id = $2`, [
+      tenantId,
+      projectId,
+      status,
+    ]);
   });
 }
 
