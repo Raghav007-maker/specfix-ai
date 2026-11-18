@@ -8,9 +8,12 @@ import {
   ChatError,
   ProjectAccessError,
   RateLimiter,
+  RequestError,
+  decideProjectJoin,
   deleteTimeEntry,
   logTime,
   setProjectMember,
+  setProjectStatus,
   WorkError,
   postProjectMessage,
   addWorkComment,
@@ -87,7 +90,11 @@ async function run<T>(write: () => Promise<T>): Promise<{ ok: T } | { error: str
   try {
     return { ok: await write() };
   } catch (error) {
-    if (error instanceof WorkError || error instanceof ProjectAccessError) {
+    if (
+      error instanceof WorkError ||
+      error instanceof ProjectAccessError ||
+      error instanceof RequestError
+    ) {
       return { error: error.message };
     }
     throw error;
@@ -160,12 +167,23 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
   const result = await run(() =>
     updateProjectDetails(tenantId, user.id, projectId, {
       description: field(formData, 'description') ?? '',
-      status: field(formData, 'status') ?? '',
       taskKey: field(formData, 'taskKey') ?? '',
     })
   );
   if ('error' in result) back(projectPath(projectId, '/settings'), { error: result.error });
   back(projectPath(projectId, '/settings'), { notice: 'Project details saved.' });
+}
+
+/** Owner-only: the project's status (running, on hold, completed, archived). */
+export async function setProjectStatusAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId') ?? '';
+  const page = field(formData, 'from') === 'settings' ? '/settings' : '';
+  const result = await run(() =>
+    setProjectStatus(tenantId, user.id, projectId, field(formData, 'status') ?? '')
+  );
+  if ('error' in result) back(projectPath(projectId, page), { error: result.error });
+  back(projectPath(projectId, page), { notice: 'Project status updated.' });
 }
 
 /** The task page a collaboration form came from, rebuilt from validated parts only. */
@@ -344,6 +362,20 @@ export async function setProjectMemberAction(formData: FormData): Promise<void> 
     notice: role
       ? `Saved: now ${role === 'admin' ? 'an admin' : 'a reviewer'}.`
       : 'Removed from the project.',
+  });
+}
+
+/** A project admin (or owner) lets someone who asked join as a reviewer, or turns them down. */
+export async function decideProjectJoinAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId');
+  const approve = field(formData, 'decision') === 'approve';
+  const result = await run(() =>
+    decideProjectJoin(tenantId, user.id, field(formData, 'requestId') ?? '', approve)
+  );
+  if ('error' in result) back(projectPath(projectId, '/people'), { error: result.error });
+  back(projectPath(result.ok.projectId, '/people'), {
+    notice: approve ? 'Added to the project as a reviewer.' : 'Request turned down.',
   });
 }
 

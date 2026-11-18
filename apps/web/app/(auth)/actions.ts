@@ -61,6 +61,8 @@ function friendlyAuthMessage(error: AuthError, action: 'sign-in' | 'sign-up'): s
     return 'Cannot reach the authentication server. Please check your connection and try again.';
   }
   if (status === 429) return TOO_MANY;
+  // Supabase refused the human check (expired, reused or from the wrong site key).
+  if (error.code === 'captcha_failed' || /captcha/i.test(error.message)) return NO_CAPTCHA;
   if (action === 'sign-in' && (status === 400 || status === 401)) {
     return 'Incorrect email or password.';
   }

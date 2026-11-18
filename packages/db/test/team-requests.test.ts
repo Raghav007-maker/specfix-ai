@@ -7,6 +7,12 @@ import {
   RequestError,
   addMembership,
   canRequestProject,
+  decideProjectJoin,
+  listJoinableProjects,
+  listProjectJoinRequests,
+  requestProjectJoin,
+  setProjectMember,
+  setProjectStatus,
   closePool,
   createProject,
   createTenant,
@@ -193,5 +199,109 @@ describe.skipIf(!hasDatabase)('team requests', () => {
     await query(`delete from memberships where tenant_id = $1 and user_id = $2`, [team, u.admin]);
     await expect(decideProjectRequest(team, u.owner, last!.id, true)).rejects.toThrow(/no longer/);
     expect(await createProject(team, { name: 'control', sourceType: 'file' })).toBeTruthy();
+  });
+
+  describe('asking to join a project', () => {
+    let project: string;
+    let joiner: string;
+    let projectAdmin: string;
+
+    beforeAll(async () => {
+      for (const key of ['joiner', 'padmin'] as const) {
+        const [row] = await query<{ id: string }>(
+          `insert into auth.users (email) values ($1) returning id`,
+          [`${label}-${key}@example.test`]
+        );
+        if (key === 'joiner') joiner = row!.id;
+        else projectAdmin = row!.id;
+      }
+      await addMembership(team, joiner, 'reviewer');
+      await addMembership(team, projectAdmin, 'reviewer');
+      project = (
+        await createProject(
+          team,
+          { name: `${label} Join me`, sourceType: 'file' },
+          { unlimited: true }
+        )
+      ).id;
+      await setProjectMember(team, u.owner, {
+        projectId: project,
+        userId: projectAdmin,
+        role: 'admin',
+      });
+    });
+
+    it('lists open projects the member is not in, names only, and none for an owner', async () => {
+      const names = (await listJoinableProjects(team, joiner)).map((p) => p.name);
+      expect(names).toContain(`${label} Join me`);
+      expect(await listJoinableProjects(team, u.owner)).toEqual([]);
+      expect(await listJoinableProjects(team, u.other)).toEqual([]);
+      expect((await listJoinableProjects(team, projectAdmin)).map((p) => p.id)).not.toContain(
+        project
+      );
+    });
+
+    it('refuses an owner, an outsider, a member, a forged id and a second request', async () => {
+      for (const who of [u.owner, u.other]) {
+        await expect(requestProjectJoin(team, who, project)).rejects.toThrow(
+          'That project was not found.'
+        );
+      }
+      await expect(requestProjectJoin(team, projectAdmin, project)).rejects.toThrow(/already in/);
+      await expect(requestProjectJoin(otherTeam, joiner, project)).rejects.toThrow(RequestError);
+      await expect(requestProjectJoin(team, joiner, "x' or 1=1")).rejects.toThrow(RequestError);
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () => requestProjectJoin(team, joiner, project))
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(
+        (await listJoinableProjects(team, joiner)).find((p) => p.id === project)?.requested
+      ).toBe(true);
+    });
+
+    it('shows the request to the project admin and owners only', async () => {
+      expect(
+        (await listProjectJoinRequests(team, projectAdmin, project)).map((r) => r.user_id)
+      ).toEqual([joiner]);
+      expect(await listProjectJoinRequests(team, u.owner, project)).toHaveLength(1);
+      for (const who of [u.admin, u.reviewer, joiner, u.other]) {
+        expect(await listProjectJoinRequests(team, who, project)).toEqual([]);
+      }
+    });
+
+    it('lets only the project admin or an owner decide, and adds the person once', async () => {
+      const [request] = await listProjectJoinRequests(team, u.owner, project);
+      // A workspace admin who is not in this project, a reviewer, the joiner, another team's owner.
+      for (const who of [u.admin, u.reviewer, joiner]) {
+        await expect(decideProjectJoin(team, who, request!.id, true)).rejects.toThrow(
+          'That request was not found.'
+        );
+      }
+      await expect(decideProjectJoin(otherTeam, u.other, request!.id, true)).rejects.toThrow(
+        RequestError
+      );
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, () => decideProjectJoin(team, projectAdmin, request!.id, true))
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(await projectRole(team, project, joiner)).toBe('reviewer');
+      expect(await listProjectJoinRequests(team, projectAdmin, project)).toEqual([]);
+    });
+
+    it('a turned-down person is not added and may ask again; a completed project takes no requests', async () => {
+      await requestProjectJoin(team, u.reviewer, project);
+      const [request] = await listProjectJoinRequests(team, u.owner, project);
+      await decideProjectJoin(team, u.owner, request!.id, false);
+      expect(await projectRole(team, project, u.reviewer)).toBeNull();
+      await requestProjectJoin(team, u.reviewer, project);
+
+      await setProjectStatus(team, u.owner, project, 'completed');
+      await expect(requestProjectJoin(team, u.admin, project)).rejects.toThrow(
+        'That project was not found.'
+      );
+      expect((await listJoinableProjects(team, u.admin)).map((p) => p.id)).not.toContain(project);
+    });
   });
 });

@@ -27,6 +27,7 @@ import {
   NotMigrated,
   ProgressBar,
   ProjectHeader,
+  ProjectStatusForm,
   ProjectStatusPill,
   shortDay,
 } from '../work-ui';
@@ -120,7 +121,11 @@ export default async function ProjectSummaryPage({
 
   return shell(
     <>
-      <ProjectStatusPill status={project.status} />
+      {sidebarProject.role === 'owner' ? (
+        <ProjectStatusForm projectId={projectId} status={project.status} from="summary" />
+      ) : (
+        <ProjectStatusPill status={project.status} />
+      )}
       {project.task_key ? (
         <span className="font-mono text-[13px] text-muted-foreground">{project.task_key}</span>
       ) : null}

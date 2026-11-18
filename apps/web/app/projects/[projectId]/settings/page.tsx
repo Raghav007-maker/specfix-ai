@@ -2,13 +2,7 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
-import {
-  PROJECT_STATUSES,
-  PROJECT_STATUS_LABELS,
-  getProjectDetail,
-  listProjects,
-  workTablesAvailable,
-} from '@/lib/repos';
+import { getProjectDetail, listProjects, workTablesAvailable } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
 import {
   Card,
@@ -18,14 +12,13 @@ import {
   Input,
   Label,
   Notice,
-  Select,
   Textarea,
 } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { updateProjectAction } from '../../actions';
-import { NotMigrated, ProjectHeader } from '../../work-ui';
+import { NotMigrated, ProjectHeader, ProjectStatusForm, ProjectStatusPill } from '../../work-ui';
 
-/** A project's details: description, status and task key. Owners and admins only. */
+/** A project's details (description, task key) and status. Owners and admins see it; only owners change the status. */
 export default async function ProjectSettingsPage({
   params,
   searchParams,
@@ -88,6 +81,22 @@ export default async function ProjectSettingsPage({
       {notice ? <Notice tone="success">{notice}</Notice> : null}
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Status</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Yellow means the project is running, green means it is completed. Only an owner can
+            change it, and it can be changed back at any time.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {sidebarProject.role === 'owner' ? (
+            <ProjectStatusForm projectId={projectId} status={project.status} from="settings" />
+          ) : (
+            <ProjectStatusPill status={project.status} />
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Project details</CardTitle>
           <p className="text-sm text-muted-foreground">
             {project.source_type === 'jira'
@@ -109,16 +118,6 @@ export default async function ProjectSettingsPage({
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="project-status">Status</Label>
-                <Select id="project-status" name="status" defaultValue={project.status}>
-                  {PROJECT_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {PROJECT_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="project-key">Task key</Label>
                 <Input

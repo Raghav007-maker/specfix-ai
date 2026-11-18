@@ -7,7 +7,6 @@ jira_validation_screenshots/
 .env
 .env.local
 .env.*.local
-.env.example
 .DS_Store
 Thumbs.db
 *.log

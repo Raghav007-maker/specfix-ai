@@ -1,7 +1,48 @@
 # SpecFix
 
+[![CI](https://github.com/Raghav007-maker/specfix-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Raghav007-maker/specfix-ai/actions/workflows/ci.yml)
+[![Deploy](https://github.com/Raghav007-maker/specfix-ai/actions/workflows/deploy.yml/badge.svg)](https://github.com/Raghav007-maker/specfix-ai/actions/workflows/deploy.yml)
+
+**Live app: <https://specfix-app-ub.azurewebsites.net>**
+
 Ambiguity and gap detection for product requirements. A ticket goes in, structured flags come
-out, a human reviewer resolves each one, and the ticket is marked ready for development.
+out, a human reviewer resolves each one, and the ticket is marked ready for development. Around
+that review, SpecFix plans the work: a board with sprints and tasks linked to the specs and
+tests they came from, and a team with clear roles.
+
+## What it does
+
+- **Spec review** — tickets come in from Jira or a file. The model lists what a ticket leaves
+  unsaid, an Adversarial Critic drops false alarms, and a person accepts, edits or dismisses
+  every flag. The reviewer writes their own gaps first, before seeing the model's (blind-first).
+- **Specs and tests** — approved acceptance criteria become Gherkin scenarios and Playwright
+  scaffolds with placeholder selectors; CI results come back in and link to each scenario.
+- **Work tracking** — per project: summary, board, backlog, list, calendar, sprints, tasks with
+  comments and links, and time logging (1–1440 minutes per entry).
+- **Workspaces and roles** — see the table below. Each project has its own admins and
+  reviewers; the Team page shows who is on what, with assigned, in-progress, done and overdue
+  work, hours and last activity.
+- **Joining** — find a team by name and ask to join (the owner approves); ask to join a project
+  (its admin approves); admins ask the owner for a new project. Everyone sets a display name
+  (at sign-up or in Settings → Profile, with a photo) so teammates can find them.
+- **Project status** — Running (yellow), On hold, Completed (green) or Archived; only an owner
+  changes it.
+- **Sign-in** — email and password or Google, optional two-step verification, and a Cloudflare
+  Turnstile "verify you are human" check. Signed-out visitors opening any app link see the
+  landing page.
+- **Integrations** — Jira (OAuth, webhooks, one write-back at sign-off), a GitHub App, and
+  payments for plans (Razorpay, UPI).
+
+### Roles
+
+| | Owner | Admin (of a project) | Reviewer |
+|---|---|---|---|
+| Sees | every project | projects they are in | projects they are in |
+| Creates projects | yes, naming the admin | asks the owner | — |
+| Adds people to a project | admins and reviewers | reviewers (finds them by name) | — |
+| Approves | team joins, project requests | requests to join their project | — |
+| Project status | changes it | sees it | sees it |
+| Tracks | admins and reviewers | reviewers | own work |
 
 ## Source of truth
 
@@ -16,7 +57,8 @@ where those features are meant to land.
 Still **not** part of this codebase, and not to be added: PR-vs-spec verification, hard
 merge gating, doc auto-sync, autonomous/multi-agent workflows (Phase 3+), and the earlier
 mentor/presentation stack that was never this project's — FastAPI/Python, Gemini,
-SQLAlchemy, Docker execution sandboxes, Kubernetes. Generation stays gated behind a human
+SQLAlchemy, Docker execution sandboxes, Kubernetes. (Docker is used only to run the
+disposable test database; the app itself deploys without containers.) Generation stays gated behind a human
 review step on every artifact; nothing here writes a test or a selector without a person
 accepting it.
 
@@ -80,12 +122,15 @@ packages/compiler Spec Compiler: Gherkin generation (LLM) + deterministic Playwr
 packages/agent    Conversational resolution agent (optional): one turn of a chat about one
                   flag. Returns data only, like core.
 packages/db       SQL migrations and the tenant-scoped repository layer
-packages/ingest   TicketSource interface, FileSource, (later) JiraSource + ADF normalizer
+packages/ingest   TicketSource interface, FileSource, JiraSource + ADF normalizer
+packages/sync     Jira and GitHub sync, the queue worker's jobs, notifications, email,
+                  and the single Jira write-back (writeback.ts)
 packages/eval     CLI: gold sets, flag matching, precision/recall, the random-pruning
                   control, report diffing
-apps/web          Next.js dashboard (week 3)
-apps/worker       BullMQ worker (week 6)
+apps/web          Next.js app: landing page, review dashboard, projects, team, settings
+scripts/worker.ts BullMQ worker entry (npm run worker)
 fixtures/         sample tickets, adversarial tickets, frozen gold sets, committed eval reports
+docs/             setup guides (GitHub App)
 ```
 
 ## Getting started
@@ -99,11 +144,47 @@ npm run typecheck && npm test
 ```
 
 Copy `.env.example` to `.env` and fill it in before running anything that talks to OpenAI or
-Postgres.
+Postgres. Then start the app at <http://localhost:3000>:
+
+```bash
+npm run dev
+```
+
+Database migrations live in `packages/db/migrations` (`00NN_*.sql`). On the team's Supabase
+database a person runs them, before the code that needs them is deployed:
+
+```bash
+npm run db:migrate
+```
+
+### Test database (Docker)
+
+Database tests need a disposable Postgres; without one they are skipped. `docker-compose.yml`
+starts the same pgvector image CI uses, on port 54329, holding nothing once stopped. Never run
+tests against the Supabase database in `.env`.
+
+```bash
+docker compose up -d --wait testdb
+```
+
+```bash
+export SPECFIX_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/specfix_test
+export DATABASE_URL=$SPECFIX_TEST_DATABASE_URL
+npm run db:migrate -- --shim && npm test
+```
+
+In PowerShell set the two variables with `$env:SPECFIX_TEST_DATABASE_URL = '...'` and
+`$env:DATABASE_URL = $env:SPECFIX_TEST_DATABASE_URL`. Stop it with `docker compose down`.
 
 ## Sign-in: Google and two-step verification
 
 Both run on Supabase Auth; SpecFix stores no secrets for them.
+
+- **Human check (Cloudflare Turnstile)**: create a widget in Cloudflare (Turnstile → Add widget,
+  Managed mode) with the app's hostname, plus `localhost` for local work. Put its **site key** in
+  `TURNSTILE_SITE_KEY` (in `.env`, and in Azure's app settings), restart the app and check the
+  box shows on `/login`. Only then paste its **secret key** into Supabase (Authentication →
+  Attack Protection → CAPTCHA, provider Turnstile); turning that on first blocks every sign-in.
 
 - **Two-step verification** (Settings → Security): a 6-digit code from Google Authenticator,
   Microsoft Authenticator or Authy after the password or Google sign-in. Supabase's
@@ -121,6 +202,21 @@ Both run on Supabase Auth; SpecFix stores no secrets for them.
   ```
 
   The return address is `PUBLIC_BASE_URL` (or `http://localhost:3000` when unset).
+
+## Deploy
+
+Pushing to `main` runs two GitHub Actions workflows:
+
+- **ci** (`.github/workflows/ci.yml`) — format, lint, typecheck and the full test suite against
+  a pgvector Postgres.
+- **deploy** (`.github/workflows/deploy.yml`) — builds the Next.js app (`output: 'standalone'`)
+  and a one-file worker bundle, and uploads both as zips to Azure App Service:
+  `specfix-app-ub` (the web app, <https://specfix-app-ub.azurewebsites.net>) and
+  `specfix-app-ub-worker`.
+
+Runtime settings (the names in `.env.example`) live in Azure → App Service → Settings →
+Environment variables. Run any new migration (`npm run db:migrate`) before the deploy that
+needs it.
 
 ## The two arms
 
@@ -144,9 +240,9 @@ npm run eval -- compare --set gold-v1 --a single-shot-v1 --b single-shot-v1+deli
 ```
 
 Both arms use the same gold set and the same extractor prompt, which is what makes the
-difference between them attributable to the Critic rather than to anything else. See
-[docs/deliberation-and-control.md](docs/deliberation-and-control.md) for how the Critic's
-precision is tested, and why precision alone does not count as evidence.
+difference between them attributable to the Critic rather than to anything else. The Critic's
+precision is always reported beside a random-pruning control and its p-value
+(`packages/eval`); see rule 6 below for why precision alone does not count as evidence.
 
 ## Non-negotiable rules
 

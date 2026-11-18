@@ -16,6 +16,7 @@ import {
   isRole,
   removeMember,
   requestProject,
+  requestProjectJoin,
   requestToJoin,
 } from '@/lib/repos';
 
@@ -107,6 +108,17 @@ export async function decideJoinAction(formData: FormData): Promise<void> {
   );
   if (outcome) back(outcome);
   back(undefined, approve ? 'Added to the team as a reviewer.' : 'Request rejected.');
+}
+
+/** A team member asks to join a project; its admin decides. */
+export async function requestProjectJoinAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  if (!(await joinByUser.take(user.id))) back('Too many requests. Try again in an hour.');
+  const outcome = await run(() =>
+    requestProjectJoin(tenantId, user.id, String(formData.get('projectId') ?? ''))
+  );
+  if (outcome) back(outcome);
+  back(undefined, 'Request sent. The project admin will see it.');
 }
 
 /** An admin asks the owner for a new project. */

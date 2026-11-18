@@ -2,7 +2,8 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { requireUser } from '@/lib/session';
+import { forgetUser, requireUser } from '@/lib/session';
+import { createClient } from '@/lib/supabase/server';
 import { createWorkspace } from '@/lib/repos';
 import { TENANT_COOKIE } from '@/lib/tenant';
 
@@ -20,7 +21,25 @@ export async function createTenantAndProject(formData: FormData): Promise<void> 
     redirect('/onboarding?error=' + encodeURIComponent('A workspace name is required.'));
   }
 
+  // Optional: the name teammates find you by. Settings → Profile changes it (and the photo) later.
+  const personName = String(formData.get('personName') ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (personName.length > 60) {
+    redirect('/onboarding?error=' + encodeURIComponent('A name can be at most 60 characters.'));
+  }
+
   const tenant = await createWorkspace(user.id, { tenantName, projectName });
+
+  if (personName) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.updateUser({
+      data: { full_name: personName, name: personName },
+    });
+    // Not fatal: the workspace exists, and the name can be set in Settings → Profile.
+    if (error) console.error('[onboarding] name not saved:', error.name, error.status ?? 0);
+    else forgetUser(user.id);
+  }
 
   const cookieStore = await cookies();
   cookieStore.set(TENANT_COOKIE, tenant.id, { httpOnly: true, sameSite: 'lax', path: '/' });

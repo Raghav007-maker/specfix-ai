@@ -47,8 +47,14 @@ export async function addMembership(
   );
 }
 
+/** A refusal about the admin chosen for a new project; the message is safe to show. */
+export class ProjectAdminError extends Error {}
+
+const ADMIN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Adds a project. On the Free plan this throws ProjectLimitError once the workspace has its
+ * Adds a project. `adminId` makes that team member (not an owner: owners see everything already)
+ * the project's admin, in the same transaction, so a refusal leaves no project behind. On the Free plan this throws ProjectLimitError once the workspace has its
  * five; `unlimited` skips the check for SpecFix's own team.
  */
 export async function createProject(
@@ -59,10 +65,19 @@ export async function createProject(
     jiraCloudId?: string | undefined;
     jiraProjectKey?: string | undefined;
   },
-  options: { unlimited?: boolean } = {}
+  options: { unlimited?: boolean; adminId?: string | undefined; addedBy?: string | undefined } = {}
 ): Promise<ProjectRow> {
   return tx(async (client) => {
     if (!options.unlimited) await assertProjectRoom(client, tenantId);
+    if (options.adminId) {
+      const { rowCount } = await client.query(
+        `select 1 from memberships where tenant_id = $1 and user_id = $2 and role <> 'owner'`,
+        [tenantId, ADMIN_ID.test(options.adminId) ? options.adminId : null]
+      );
+      if (!rowCount) {
+        throw new ProjectAdminError('Choose a team member who is not an owner as the admin.');
+      }
+    }
     const {
       rows: [project],
     } = await client.query<ProjectRow>(
@@ -78,6 +93,13 @@ export async function createProject(
       ]
     );
     if (!project) throw new Error('projects insert returned no row');
+    if (options.adminId) {
+      await client.query(
+        `insert into project_members (tenant_id, project_id, user_id, role, added_by)
+         values ($1, $2, $3, 'admin', $4)`,
+        [tenantId, project.id, options.adminId, options.addedBy ?? null]
+      );
+    }
     return project;
   });
 }

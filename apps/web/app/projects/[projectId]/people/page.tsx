@@ -6,6 +6,7 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   formatMinutes,
   listMembers,
+  listProjectJoinRequests,
   listProjectMembers,
   listProjects,
   listWorkEvents,
@@ -20,13 +21,14 @@ import {
   CardHeader,
   CardTitle,
   EmptyNote,
+  Input,
   Notice,
   Select,
   linkClasses,
 } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { cn } from '@/lib/cn';
-import { setProjectMemberAction } from '../../actions';
+import { decideProjectJoinAction, setProjectMemberAction } from '../../actions';
 import { NotMigrated, ProjectHeader } from '../../work-ui';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,7 +51,13 @@ export default async function ProjectPeoplePage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ error?: string; notice?: string; person?: string; role?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    notice?: string;
+    person?: string;
+    role?: string;
+    find?: string;
+  }>;
 }) {
   const [{ projectId }, search, user] = await Promise.all([params, searchParams, requireUser()]);
   const memberships = await currentMemberships(user.id);
@@ -86,10 +94,11 @@ export default async function ProjectPeoplePage({
   );
   if (!migrated) return shell(<NotMigrated />);
 
-  const [members, team, tracking] = await Promise.all([
+  const [members, team, tracking, joinRequests] = await Promise.all([
     listProjectMembers(t, projectId),
     myRole === 'reviewer' ? Promise.resolve([]) : listMembers(t),
     myRole === 'reviewer' ? Promise.resolve([]) : projectTracking(t, projectId),
+    listProjectJoinRequests(t, user.id, projectId),
   ]);
 
   // The owner tracks everyone (filterable by role); an admin tracks the reviewers.
@@ -110,11 +119,58 @@ export default async function ProjectPeoplePage({
   const inProject = new Set(members.map((m) => m.user_id));
   const candidates = team.filter((m) => m.role !== 'owner' && !inProject.has(m.user_id));
   const label = (m: { name: string | null; email: string | null }) => m.name ?? m.email ?? 'Member';
+  // Find a team member by the name they set (or their email) to add them.
+  const find = (search.find ?? '').trim().slice(0, 60);
+  const needle = find.toLowerCase();
+  const found = find
+    ? candidates
+        .filter((m) => `${m.name ?? ''} ${m.email ?? ''}`.toLowerCase().includes(needle))
+        .slice(0, 10)
+    : [];
 
   return shell(
     <div className="space-y-6">
       {search.error ? <Notice tone="error">{search.error}</Notice> : null}
       {search.notice ? <Notice tone="success">{search.notice}</Notice> : null}
+
+      {joinRequests.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Asking to join{' '}
+              <span className="font-normal text-muted-foreground">({joinRequests.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-rule text-sm">
+              {joinRequests.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-medium">{label(r)}</span>
+                    {r.name && r.email ? (
+                      <span className="text-muted-foreground"> · {r.email}</span>
+                    ) : null}
+                  </span>
+                  {(['approve', 'reject'] as const).map((decision) => (
+                    <form key={decision} action={decideProjectJoinAction}>
+                      <input type="hidden" name="projectId" value={projectId} />
+                      <input type="hidden" name="requestId" value={r.id} />
+                      <input type="hidden" name="decision" value={decision} />
+                      <SubmitButton
+                        size="sm"
+                        variant={decision === 'approve' ? 'outline' : 'ghost'}
+                        pendingLabel="…"
+                      >
+                        {decision === 'approve' ? 'Add as reviewer' : 'Turn down'}
+                      </SubmitButton>
+                    </form>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card className="overflow-hidden">
@@ -192,7 +248,57 @@ export default async function ProjectPeoplePage({
                 first.
               </p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {candidates.length > 0 ? (
+                <div className="space-y-2">
+                  <form method="get" role="search" className="flex gap-2">
+                    <Input
+                      type="search"
+                      name="find"
+                      defaultValue={find}
+                      maxLength={60}
+                      aria-label="Find a team member by name"
+                      placeholder="Find by name or email"
+                      autoComplete="off"
+                    />
+                    <SubmitButton variant="outline" pendingLabel="…">
+                      Find
+                    </SubmitButton>
+                  </form>
+                  {find ? (
+                    found.length === 0 ? (
+                      <EmptyNote>Nobody on the team matches “{find}”.</EmptyNote>
+                    ) : (
+                      <ul className="divide-y divide-rule text-sm">
+                        {found.map((m) => (
+                          <li key={m.user_id} className="flex flex-wrap items-center gap-2 py-2">
+                            <span className="min-w-0 flex-1 truncate">
+                              <span className="font-medium">{label(m)}</span>
+                              {m.name && m.email ? (
+                                <span className="text-muted-foreground"> · {m.email}</span>
+                              ) : null}
+                            </span>
+                            {myRole === 'owner' ? (
+                              <MemberForm
+                                projectId={projectId}
+                                userId={m.user_id}
+                                role="admin"
+                                label="Add as admin"
+                              />
+                            ) : null}
+                            <MemberForm
+                              projectId={projectId}
+                              userId={m.user_id}
+                              role="reviewer"
+                              label="Add as reviewer"
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
               {candidates.length === 0 ? (
                 <EmptyNote>Everyone on the team is already in this project.</EmptyNote>
               ) : (

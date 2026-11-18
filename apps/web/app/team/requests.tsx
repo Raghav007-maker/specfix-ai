@@ -8,12 +8,19 @@ import {
   Input,
 } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
-import type { JoinRequestRow, MyRequestRow, ProjectRequestRow, TeamHit } from '@/lib/repos';
+import type {
+  JoinRequestRow,
+  JoinableProjectRow,
+  MyRequestRow,
+  ProjectRequestRow,
+  TeamHit,
+} from '@/lib/repos';
 import {
   decideJoinAction,
   decideProjectAction,
   requestJoinAction,
   requestProjectAction,
+  requestProjectJoinAction,
 } from './actions';
 
 const WHEN = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
@@ -197,6 +204,39 @@ export function RequestProject({ mine }: { mine: ProjectRequestRow[] }) {
             ))}
           </ul>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** A team member: projects of this workspace they are not in, to ask the project admin. */
+export function JoinProjects({ projects }: { projects: JoinableProjectRow[] }) {
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="text-base">Join a project</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Ask to join a project of this team. Its admin decides; you join as a reviewer.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y divide-rule text-sm">
+          {projects.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 py-2">
+              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+              {p.requested ? (
+                <span className="text-xs text-muted-foreground">Request sent</span>
+              ) : (
+                <form action={requestProjectJoinAction}>
+                  <input type="hidden" name="projectId" value={p.id} />
+                  <SubmitButton size="sm" variant="outline" pendingLabel="Sending…">
+                    Ask to join
+                  </SubmitButton>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
