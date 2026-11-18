@@ -61,9 +61,10 @@ export const getUser = cache(async (): Promise<User | null> => {
   return session.user;
 });
 
-/** As getUser, but sends anonymous visitors to the login page. */
-export async function requireUser(): Promise<User> {
+/** As getUser, but sends anonymous visitors to the landing page (or `signedOutTo`). */
+export async function requireUser(signedOutTo: '/' | '/login' = '/'): Promise<User> {
   const user = await getUser();
-  if (!user) redirect('/login');
+  // Pages send a signed-out visitor to the landing page; OAuth routes go straight to sign-in.
+  if (!user) redirect(signedOutTo);
   return user;
 }

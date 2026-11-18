@@ -56,8 +56,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     // Azure's proxy, so build it from the Host the browser sent (Azure only routes its own hosts).
     const host = request.headers.get('host');
     const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
+    // A visitor who follows a link without a session sees the landing page, not a bare login
+    // form; only the second sign-in step goes straight to /login.
+    const target = request.nextUrl.pathname.startsWith('/login') ? '/login' : '/';
     const toLogin = NextResponse.redirect(
-      host ? new URL('/login', `${proto}://${host}`) : new URL('/login', request.url)
+      host ? new URL(target, `${proto}://${host}`) : new URL(target, request.url)
     );
     // Carry any cookie the refresh just cleared, so a dead session does not linger.
     for (const cookie of response.cookies.getAll()) toLogin.cookies.set(cookie);

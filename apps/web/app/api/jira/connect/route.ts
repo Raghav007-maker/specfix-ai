@@ -11,7 +11,7 @@ import { JIRA_STATE_COOKIE, jiraConfig, jiraReady, stateKey } from '@/lib/jira';
  * browser that started the consent can complete it (see the callback).
  */
 export async function GET(request: NextRequest) {
-  const user = await requireUser();
+  const user = await requireUser('/login');
   const tenant = await requireTenant(user.id);
 
   const back = (error: string) =>

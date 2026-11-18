@@ -7,7 +7,7 @@ import { normalizeTotpCode } from '@specfix/shared';
 import { RateLimiter } from '@/lib/repos';
 import { createClient } from '@/lib/supabase/server';
 import { getSession } from '@/lib/session';
-import { appOrigin, googleSignInEnabled } from '@/lib/auth';
+import { appOrigin, captchaSiteKey, googleSignInEnabled } from '@/lib/auth';
 
 const TOO_MANY = 'Too many attempts. Please wait a few minutes and try again.';
 
@@ -21,6 +21,18 @@ const secondStepByIp = new RateLimiter('2fa-ip', 20, 15 * 60_000);
 
 /** Emails over 254 chars are invalid; Supabase rejects passwords over 72. Refused without a call. */
 const tooLong = (email: string, password: string) => email.length > 254 || password.length > 72;
+
+/**
+ * The Turnstile token the form carries, as Supabase's `captchaToken` option. Undefined when the
+ * check is off; when it is on but the form has no token, the caller is sent back without a call.
+ */
+function captchaOptions(formData: FormData): { captchaToken?: string } | null {
+  if (!captchaSiteKey()) return {};
+  const token = String(formData.get('cf-turnstile-response') ?? '');
+  return token && token.length <= 4096 ? { captchaToken: token } : null;
+}
+
+const NO_CAPTCHA = 'Please complete the human check and try again.';
 
 /** The caller's IP, as set by the proxy in front (Vercel, nginx). A server exposed directly
  * lets clients spoof these headers, so the per-email limit is what still holds then. */
@@ -65,9 +77,12 @@ export async function signIn(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
+  const captcha = captchaOptions(formData);
   let reason: string | null = null;
   if (tooLong(email, password)) {
     reason = 'Incorrect email or password.';
+  } else if (!captcha) {
+    reason = NO_CAPTCHA;
   } else if (!(
     (await signInByIp.take(await clientIp())) && (await signInByEmail.take(email.toLowerCase()))
   )) {
@@ -75,7 +90,7 @@ export async function signIn(formData: FormData): Promise<void> {
   } else {
     try {
       const supabase = await createClient();
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password, options: captcha });
       if (error) {
         // Server-side diagnostics: enough to debug, with no email or password in the log.
         console.error('[auth] sign-in failed:', error.name, error.status ?? 0, error.message);
@@ -106,13 +121,15 @@ export async function signUp(formData: FormData): Promise<void> {
   if (tooLong(email, password)) {
     redirect(`/login?error=${encodeURIComponent('Use a shorter email or password.')}`);
   }
+  const captcha = captchaOptions(formData);
+  if (!captcha) redirect(`/login?mode=sign-up&error=${encodeURIComponent(NO_CAPTCHA)}`);
   if (!(await signUpByIp.take(await clientIp())))
     redirect(`/login?error=${encodeURIComponent(TOO_MANY)}`);
 
   let destination = '/';
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: captcha });
     if (error) {
       console.error('[auth] sign-up failed:', error.name, error.status ?? 0, error.message);
       destination = `/login?error=${encodeURIComponent(friendlyAuthMessage(error, 'sign-up'))}`;

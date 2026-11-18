@@ -11,7 +11,7 @@ import { GITHUB_STATE_COOKIE, githubConfig, githubReady, githubStateKey } from '
  * /api/github, so only the browser that started the install can complete it.
  */
 export async function GET() {
-  const user = await requireUser();
+  const user = await requireUser('/login');
   const tenant = await requireTenant(user.id);
 
   const back = (error: string) =>
