@@ -300,7 +300,11 @@ export default async function ProjectPeoplePage({
                 </div>
               ) : null}
               {candidates.length === 0 ? (
-                <EmptyNote>Everyone on the team is already in this project.</EmptyNote>
+                <EmptyNote>
+                  {team.some((m) => m.role !== 'owner')
+                    ? 'Everyone on the team is already in this project.'
+                    : 'No one else is on the team yet. Add people on the Team page first.'}
+                </EmptyNote>
               ) : (
                 <form action={setProjectMemberAction} className="space-y-3">
                   <input type="hidden" name="projectId" value={projectId} />

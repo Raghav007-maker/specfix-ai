@@ -19,3 +19,7 @@ fixtures/eval-runs/scratch/
 # Embedding backfill spool (packages/db/scripts/embed-spool.ts): tenant ticket text,
 # vectors and call records from a run whose database write failed. Never commit.
 .embed-spool/
+
+# Azure publish profiles hold deploy credentials.
+*.PublishSettings
+*.publishsettings
