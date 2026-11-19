@@ -1,11 +1,11 @@
 /**
  * The normalized ticket shape. Every TicketSource produces this, so nothing
  * downstream of ingestion knows or cares whether a ticket came from a file or
- * from Jira.
+ * from a portal task.
  */
 import { z } from 'zod';
 
-export const TICKET_SOURCE_TYPES = ['file', 'jira'] as const;
+export const TICKET_SOURCE_TYPES = ['file', 'portal'] as const;
 export const TicketSourceTypeSchema = z.enum(TICKET_SOURCE_TYPES);
 export type TicketSourceType = z.infer<typeof TicketSourceTypeSchema>;
 
@@ -15,7 +15,7 @@ export const NormalizedTicketSchema = z.object({
   /** Human-facing key, e.g. "PAY-142". Falls back to externalId. */
   externalKey: z.string().min(1),
   title: z.string().min(1),
-  /** Plain text. Jira's ADF JSON is flattened to this by packages/ingest/src/adf.ts. */
+  /** Plain text. */
   descriptionText: z.string(),
   /**
    * Acceptance criteria pulled out separately when the source distinguishes

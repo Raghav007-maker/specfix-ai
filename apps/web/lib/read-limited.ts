@@ -3,7 +3,7 @@ import 'server-only';
 /**
  * A request body as text, or null as soon as it exceeds `limit` bytes.
  *
- * For the machine-to-machine endpoints (Jira and GitHub webhooks, CI results), whose
+ * For the machine-to-machine endpoints (GitHub and Razorpay webhooks, CI results), whose
  * callers are untrusted: a chunked upload has no Content-Length to check, and
  * `request.json()` / `request.text()` would buffer the whole body before any size check
  * could run.

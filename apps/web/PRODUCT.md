@@ -9,7 +9,7 @@ web
 ## Users
 
 **Primary: the product manager.** A PM on an ordinary software team that writes requirements as
-Jira tickets. Before a ticket goes to development, they open SpecFix to see what the model found
+stories and tasks in SpecFix itself. Before a ticket goes to development, they open SpecFix to see what the model found
 ambiguous or missing, decide on every surviving flag (accept, edit, dismiss), and sign the ticket
 off as ready for development.
 
@@ -36,7 +36,7 @@ once development starts. The plan also tracks time-to-ready per ticket.
 
 ## Positioning
 
-A lightweight, Jira-native requirements check, built and priced for ordinary software teams
+A lightweight project tracker with a built-in requirements check, built and priced for ordinary software teams
 rather than regulated-industry systems engineering (the space of tools like QVscribe and IBM's
 Requirements Quality Assistant).
 
@@ -46,12 +46,12 @@ What it does differently:
   reverse.
 - An Adversarial Critic pass removes false alarms before a reviewer sees them.
 - Every AI-generated artifact sits behind a human decision. Nothing auto-resolves.
-- It writes to Jira exactly once, at PM sign-off.
+- Work is planned, reviewed and tracked in one place: no export to or import from another tracker.
 
 ## Operating Context
 
-- **Source of tickets:** Jira (title, description, acceptance criteria), pulled on demand or by
-  webhook. The repo also ingests from files.
+- **Source of tickets:** stories and tasks written in SpecFix (title, description, acceptance
+  criteria), sent for spec review from the task page. The repo also ingests from files.
 - **Flow:** review queue → ticket → lock the blind gap list → Review tab (flags) → PM sign-off →
   Specs tab (scenarios and scaffolds) → download scaffold. An optional Conversation tab resolves
   flags one at a time with an agent instead of the form.
@@ -68,7 +68,7 @@ What it does differently:
 - Public landing page for signed-out visitors; the review queue for signed-in users.
 - Ticket ingestion, LLM ambiguity analysis, and the Adversarial Critic pass.
 - Review dashboard: per-flag accept / edit / dismiss / reopen, with an audit trail.
-- Single Jira write-back at sign-off.
+- Sign-off recorded on the ticket and its task.
 - Phase 2: Gherkin scenario generation, deterministic Playwright scaffolds, and a
   requirement → scenario → test traceability graph.
 - Conversational resolution agent, behind `SPECFIX_RESOLUTION_AGENT=on`: it asks about one open
@@ -119,5 +119,5 @@ What it does differently:
 3. **Honest numbers.** Never present a metric without the context that makes it meaningful.
 4. **The ticket is the record.** It reflects what was agreed at sign-off. SpecFix does not keep
    rewriting it to match the code.
-5. **Built for ordinary teams.** Lightweight, fast, and fitting the PM's existing Jira workflow
+5. **Built for ordinary teams.** Lightweight, fast, and fitting a team's existing board-and-sprint workflow
    rather than an enterprise systems-engineering process.

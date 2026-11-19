@@ -7,7 +7,7 @@ import { GITHUB_STATE_COOKIE, githubConfig, githubReady, githubStateKey } from '
 
 /**
  * Starts "Connect GitHub": sends an owner or admin to the app's install page. As with
- * /api/jira/connect, the signed state is also set as an httpOnly cookie scoped to
+ * other OAuth flows, the signed state is also set as an httpOnly cookie scoped to
  * /api/github, so only the browser that started the install can complete it.
  */
 export async function GET() {

@@ -1,5 +1,5 @@
 /**
- * Encryption at rest for third-party credentials (Jira OAuth tokens).
+ * Encryption at rest for third-party credentials (GitHub installation tokens).
  *
  * AES-256-GCM with a key from TOKEN_ENCRYPTION_KEY (32 bytes, base64). Every
  * ciphertext is bound to a context string through GCM's additional authenticated

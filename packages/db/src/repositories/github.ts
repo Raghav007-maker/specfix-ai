@@ -20,7 +20,7 @@ import type { PoolClient, QueryResultRow } from 'pg';
 import { getPool, query, tx, type TenantId } from '../client.ts';
 import { decryptSecret, encryptSecret, tokenKeyId } from '../crypto.ts';
 import { enqueueJob } from './jobs.ts';
-import { JiraConnectionError, requireTenantAdmin } from './jira.ts';
+import { AnalysisError, requireTenantAdmin } from './analysis-batch.ts';
 
 export class GithubConnectionError extends Error {}
 
@@ -38,7 +38,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function requireGithubAdmin(client: PoolClient, tenantId: TenantId, actorId: string) {
   await requireTenantAdmin(client, tenantId, actorId).catch((error) => {
-    throw error instanceof JiraConnectionError
+    throw error instanceof AnalysisError
       ? new GithubConnectionError('Only an owner or admin can manage the GitHub connection.')
       : error;
   });

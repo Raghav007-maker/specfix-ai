@@ -3,7 +3,7 @@
  *
  * The version behaviour is the interesting part. Ingesting a ticket whose
  * analyzable text has not changed is a no-op that returns the existing version,
- * which is how a Jira webhook firing on an assignee change avoids burning an
+ * which is how re-sending a task whose only change is its assignee avoids burning an
  * analysis run. When the text *has* changed, a new version is created and the
  * previous version's unresolved and resolved flags are marked stale — they were
  * decided against text that no longer exists.
@@ -45,14 +45,23 @@ export async function ingestTicket(
   projectId: string,
   ticket: NormalizedTicket
 ): Promise<IngestResult> {
+  return tx((client) => ingestTicketWith(client, tenantId, projectId, ticket));
+}
+
+/** The upsert behind ingestTicket, inside the caller's transaction. */
+export async function ingestTicketWith(
+  client: PoolClient,
+  tenantId: TenantId,
+  projectId: string,
+  ticket: NormalizedTicket
+): Promise<IngestResult> {
   const contentHash = ticketContentHash({
     externalKey: ticket.externalKey,
     title: ticket.title,
     descriptionText: ticket.descriptionText,
     acceptanceCriteriaText: ticket.acceptanceCriteriaText,
   });
-
-  return tx(async (client) => {
+  {
     const [ticketRow] = await rows<TicketRow>(
       client,
       `insert into tickets (
@@ -180,7 +189,7 @@ export async function ingestTicket(
       staledScenarioCount: staledScenarios.length,
       staledScaffoldCount: staledScaffolds.length,
     };
-  });
+  }
 }
 
 export async function listTicketsForProject(

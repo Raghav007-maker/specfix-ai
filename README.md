@@ -12,7 +12,7 @@ tests they came from, and a team with clear roles.
 
 ## What it does
 
-- **Spec review** — tickets come in from Jira or a file. The model lists what a ticket leaves
+- **Spec review** — a story or task written in SpecFix is sent for review from its page. The model lists what a ticket leaves
   unsaid, an Adversarial Critic drops false alarms, and a person accepts, edits or dismisses
   every flag. The reviewer writes their own gaps first, before seeing the model's (blind-first).
 - **Specs and tests** — approved acceptance criteria become Gherkin scenarios and Playwright
@@ -36,7 +36,7 @@ tests they came from, and a team with clear roles.
 - **Sign-in** — email and password or Google, optional two-step verification, and a Cloudflare
   Turnstile "verify you are human" check. Signed-out visitors opening any app link see the
   landing page.
-- **Integrations** — Jira (OAuth, webhooks, one write-back at sign-off), a GitHub App, and
+- **Integrations** — a GitHub App (pull requests linked by task key, an acceptance check), and
   payments for plans (Razorpay, UPI).
 
 ### Roles
@@ -87,8 +87,8 @@ form dashboard. Every generated artifact keeps the Phase-1 human review gate. Se
 
 Out of scope (Phase 3+): PR-vs-spec verification, hard merge gating, Confluence, doc auto-sync,
 autonomous or multi-agent workflows, non-English tickets, attachments and images, ticket
-comments as analysis input, compliance certification. Writing to Jira is limited to a single
-event; see rule 3 below.
+comments as analysis input, compliance certification. Tickets are written in SpecFix; there is
+no Jira import or write-back (see rule 3 below).
 
 ## Conversational resolution agent (Phase 2, Milestone F — optional)
 
@@ -128,9 +128,9 @@ packages/compiler Spec Compiler: Gherkin generation (LLM) + deterministic Playwr
 packages/agent    Conversational resolution agent (optional): one turn of a chat about one
                   flag. Returns data only, like core.
 packages/db       SQL migrations and the tenant-scoped repository layer
-packages/ingest   TicketSource interface, FileSource, JiraSource + ADF normalizer
-packages/sync     Jira and GitHub sync, the queue worker's jobs, notifications, email,
-                  and the single Jira write-back (writeback.ts)
+packages/ingest   TicketSource interface, FileSource, GitHub App client, CI report parser
+packages/sync     GitHub sync, the queue worker's jobs, analysis batches, notifications,
+                  email
 packages/eval     CLI: gold sets, flag matching, precision/recall, the random-pruning
                   control, report diffing
 apps/web          Next.js app: landing page, review dashboard, projects, team, settings
@@ -258,11 +258,11 @@ precision is always reported beside a random-pruning control and its p-value
    delimiters. Never concatenated into a system prompt. This applies to the Critic pass too:
    the candidate flags it reviews are model output derived from ticket text, so they are
    delimiter-neutralized on the way in exactly as the ticket is.
-3. **Exactly one write to Jira, at PM sign-off.** When the PM has resolved every flag and marks
-   the ticket ready for development, SpecFix writes the disambiguated acceptance criteria back
-   once. Nothing else writes to Jira — not a developer's commit, not a merged PR, not a feature
-   built beyond the ticket's scope. A ticket that drifts from the shipped code is a
-   conversation for the team to have, not a field for a tool to overwrite.
+3. **Sign-off stays in SpecFix.** When the PM has resolved every flag and marks the ticket ready
+   for development, the decision lives on the ticket and its task. No tool rewrites a ticket
+   from a developer's commit, a merged PR, or a feature built beyond its scope. A ticket that
+   drifts from the shipped code is a conversation for the team to have, not a field for a tool
+   to overwrite.
 4. **Every tenant query goes through `packages/db` repositories** whose first argument is
    `tenantId`. The worker uses the service-role key, which bypasses RLS — so RLS is
    defense-in-depth, not the isolation mechanism. No raw database clients in `apps/*`.

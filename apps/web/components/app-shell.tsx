@@ -72,7 +72,7 @@ function settingsLinks(appOwner: boolean, payer: boolean) {
       key: 'integrations' as const,
       href: '/settings/integrations',
       label: 'Integrations',
-      note: 'Jira, GitHub and CI',
+      note: 'GitHub and CI',
       icon: Plug,
     },
     ...(payer

@@ -5,6 +5,9 @@ import { PublicLanding } from '@/components/public-pages';
 import { requireTenant, currentMemberships } from '@/lib/tenant';
 import {
   activeSprintSummaries,
+  countAnalysisCandidates,
+  latestAnalysisJob,
+  tenantTokenBudget,
   inProjects,
   listAssignedWorkItems,
   listJoinableProjects,
@@ -22,6 +25,8 @@ import { loadWorkspaceDashboard, profileOf } from '@/lib/dashboard';
 import type { QueueItem } from '@/components/playground/dashboard-data';
 import { switchTenant, createProjectForCurrentTenant } from './actions';
 import { AppShell } from '@/components/app-shell';
+import { AnalysisPanel } from '@/components/analysis-panel';
+import { analyzeBatchLimit, estimateAnalysisCost } from '@specfix/sync';
 import { JoinProjects } from './team/requests';
 import {
   Button,
@@ -71,14 +76,14 @@ const when = (d: Date) =>
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; error?: string; tab?: string }>;
+  searchParams: Promise<{ project?: string; error?: string; notice?: string; tab?: string }>;
 }) {
   // Signed-out visitors get the public landing page; signed-in users get their work. Every
   // existing redirect to "/" comes from a signed-in flow, so it still lands here.
   const user = await getUser();
   if (!user) return <PublicLanding />;
 
-  const [memberships, { project: projectParam, error, tab: tabParam }] = await Promise.all([
+  const [memberships, { project: projectParam, error, notice, tab: tabParam }] = await Promise.all([
     currentMemberships(user.id),
     searchParams,
   ]);
@@ -123,6 +128,17 @@ export default async function HomePage({
   const ready = data.queue.filter((r) => r.ready).length;
   const overdueMine = assigned.filter((task) => task.overdue).length;
   const canCreate = tenant.role === 'owner';
+  const isAdmin = tenant.role === 'owner' || tenant.role === 'admin';
+  // The analysis panel shows only on one project's spec queue.
+  const analysis =
+    activeProject && tab === 'reviews'
+      ? await Promise.all([
+          countAnalysisCandidates(t, activeProject.id),
+          latestAnalysisJob(t, activeProject.id),
+          estimateAnalysisCost(t, analyzeBatchLimit()).catch(() => null),
+          tenantTokenBudget(t),
+        ])
+      : null;
   const showAgent = Boolean(agent) && data.agent.state === 'ready';
 
   const tabLink = (key: Tab, label: string, count?: number) => {
@@ -196,6 +212,11 @@ export default async function HomePage({
       {error ? (
         <Notice tone="error" className="mb-6">
           {error}
+        </Notice>
+      ) : null}
+      {notice ? (
+        <Notice tone="success" className="mb-6">
+          {notice}
         </Notice>
       ) : null}
 
@@ -351,6 +372,17 @@ export default async function HomePage({
 
               {tab === 'reviews' ? (
                 <>
+                  {activeProject && analysis ? (
+                    <AnalysisPanel
+                      projectId={activeProject.id}
+                      candidates={analysis[0]}
+                      job={analysis[1]}
+                      estimate={analysis[2]}
+                      budget={analysis[3]}
+                      batchLimit={analyzeBatchLimit()}
+                      isAdmin={isAdmin}
+                    />
+                  ) : null}
                   {activeProject ? (
                     <p className="mb-3 text-sm text-muted-foreground">
                       Spec tickets of {activeProject.name}.{' '}
@@ -361,7 +393,7 @@ export default async function HomePage({
                   ) : null}
                   {data.queue.length === 0 ? (
                     <EmptyNote>
-                      No spec tickets yet. Ingest tickets into a project to start reviewing.
+                      No spec tickets yet. Open a story or task and send it for spec review.
                     </EmptyNote>
                   ) : (
                     <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-border bg-sheet">

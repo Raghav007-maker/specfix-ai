@@ -19,15 +19,13 @@ import {
   type ReadinessTimelineRow,
   type ReviewerGapRow,
   type TicketDecisionRow,
-  currentWritebacks,
-  type WritebackRow,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
 import { TicketTabs } from '@/components/ticket-tabs';
 import { EmptyNote, Notice, Pill, SectionHeading } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { buildManuscript } from '@/lib/manuscript';
-import { beginReview, retryWritebackAction } from './actions';
+import { beginReview } from './actions';
 import {
   AuditTrail,
   BlindGapStage,
@@ -104,10 +102,7 @@ export default async function TicketPage({
     gaps = await listGaps(tenant.tenant_id, session.id);
   }
 
-  const [writebacks, pulls] = await Promise.all([
-    locked ? currentWritebacks(tenant.tenant_id, ticket.id) : Promise.resolve([]),
-    pullRequestsForTicket(tenant.tenant_id, ticket.id),
-  ]);
+  const pulls = await pullRequestsForTicket(tenant.tenant_id, ticket.id);
   const openFlags = flags.filter((f) => f.status === 'open').length;
   const decided = flags.length - openFlags;
   const matched = gaps.filter((g) => g.matched_flag_id !== null).length;
@@ -209,8 +204,6 @@ export default async function TicketPage({
         </Notice>
       ) : null}
 
-      {ready ? <JiraWritebackStatus ticketId={ticket.id} rows={writebacks} /> : null}
-
       {pulls.length > 0 ? <LinkedPulls ticketId={ticket.id} pulls={pulls} /> : null}
 
       {!version ? (
@@ -271,38 +264,6 @@ function StartReview() {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
-/** Whether the sign-off reached Jira, with a retry when it did not. */
-function JiraWritebackStatus({ ticketId, rows }: { ticketId: string; rows: WritebackRow[] }) {
-  if (rows.length === 0) return null;
-  const failed = rows.filter((r) => r.status === 'failed');
-  if (failed.length > 0) {
-    return (
-      <Notice tone="warning" className="mb-6" title="Jira was not updated">
-        <p>{failed[0]!.error}</p>
-        <form action={retryWritebackAction} className="mt-2">
-          <input type="hidden" name="ticketId" value={ticketId} />
-          <SubmitButton size="sm" variant="outline" pendingLabel="Retrying…">
-            Retry Jira update
-          </SubmitButton>
-        </form>
-      </Notice>
-    );
-  }
-  const done = rows.filter((r) => r.status === 'done').map((r) => r.kind);
-  if (done.length === 0) return null;
-  return (
-    <p className="mb-6 text-sm text-muted-foreground">
-      Written to Jira:{' '}
-      {done
-        .map((k) =>
-          k === 'comment' ? 'clarified acceptance criteria comment' : 'specfix-ready label'
-        )
-        .join(' and ')}
-      .
-    </p>
-  );
 }
 
 /** The PRs that name this ticket, one line; the Specs tab has their CI runs and checks. */

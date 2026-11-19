@@ -1,6 +1,6 @@
 /**
  * GitHub App pure logic: the RS256 app JWT, config parsing, webhook signature checks,
- * delivery parsing, Jira-key linking, the acceptance verdict, the PR comment, and the
+ * delivery parsing, task-key linking, the acceptance verdict, the PR comment, and the
  * REST client's input validation and error hygiene (against a fake fetch).
  */
 import { describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ import {
   isGithubDeliveryId,
   isRepoFullName,
   isSafeBranchName,
-  jiraKeysInPullRequest,
+  taskKeysInPullRequest,
   notReadyComment,
   parseGithubDelivery,
   safeRefSegment,
@@ -176,10 +176,10 @@ describe('parseGithubDelivery', () => {
   });
 });
 
-describe('jiraKeysInPullRequest', () => {
+describe('taskKeysInPullRequest', () => {
   it('finds keys in branch (any case), title and body (upper case), first source wins', () => {
     expect(
-      jiraKeysInPullRequest({
+      taskKeysInPullRequest({
         branch: 'feature/cart-12-limit',
         title: 'CART-12 and CART-13: limit quantity',
         body: 'Also fixes PAY-7. Not utf-8 or iso-8859.',
@@ -193,15 +193,15 @@ describe('jiraKeysInPullRequest', () => {
 
   it('normalizes leading zeros and ignores keys glued to other words', () => {
     expect(
-      jiraKeysInPullRequest({ branch: 'specfix/CART-007', title: 'xCART-1 CART-2x', body: null })
+      taskKeysInPullRequest({ branch: 'specfix/CART-007', title: 'xCART-1 CART-2x', body: null })
     ).toEqual([{ key: 'CART-7', source: 'branch' }]);
   });
 
   it('stops at 20 keys and scans only the start of a long body', () => {
     const many = Array.from({ length: 100 }, (_, i) => `KK-${i + 1}`).join(' ');
-    expect(jiraKeysInPullRequest({ branch: 'x', title: '', body: many })).toHaveLength(20);
+    expect(taskKeysInPullRequest({ branch: 'x', title: '', body: many })).toHaveLength(20);
     const late = `${'a '.repeat(20_000)} CART-1`;
-    expect(jiraKeysInPullRequest({ branch: 'x', title: '', body: late })).toEqual([]);
+    expect(taskKeysInPullRequest({ branch: 'x', title: '', body: late })).toEqual([]);
   });
 });
 

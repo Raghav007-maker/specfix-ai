@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   LINK_KINDS,
+  SPEC_REVIEW_TYPES,
   WORK_TYPE_LABELS,
   getProjectDetail,
   getWorkItemByNumber,
@@ -52,6 +53,7 @@ import {
   logTimeAction,
   deleteTaskAction,
   removeLinkAction,
+  sendForSpecReviewAction,
   updateTaskAction,
 } from '../../../actions';
 import {
@@ -210,6 +212,48 @@ export default async function TaskPage({
               </div>
             </CardContent>
           </Card>
+
+          {SPEC_REVIEW_TYPES.includes(task.type) ? (
+            <Card id="spec-review">
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-base">Spec review</CardTitle>
+                  {task.ticket_id ? (
+                    <Pill tone="accent">In review</Pill>
+                  ) : (
+                    <Pill tone="neutral">Not sent</Pill>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {task.ticket_id
+                    ? 'This task is a spec ticket. After you change its description or acceptance criteria, send it again so the review reads the new text.'
+                    : 'Send this task to spec review: its description and acceptance criteria are checked for vague language, missing information and criteria no test could fail.'}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {!task.acceptance_criteria.trim() ? (
+                  <Notice tone="warning">
+                    No acceptance criteria yet. You can still send it, but the review will flag
+                    their absence first.
+                  </Notice>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-3">
+                  <form action={sendForSpecReviewAction}>
+                    {hidden()}
+                    <SubmitButton size="sm" pendingLabel="Sending…">
+                      {task.ticket_id ? 'Send changes for review' : 'Send for spec review'}
+                    </SubmitButton>
+                  </form>
+                  {task.ticket_id ? (
+                    <Link href={`/tickets/${task.ticket_id}`} className={linkClasses}>
+                      Open the review of{' '}
+                      <span className="font-mono text-[13px]">{task.ticket_key}</span>
+                    </Link>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {task.type !== 'subtask' ? (
             <Card id="children">

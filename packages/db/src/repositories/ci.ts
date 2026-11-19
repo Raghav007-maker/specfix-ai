@@ -9,7 +9,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
-import { JiraConnectionError, requireTenantAdmin } from './jira.ts';
+import { AnalysisError, requireTenantAdmin } from './analysis-batch.ts';
 import { enqueueJob } from './jobs.ts';
 
 export class CiTokenError extends Error {}
@@ -34,7 +34,7 @@ function clampDuration(ms: number): number {
 
 async function requireCiAdmin(client: PoolClient, tenantId: TenantId, actorId: string) {
   await requireTenantAdmin(client, tenantId, actorId).catch((error) => {
-    throw error instanceof JiraConnectionError
+    throw error instanceof AnalysisError
       ? new CiTokenError('Only an owner or admin can manage CI tokens.')
       : error;
   });

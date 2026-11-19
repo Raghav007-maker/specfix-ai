@@ -20,8 +20,8 @@ const nextConfig: NextConfig = {
   // and @specfix/core are here because the Specs tab's generate action calls the Spec
   // Compiler inline (there is no worker yet), and @specfix/agent because the Conversation
   // tab's send action runs an agent turn inline for the same reason. @specfix/ingest holds
-  // the Jira OAuth and REST client the integrations settings call, and @specfix/sync the
-  // Jira client wiring and the analysis cost estimate.
+  // the GitHub App client and the CI report parser, and @specfix/sync the analysis cost
+  // estimate.
   transpilePackages: [
     '@specfix/db',
     '@specfix/ingest',

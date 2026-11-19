@@ -1,8 +1,8 @@
 /**
  * The worker loop: claim a job, run its handler, record the outcome.
  *
- * Which failures are retried: a refused Jira grant or a PermanentJobError is not (the
- * job fails at once and says why); anything else — a network blip, a 429 that outlasted
+ * Which failures are retried: a PermanentJobError is not (the job fails at once and says
+ * why), nor a job of a kind this worker no longer runs; anything else — a network blip, a 429 that outlasted
  * the client's own retries, a 5xx — goes back on the queue with backoff until the job's
  * max_attempts is used up. Analysis batches have max_attempts 1, so a failed batch is
  * never re-run without an admin asking again.
@@ -15,28 +15,18 @@ import {
   failJob,
   pendingEmailTenants,
   pruneGithubDeliveries,
-  pruneWebhookDeliveries,
-  tenantsDueForReconcile,
-  tenantsDueForWebhookSync,
   type JobKind,
   type JobRow,
 } from '@specfix/db';
-import { JiraAuthError } from '@specfix/ingest';
 import { runAnalyzeBatch } from './analyze-batch.ts';
-import { runBackfill } from './backfill.ts';
 import { PermanentJobError } from './errors.ts';
 import { runGithubCheckRun, runGithubPrSync, runGithubRepoSync } from './github.ts';
-import { publicBaseUrlFromEnv, runIssueSync, runReconcile, runWebhookSync } from './live.ts';
 import { runNotifyDeliver, runNotifyDigest } from './notify.ts';
 
 export type JobHandler = (job: JobRow) => Promise<object>;
 
 export const defaultHandlers: Record<JobKind, JobHandler> = {
-  jira_backfill: (job) => runBackfill(job),
   analyze_batch: (job) => runAnalyzeBatch(job),
-  jira_issue_sync: (job) => runIssueSync(job),
-  jira_reconcile: (job) => runReconcile(job),
-  jira_webhook_sync: (job) => runWebhookSync(job),
   notify_deliver: (job) => runNotifyDeliver(job),
   notify_digest: (job) => runNotifyDigest(job),
   github_pr_sync: (job) => runGithubPrSync(job),
@@ -45,44 +35,13 @@ export const defaultHandlers: Record<JobKind, JobHandler> = {
 };
 
 /**
- * How often each tenant reconciles. With webhooks (a public HTTPS URL) reconcile only
- * mops up missed deliveries; without them it is the live path, so it runs often.
- */
-export function reconcileIntervalMinutes(
-  env: Record<string, string | undefined> = process.env
-): number {
-  const n = Number(env.JIRA_RECONCILE_MINUTES);
-  if (Number.isFinite(n) && n >= 1) return n;
-  return publicBaseUrlFromEnv(env) ? 15 : 2;
-}
-
-/**
- * Queues the recurring work that has come due: reconciles, and webhook registration or
- * refresh where a public URL exists. Dedupe keys make running this often harmless —
- * a tenant never has two reconciles pending.
+ * Queues the recurring work that has come due: email delivery and the daily digest. Dedupe
+ * keys make running this often harmless — a tenant never has two of either pending.
  */
 export async function scheduleDueJobs(
   env: Record<string, string | undefined> = process.env
 ): Promise<number> {
   let queued = 0;
-  for (const tenantId of await tenantsDueForReconcile(reconcileIntervalMinutes(env))) {
-    const job = await enqueueJob(tenantId, {
-      kind: 'jira_reconcile',
-      dedupeKey: `reconcile:${tenantId}`,
-      maxAttempts: 2,
-    });
-    if (job) queued += 1;
-  }
-  if (publicBaseUrlFromEnv(env)) {
-    for (const tenantId of await tenantsDueForWebhookSync()) {
-      const job = await enqueueJob(tenantId, {
-        kind: 'jira_webhook_sync',
-        dedupeKey: `webhook:${tenantId}`,
-        maxAttempts: 3,
-      });
-      if (job) queued += 1;
-    }
-  }
   for (const tenantId of await pendingEmailTenants()) {
     const job = await enqueueJob(tenantId, {
       kind: 'notify_deliver',
@@ -103,7 +62,6 @@ export async function scheduleDueJobs(
       if (job) queued += 1;
     }
   }
-  await pruneWebhookDeliveries();
   await pruneGithubDeliveries();
   return queued;
 }
@@ -120,11 +78,13 @@ export async function runNextJob(
   log(`start  ${label}`);
   try {
     const handler = handlers[job.kind] ?? defaultHandlers[job.kind];
+    // A job queued by an older build (a removed Jira import) has no handler here any more.
+    if (!handler) throw new PermanentJobError(`No handler for job kind ${job.kind}.`);
     const progress = await handler(job);
     await completeJob(job.tenant_id, job.id, { ...progress });
     log(`done   ${label} ${JSON.stringify(progress)}`);
   } catch (error) {
-    const permanent = error instanceof PermanentJobError || error instanceof JiraAuthError;
+    const permanent = error instanceof PermanentJobError;
     const message = error instanceof Error ? error.message : String(error);
     const status = await failJob(job.tenant_id, job.id, message, { retryable: !permanent });
     log(`${status === 'queued' ? 'retry ' : 'failed'} ${label}: ${message}`);

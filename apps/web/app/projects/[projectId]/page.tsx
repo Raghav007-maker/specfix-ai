@@ -144,12 +144,7 @@ export default async function ProjectSummaryPage({
 
       <p className="-mt-2 mb-6 max-w-3xl whitespace-pre-wrap text-sm text-muted-foreground">
         {project.description || 'No description yet.'}{' '}
-        <span className="text-xs">
-          ·{' '}
-          {project.source_type === 'jira'
-            ? `Spec tickets synced from Jira project ${project.jira_project_key}`
-            : 'Spec tickets from file import'}
-        </span>
+        <span className="text-xs">· Spec tickets come from tasks sent for spec review</span>
       </p>
 
       <section aria-label="Totals" className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

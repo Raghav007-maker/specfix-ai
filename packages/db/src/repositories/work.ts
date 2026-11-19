@@ -2,7 +2,8 @@
  * Project work tracking: tasks (work items), their activity, and project details.
  *
  * Tasks are SpecFix's own and sit beside the spec tickets: a task may point at a ticket
- * or a scenario, but nothing here writes to tickets, scenarios or Jira.
+ * or a scenario. Only sendTaskForSpecReview writes a ticket: the task's own text, as a new
+ * version of its spec ticket.
  *
  * The rules:
  *   - every member (owner, admin, reviewer) can create and edit tasks;
@@ -20,6 +21,7 @@ import { tx, query, type TenantId } from '../client.ts';
 import type { Role } from './members.ts';
 import { projectRoleWith } from './project-members.ts';
 import { notifyMentions, parseMentions } from './chat.ts';
+import { ingestTicketWith } from './tickets.ts';
 
 export const WORK_TYPES = ['task', 'bug', 'story', 'epic', 'subtask'] as const;
 export const WORK_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
@@ -162,6 +164,7 @@ export type RawTaskInput = Partial<
   Record<
     | 'title'
     | 'description'
+    | 'acceptanceCriteria'
     | 'type'
     | 'priority'
     | 'status'
@@ -180,6 +183,8 @@ export type RawTaskInput = Partial<
 export interface TaskFields {
   title: string;
   description: string;
+  /** What "done" means. A task sent for spec review is analyzed against it. */
+  acceptanceCriteria: string;
   type: WorkType;
   priority: WorkPriority;
   status: WorkStatus;
@@ -219,6 +224,10 @@ export function normalizeTaskInput(raw: RawTaskInput): TaskFields {
   if (description.length > 20000) {
     throw new WorkError('A task description can be at most 20,000 characters.');
   }
+  const acceptanceCriteria = (raw.acceptanceCriteria ?? '').replace(/\r\n/g, '\n').trim();
+  if (acceptanceCriteria.length > 20000) {
+    throw new WorkError('Acceptance criteria can be at most 20,000 characters.');
+  }
   const pick = <T extends string>(list: readonly T[], value: string | null | undefined, d: T) => {
     if (!value) return d;
     if (!oneOf(list, value)) throw new WorkError('Choose one of the listed options.');
@@ -227,6 +236,7 @@ export function normalizeTaskInput(raw: RawTaskInput): TaskFields {
   return {
     title,
     description,
+    acceptanceCriteria,
     type: pick(WORK_TYPES, raw.type, 'task'),
     priority: pick(WORK_PRIORITIES, raw.priority, 'medium'),
     status: pick(WORK_STATUSES, raw.status, 'todo'),
@@ -493,6 +503,7 @@ export interface WorkItemRow {
   status: WorkStatus;
   title: string;
   description: string;
+  acceptance_criteria: string;
   assignee_id: string | null;
   assignee_email: string | null;
   reporter_id: string | null;
@@ -522,7 +533,7 @@ export interface WorkItemRow {
 // The joins resolve display names for ids already scoped to this tenant's task row.
 const WORK_ITEM_SELECT = `
   select w.id, w.project_id, w.number, w.type, w.priority, w.status, w.title, w.description,
-         w.assignee_id, au.email as assignee_email, w.reporter_id, ru.email as reporter_email,
+         w.acceptance_criteria, w.assignee_id, au.email as assignee_email, w.reporter_id, ru.email as reporter_email,
          w.due_on::text as due_on,
          (w.due_on is not null and w.due_on < current_date and w.status <> 'done') as overdue,
          w.labels, w.components, w.sprint_id, sp.name as sprint_name, w.rank,
@@ -978,8 +989,8 @@ async function insertWorkItem(
     `insert into work_items
          (tenant_id, project_id, number, type, priority, status, title, description,
           assignee_id, reporter_id, due_on, labels, components, ticket_id, scenario_id,
-          parent_id, story_points, rank)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          parent_id, story_points, acceptance_criteria, rank)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
                (select coalesce(max(rank), 0) + 1 from work_items
                  where tenant_id = $1 and project_id = $2 and status = $6))
        returning id`,
@@ -1001,6 +1012,7 @@ async function insertWorkItem(
       fields.scenarioId,
       fields.parentId,
       fields.storyPoints,
+      fields.acceptanceCriteria,
     ]
   );
   if (!item) throw new Error('work_items insert returned no row');
@@ -1035,6 +1047,7 @@ interface LockedItem {
   number: number;
   title: string;
   description: string;
+  acceptance_criteria: string;
   type: WorkType;
   priority: WorkPriority;
   status: WorkStatus;
@@ -1059,7 +1072,7 @@ async function lockItem(
   } = await client.query<LockedItem>(
     `select id, project_id, number, title, description, type, priority, status, assignee_id,
             due_on::text as due_on, labels, components, ticket_id, scenario_id,
-            parent_id, story_points
+            parent_id, story_points, acceptance_criteria
      from work_items where tenant_id = $1 and id = $2
      for update`,
     [tenantId, itemId]
@@ -1071,6 +1084,7 @@ async function lockItem(
 const fieldsOf = (item: LockedItem): TaskFields => ({
   title: item.title,
   description: item.description,
+  acceptanceCriteria: item.acceptance_criteria,
   type: item.type,
   priority: item.priority,
   status: item.status,
@@ -1121,6 +1135,7 @@ export async function updateWorkItem(
          set title = $3, description = $4, type = $5, priority = $6, status = $7,
              assignee_id = $8, due_on = $9, labels = $10, components = $11, ticket_id = $12,
              scenario_id = $15, parent_id = $16, story_points = $17,
+             acceptance_criteria = $18,
              rank = case when $13 then (select coalesce(max(rank), 0) + 1 from work_items
                                          where tenant_id = $1 and project_id = $14 and status = $7)
                          else rank end,
@@ -1144,6 +1159,7 @@ export async function updateWorkItem(
         fields.scenarioId,
         fields.parentId,
         fields.storyPoints,
+        fields.acceptanceCriteria,
       ]
     );
     for (const change of await describeChanges(client, tenantId, changes)) {
@@ -2515,4 +2531,80 @@ export async function listOpenAssignedWork(tenantId: TenantId): Promise<WorkItem
      limit 2000`,
     [tenantId]
   );
+}
+
+/** Task types that can be sent for spec review: requirements, not containers or fragments. */
+export const SPEC_REVIEW_TYPES: readonly WorkType[] = ['story', 'task', 'bug'];
+
+export interface SpecReviewResult {
+  ticketId: string;
+  key: string;
+  /** False when the task's text has not changed since it was last sent: nothing new to analyze. */
+  isNewVersion: boolean;
+}
+
+/**
+ * Sends a task to spec review: its title, description and acceptance criteria become a spec
+ * ticket (created the first time, a new version when the text changed since), and the task
+ * links to it. The ticket's key is the task's key, so a pull request that names the task
+ * (`feature/cart-12-…`) links to the ticket too. Any member of the task's project may send;
+ * nothing is analyzed until an admin starts a batch.
+ */
+export async function sendTaskForSpecReview(
+  tenantId: TenantId,
+  actorId: string,
+  itemId: string
+): Promise<SpecReviewResult> {
+  return tx(async (client) => {
+    const item = await lockItem(client, tenantId, itemId);
+    await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING);
+    if (!SPEC_REVIEW_TYPES.includes(item.type)) {
+      throw new WorkError(
+        `${aType(item.type)[0]!.toUpperCase()}${aType(item.type).slice(1)} is not reviewed on its own. Send its stories or tasks instead.`
+      );
+    }
+    const {
+      rows: [project],
+    } = await client.query<{ task_key: string | null }>(
+      `select task_key from projects where tenant_id = $1 and id = $2`,
+      [tenantId, item.project_id]
+    );
+    const key = taskKeyOf(project?.task_key ?? null, item.number);
+    const result = await ingestTicketWith(client, tenantId, item.project_id, {
+      externalId: `task:${item.id}`,
+      externalKey: key,
+      title: item.title,
+      descriptionText: item.description,
+      acceptanceCriteriaText: item.acceptance_criteria,
+      raw: { source: 'portal', workItemId: item.id },
+      sourceUpdatedAt: new Date(),
+    });
+    const ticketId = result.ticket.id;
+    // The ticket follows the task: its type decides whether it is analyzed, and a finished
+    // task's ticket leaves the analysis queue.
+    await client.query(
+      `update tickets set issue_type = $3,
+              status_category = case when $4 = 'done' then 'done' else null end
+       where tenant_id = $1 and id = $2`,
+      [tenantId, ticketId, item.type, item.status]
+    );
+    if (item.ticket_id !== ticketId) {
+      await client.query(
+        `update work_items set ticket_id = $3, updated_at = now() where tenant_id = $1 and id = $2`,
+        [tenantId, item.id, ticketId]
+      );
+    }
+    await insertEvent(client, tenantId, {
+      projectId: item.project_id,
+      workItemId: item.id,
+      number: item.number,
+      title: item.title,
+      actorId,
+      kind: 'updated',
+      field: 'specReview',
+      from: null,
+      to: result.isNewVersion ? 'sent for spec review' : 'sent again, unchanged',
+    });
+    return { ticketId, key, isNewVersion: result.isNewVersion };
+  });
 }
