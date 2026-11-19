@@ -99,9 +99,8 @@ export default async function ProjectSettingsPage({
         <CardHeader>
           <CardTitle className="text-base">Project details</CardTitle>
           <p className="text-sm text-muted-foreground">
-            {project.source_type === 'jira'
-              ? `Spec tickets sync from Jira project ${project.jira_project_key}.`
-              : 'Spec tickets come from file import.'}
+            Spec tickets come from this project&rsquo;s tasks: open a story or task and send it for
+            spec review.
           </p>
         </CardHeader>
         <CardContent>

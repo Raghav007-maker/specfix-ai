@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the GitHub side of the loop: finding Jira keys in a pull request,
+ * Pure helpers for the GitHub side of the loop: finding task keys in a pull request,
  * turning CI results into a check-run verdict, and the text SpecFix posts.
  *
  * Everything posted to GitHub is built from SpecFix's own values (ticket keys, counts,
@@ -17,12 +17,12 @@ const MAX_BODY_SCAN = 10_000;
 const KEY = /(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9_]{1,9})-(\d{1,9})(?![A-Za-z0-9])/g;
 
 /**
- * Jira-style keys (PROJ-123) in a PR's branch name, title and body, each with where it
+ * Task keys (PROJ-123) in a PR's branch name, title and body, each with where it
  * was first found. Branches are matched case-insensitively (`feature/cart-12-limit` is
- * CART-12); title and body need the key in upper case, as Jira writes it, so ordinary
+ * CART-12); title and body need the key in upper case, as SpecFix writes it, so ordinary
  * words like "utf-8" in prose do not become keys.
  */
-export function jiraKeysInPullRequest(input: {
+export function taskKeysInPullRequest(input: {
   branch: string;
   title: string;
   body: string | null;

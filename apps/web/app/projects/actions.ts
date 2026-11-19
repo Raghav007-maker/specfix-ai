@@ -31,6 +31,7 @@ import {
   moveWorkItem,
   updateProjectDetails,
   updateWorkItem,
+  sendTaskForSpecReview,
   type RawTaskInput,
 } from '@/lib/repos';
 
@@ -52,6 +53,7 @@ function taskInput(formData: FormData): RawTaskInput {
   const keys = [
     'title',
     'description',
+    'acceptanceCriteria',
     'type',
     'priority',
     'status',
@@ -143,6 +145,26 @@ export async function updateTaskAction(formData: FormData): Promise<void> {
   );
   if ('error' in result) back(here, { error: result.error });
   back(here, { notice: result.ok.length ? 'Saved.' : 'Nothing changed.' });
+}
+
+/**
+ * Sends a task to spec review: its text becomes a spec ticket (or a new version of it). Nothing
+ * is analyzed here; an admin starts analysis from the project's spec queue.
+ */
+export async function sendForSpecReviewAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId');
+  const number = Number(field(formData, 'number'));
+  const here = projectPath(projectId, Number.isSafeInteger(number) ? `/tasks/${number}` : '');
+  const result = await run(() =>
+    sendTaskForSpecReview(tenantId, user.id, field(formData, 'taskId') ?? '')
+  );
+  if ('error' in result) back(here, { error: result.error });
+  back(here, {
+    notice: result.ok.isNewVersion
+      ? `Sent ${result.ok.key} for spec review. An admin can start its analysis from the spec queue.`
+      : `${result.ok.key} has not changed since it was last sent.`,
+  });
 }
 
 export async function deleteTaskAction(formData: FormData): Promise<void> {

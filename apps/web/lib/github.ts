@@ -16,7 +16,7 @@ export function githubConfig(): GithubAppConfig | null {
 
 /**
  * The install state signing key, derived from TOKEN_ENCRYPTION_KEY with its own HKDF
- * label, so it is independent of both the token key and the Jira state key.
+ * label, so it is independent of the token key.
  */
 export function githubStateKey(): Buffer {
   const raw = process.env.TOKEN_ENCRYPTION_KEY;

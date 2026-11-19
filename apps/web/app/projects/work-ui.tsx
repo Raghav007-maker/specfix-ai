@@ -316,6 +316,21 @@ export function TaskFormFields({
           />
         </Field>
       </div>
+      <div className="sm:col-span-2">
+        <Field label="Acceptance criteria" htmlFor={id('acceptanceCriteria')}>
+          <Textarea
+            {...inForm}
+            id={id('acceptanceCriteria')}
+            name="acceptanceCriteria"
+            rows={4}
+            maxLength={20000}
+            placeholder={
+              'One condition per line, e.g.\nGiven a cart over ₹500, when the coupon is applied, then the total drops by 10%.'
+            }
+            defaultValue={task?.acceptance_criteria}
+          />
+        </Field>
+      </div>
     </>
   );
   const details = (
@@ -477,6 +492,7 @@ export function TaskFormFields({
 const FIELD_NAMES: Record<string, string> = {
   title: 'title',
   description: 'description',
+  acceptanceCriteria: 'acceptance criteria',
   type: 'type',
   priority: 'priority',
   status: 'status',
@@ -524,6 +540,8 @@ export function describeEvent(e: WorkEventRow): string {
       const field = e.field ?? '';
       const name = FIELD_NAMES[field] ?? field;
       if (field === 'description') return 'edited the description';
+      if (field === 'acceptanceCriteria') return 'edited the acceptance criteria';
+      if (field === 'specReview') return e.to_value ?? 'sent the task for spec review';
       const show = (v: string | null) => (v === null ? 'none' : (VALUE_LABELS[field]?.[v] ?? v));
       return `changed ${name} from ${show(e.from_value)} to ${show(e.to_value)}`;
     }

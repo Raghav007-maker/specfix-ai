@@ -18,9 +18,9 @@ afterEach(() => {
 
 describe('token encryption', () => {
   it('round-trips under the same context', () => {
-    const sealed = encryptSecret('secret-token', 'jira:t1:read:access');
+    const sealed = encryptSecret('secret-token', 'github:t1:installation');
     expect(sealed.toString('utf8')).not.toContain('secret-token');
-    expect(decryptSecret(sealed, 'jira:t1:read:access', tokenKeyId())).toBe('secret-token');
+    expect(decryptSecret(sealed, 'github:t1:installation', tokenKeyId())).toBe('secret-token');
   });
 
   it('uses a fresh IV every time', () => {
@@ -30,9 +30,9 @@ describe('token encryption', () => {
   });
 
   it('refuses a ciphertext moved to another tenant or grant', () => {
-    const sealed = encryptSecret('secret-token', 'jira:t1:read:access');
-    expect(() => decryptSecret(sealed, 'jira:t2:read:access', tokenKeyId())).toThrow();
-    expect(() => decryptSecret(sealed, 'jira:t1:write:access', tokenKeyId())).toThrow();
+    const sealed = encryptSecret('secret-token', 'github:t1:installation');
+    expect(() => decryptSecret(sealed, 'github:t2:installation', tokenKeyId())).toThrow();
+    expect(() => decryptSecret(sealed, 'github:t1:other', tokenKeyId())).toThrow();
   });
 
   it('refuses a tampered ciphertext', () => {

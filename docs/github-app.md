@@ -6,7 +6,7 @@ and every webhook delivery is signed.
 
 What it does once connected:
 
-- **Links PRs to tickets** by the Jira key (`CART-12`) in the PR's branch name, title or body.
+- **Links PRs to tasks and spec tickets** by the task key (`CART-12`) in the PR's branch name, title or body.
   Branches match in any case (`feature/cart-12-limit`); title and body need the key in upper
   case. Keys are only matched against tickets of the project the repository is mapped to.
 - **Reports acceptance on the PR** as a check run named **"SpecFix acceptance"**
@@ -72,7 +72,7 @@ GITHUB_APP_CLIENT_ID=     # Client ID (Iv1… / Iv23…)
 GITHUB_APP_CLIENT_SECRET= # client secret from step 9
 GITHUB_APP_PRIVATE_KEY=   # the .pem: base64 of the whole file, or the PEM with \n escapes
 GITHUB_WEBHOOK_SECRET=    # the webhook secret from step 5
-TOKEN_ENCRYPTION_KEY=     # already set for Jira; also encrypts cached installation tokens
+TOKEN_ENCRYPTION_KEY=     # encrypts cached installation tokens
 PUBLIC_BASE_URL=          # https origin; used for links in checks and PR comments
 ```
 

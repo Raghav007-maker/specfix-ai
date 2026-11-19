@@ -587,7 +587,7 @@ function TimeToReadyFigures({ rows }: { rows: { hours: number; backfilled: boole
       <p className="mt-3 text-xs text-muted-foreground">
         From ingest to “marked ready”.
         {backfilled
-          ? ` Includes ${backfilled} ${backfilled === 1 ? 'ticket' : 'tickets'} with history backfilled from Jira.`
+          ? ` Includes ${backfilled} ${backfilled === 1 ? 'ticket' : 'tickets'} with backfilled history.`
           : ''}
       </p>
     </>
@@ -684,7 +684,7 @@ function WeekColumns({
         {outlined ? (
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden className="h-[9px] w-[9px] rounded-[2px] border border-positive" />
-            Backfilled from Jira
+            Backfilled history
           </span>
         ) : null}
       </figcaption>

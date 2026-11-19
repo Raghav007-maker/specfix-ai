@@ -2,10 +2,8 @@
  * Ingestion boundary.
  *
  * Everything downstream of this interface sees only NormalizedTicket. That is what
- * lets the analysis core and the eval harness run against local fixtures in week 1
- * while the Jira adapter — OAuth 3LO, ADF flattening, webhook verification — is
- * still weeks away. JiraSource will implement this same interface and nothing else
- * will change.
+ * lets the analysis core and the eval harness run against local fixtures. Portal tasks
+ * reach the same shape through sendTaskForSpecReview.
  */
 import type { NormalizedTicket, TicketSourceType } from '@specfix/shared';
 

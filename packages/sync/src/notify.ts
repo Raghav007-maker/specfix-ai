@@ -34,7 +34,7 @@ export const defaultNotifyDeps = (): NotifyDeps => ({
 const HEADLINE: Record<NotificationKind, (p: Record<string, unknown>) => string> = {
   flags_ready: (p) => `${p.flags ?? 'New'} flag(s) need your decision`,
   flags_stale: (p) =>
-    `The ticket changed in Jira; ${p.staled ?? 'earlier'} decision(s) need another look`,
+    `The ticket's text changed; ${p.staled ?? 'earlier'} decision(s) need another look`,
   signed_off: () => 'Marked ready for development',
   ci_failed: (p) => `${p.failed ?? 'Some'} acceptance scenario(s) failed in CI`,
   task_assigned: (p) => `${typeof p.by === 'string' ? p.by : 'Someone'} assigned you a task`,

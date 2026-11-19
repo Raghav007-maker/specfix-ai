@@ -1,18 +1,15 @@
 /**
- * Workspace plans: Free allows five projects (file or Jira), Pro removes the limit, the app's
+ * Workspace plans: Free allows five projects, Pro removes the limit, the app's
  * own team is exempt, and parallel requests cannot squeeze in a sixth project.
  *
  * The pure rules run everywhere; the database suites are skipped without
  * SPECFIX_TEST_DATABASE_URL, like the other fixture-writing suites.
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { randomBytes } from 'node:crypto';
 import {
   FREE_PROJECT_LIMIT,
   ProjectLimitError,
-  addJiraProject,
   agentAccessFor,
-  addMembership,
   closePool,
   createProject,
   createTenant,
@@ -23,8 +20,6 @@ import {
   planNotice,
   proCta,
   query,
-  saveJiraGrant,
-  setJiraSite,
   setProUntil,
   tenantPlan,
   type TenantPlan,
@@ -189,33 +184,6 @@ describe.skipIf(!hasDatabase)('project limit', () => {
       projectName: 'First',
     });
     expect((await tenantPlan(tenant.id)).projectCount).toBe(1);
-  });
-
-  it('applies to Jira projects too', async () => {
-    process.env.TOKEN_ENCRYPTION_KEY ||= randomBytes(32).toString('base64');
-    const id = await freshTenant('jira', FREE_PROJECT_LIMIT);
-    const [admin] = await query<{ id: string }>(
-      `insert into auth.users (email) values ($1) returning id`,
-      [`${label}-jira-admin@example.test`]
-    );
-    await addMembership(id, admin!.id, 'admin');
-    await saveJiraGrant(id, admin!.id, 'read', {
-      accessToken: 'access',
-      refreshToken: 'refresh',
-      expiresAt: new Date(Date.now() + 3600_000),
-      scopes: ['read:jira-work'],
-    });
-    await setJiraSite(id, admin!.id, {
-      cloudId: `cloud-${label}`,
-      siteUrl: 'https://x.atlassian.net',
-      siteName: 'x',
-    });
-
-    await expect(
-      addJiraProject(id, admin!.id, { projectKey: 'SIX', name: 'Six' })
-    ).rejects.toBeInstanceOf(ProjectLimitError);
-    await addJiraProject(id, admin!.id, { projectKey: 'OWN', name: 'Own' }, { unlimited: true });
-    expect(await listProjects(id)).toHaveLength(FREE_PROJECT_LIMIT + 1);
   });
 
   it('never lets parallel requests squeeze past the limit', async () => {

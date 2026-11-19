@@ -1,7 +1,7 @@
 /**
  * The background job queue (sync_jobs), drained by the worker.
  *
- * Postgres, not Redis (Jira plan D1): a claim is one UPDATE over a SKIP LOCKED
+ * Postgres, not Redis: a claim is one UPDATE over a SKIP LOCKED
  * subquery, so two workers never take the same job, and a job's progress is a row
  * the settings page can read. A claimed job holds a lease; a handler that is still
  * working renews it through checkpointJob, and a worker that dies simply lets it lapse
@@ -14,11 +14,7 @@ import type { PoolClient } from 'pg';
 import { query, type TenantId } from '../client.ts';
 
 export const JOB_KINDS = [
-  'jira_backfill',
   'analyze_batch',
-  'jira_issue_sync',
-  'jira_reconcile',
-  'jira_webhook_sync',
   'notify_deliver',
   'notify_digest',
   'github_pr_sync',

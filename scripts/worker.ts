@@ -1,5 +1,5 @@
 /**
- * Background worker: drains the sync_jobs queue (Jira imports, analysis batches).
+ * Background worker: drains the sync_jobs queue (analysis batches, GitHub sync, email).
  *
  *   npm run worker
  *

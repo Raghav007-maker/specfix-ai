@@ -2,21 +2,21 @@
  * The GitHub side of the loop, run by the worker (and, for "Open PR with scaffolds", by
  * the web app's server action):
  *
- *   github_pr_sync     re-read a PR, link it to tickets by the Jira keys in its branch,
+ *   github_pr_sync     re-read a PR, link it to tickets by the task keys in its branch,
  *                      title or body, keep its one "not ready" comment current, and
  *                      publish the acceptance check if CI already reported on its head.
  *   github_check_run   publish the "SpecFix acceptance" check run for a PR's head commit.
  *   github_repo_sync   refresh the repositories an installation can reach.
  *
  * Token caching and every row lock are @specfix/db's; HTTP is @specfix/ingest's. This
- * module never touches Jira: GitHub writes only.
+ * module writes to GitHub only.
  */
 import {
   GithubAuthError,
   GithubClient,
   createInstallationToken,
   githubAppConfigFromEnv,
-  jiraKeysInPullRequest,
+  taskKeysInPullRequest,
   notReadyComment,
   safeRefSegment,
   summarizeAcceptance,
@@ -39,7 +39,7 @@ import {
   type PullRequestRow,
 } from '@specfix/db';
 import { PermanentJobError } from './errors.ts';
-import { publicBaseUrlFromEnv } from './live.ts';
+import { publicBaseUrlFromEnv } from './env.ts';
 
 export const CHECK_RUN_NAME = 'SpecFix acceptance';
 
@@ -109,7 +109,7 @@ export async function runGithubPrSync(job: JobRow, deps: GithubDeps = {}): Promi
 
   return withToken(job.tenant_id, installationId, async () => {
     const pull = await client.getPullRequest(repo.full_name, number);
-    const keys = jiraKeysInPullRequest({
+    const keys = taskKeysInPullRequest({
       branch: pull.headRef,
       title: pull.title,
       body: pull.body,

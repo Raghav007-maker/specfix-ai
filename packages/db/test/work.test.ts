@@ -80,6 +80,7 @@ describe('task input rules', () => {
     expect(normalizeTaskInput({ title: '  Fix   login ' })).toEqual({
       title: 'Fix login',
       description: '',
+      acceptanceCriteria: '',
       type: 'task',
       priority: 'medium',
       status: 'todo',
@@ -95,6 +96,12 @@ describe('task input rules', () => {
     expect(() => normalizeTaskInput({ title: ' ' })).toThrow(/needs a title/);
     expect(() => normalizeTaskInput({ title: 'x'.repeat(201) })).toThrow(/200/);
     expect(() => normalizeTaskInput({ title: 't', description: 'x'.repeat(20001) })).toThrow();
+    expect(() => normalizeTaskInput({ title: 't', acceptanceCriteria: 'x'.repeat(20001) })).toThrow(
+      /Acceptance criteria/
+    );
+    expect(
+      normalizeTaskInput({ title: 't', acceptanceCriteria: ' a\r\nb ' }).acceptanceCriteria
+    ).toBe('a\nb');
     expect(() => normalizeTaskInput({ title: 't', type: 'incident' })).toThrow(WorkError);
     expect(() => normalizeTaskInput({ title: 't', status: "done' or 1=1" })).toThrow(WorkError);
     expect(() => normalizeTaskInput({ title: 't', assigneeId: 'not-a-uuid' })).toThrow(WorkError);

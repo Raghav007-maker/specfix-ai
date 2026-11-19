@@ -58,12 +58,12 @@ describe.skipIf(!hasDatabase)('job queue under load', () => {
   it('200 concurrent enqueues with one dedupe key leave exactly one pending job', async () => {
     const results = await Promise.all(
       Array.from({ length: 200 }, () =>
-        enqueueJob(tenantId, { kind: 'jira_reconcile', dedupeKey: `reconcile:${tenantId}` })
+        enqueueJob(tenantId, { kind: 'notify_deliver', dedupeKey: `notify:${tenantId}` })
       )
     );
     expect(results.filter(Boolean)).toHaveLength(1);
     const pending = await query(
-      `select 1 from sync_jobs where tenant_id = $1 and kind = 'jira_reconcile' and status = 'queued'`,
+      `select 1 from sync_jobs where tenant_id = $1 and kind = 'notify_deliver' and status = 'queued'`,
       [tenantId]
     );
     expect(pending).toHaveLength(1);

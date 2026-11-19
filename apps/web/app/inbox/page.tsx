@@ -24,7 +24,7 @@ import { markAllReadAction, markReadAction, savePrefsAction } from './actions';
 
 const KIND: Record<NotificationRow['kind'], { label: string; tone: PillTone }> = {
   flags_ready: { label: 'New flags', tone: 'warning' },
-  flags_stale: { label: 'Changed in Jira', tone: 'accent' },
+  flags_stale: { label: 'Ticket changed', tone: 'accent' },
   signed_off: { label: 'Ready for dev', tone: 'positive' },
   ci_failed: { label: 'CI failed', tone: 'negative' },
   task_assigned: { label: 'Assigned to you', tone: 'accent' },
@@ -38,7 +38,7 @@ function describe(n: NotificationRow): string {
     case 'flags_ready':
       return `${p.flags ?? 'New'} flag(s) need a decision.`;
     case 'flags_stale':
-      return `The ticket changed in Jira, so ${p.staled ?? 'earlier'} decision(s) need another look.`;
+      return `The ticket's text changed, so ${p.staled ?? 'earlier'} decision(s) need another look.`;
     case 'signed_off':
       return 'Marked ready for development.';
     case 'ci_failed':

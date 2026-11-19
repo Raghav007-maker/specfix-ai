@@ -6,48 +6,32 @@
  *
  * Opt-in: needs SPECFIX_E2E_URL (e.g. http://localhost:3100) pointing at a server started
  * with DATABASE_URL = the test database, and SPECFIX_TEST_DATABASE_URL for seeding.
- * JIRA_CLIENT_SECRET (from .env) signs webhook JWTs exactly as the server verifies them.
  * GITHUB_WEBHOOK_SECRET, when set for both, enables the GitHub webhook block.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import {
-  addJiraProject,
   addMembership,
   closePool,
   createCiToken,
+  createProject,
   createTenant,
   ingestTicket,
   query,
   saveGithubInstallation,
   recordRazorpayOrder,
-  saveJiraGrant,
   setGithubRepoProject,
-  setJiraSite,
 } from '@specfix/db';
 import { signGithubBody } from '@specfix/ingest';
 
 const BASE = process.env.SPECFIX_E2E_URL?.replace(/\/$/, '');
-const SECRET = process.env.JIRA_CLIENT_SECRET?.trim();
-const enabled = Boolean(BASE && process.env.SPECFIX_TEST_DATABASE_URL && SECRET);
+const enabled = Boolean(BASE && process.env.SPECFIX_TEST_DATABASE_URL);
 const GH_SECRET = process.env.GITHUB_WEBHOOK_SECRET?.trim();
 const RAZORPAY_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
 
 afterAll(async () => {
   if (enabled) await closePool();
 });
-
-function jwt(secret: string, claims: Record<string, unknown> = {}): string {
-  const enc = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
-  const head = enc({ alg: 'HS256', typ: 'JWT' });
-  const body = enc({
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 300,
-    ...claims,
-  });
-  const sig = createHmac('sha256', secret).update(`${head}.${body}`).digest('base64url');
-  return `${head}.${body}.${sig}`;
-}
 
 const ms = () => Number(process.hrtime.bigint() / 1_000_000n);
 function percentile(values: number[], p: number): number {
@@ -59,7 +43,6 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
   const label = `e2e-${Date.now()}`;
   let tenantId: string;
   let projectId: string;
-  let connectionId: string;
   let token: string;
   let ownerId: string;
   let rzpOrder: string;
@@ -76,23 +59,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
     ownerId = user!.id;
     rzpOrder = `order_e2e${Date.now()}`;
     await recordRazorpayOrder(tenantId, user!.id, { period: 'monthly', orderId: rzpOrder });
-    await saveJiraGrant(tenantId, user!.id, 'read', {
-      accessToken: 'a',
-      refreshToken: 'r',
-      expiresAt: new Date(Date.now() + 3600_000),
-      scopes: ['read:jira-work'],
-    });
-    await setJiraSite(tenantId, user!.id, {
-      cloudId: `cloud-${label}`,
-      siteUrl: 'https://e2e.atlassian.net',
-      siteName: 'E2E',
-    });
-    projectId = (await addJiraProject(tenantId, user!.id, { projectKey: 'CART', name: 'Cart' })).id;
-    const [conn] = await query<{ id: string }>(
-      `select id from jira_connections where tenant_id = $1 and grant_kind = 'read'`,
-      [tenantId]
-    );
-    connectionId = conn!.id;
+    projectId = (await createProject(tenantId, { name: 'Cart', sourceType: 'file' })).id;
     token = await createCiToken(tenantId, user!.id, projectId);
 
     const t = await ingestTicket(tenantId, projectId, {
@@ -137,22 +104,6 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       redirect: 'manual',
       ...init,
     });
-  const hook = (body: unknown, headers: Record<string, string> = {}, conn = connectionId) =>
-    fetch(`${BASE}/api/jira/webhook/${conn}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${jwt(SECRET!)}`,
-        'content-type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(body),
-      redirect: 'manual',
-    });
-  const delivery = (issueId: string, site = 'https://e2e.atlassian.net') => ({
-    webhookEvent: 'jira:issue_updated',
-    issue: { id: issueId, key: `CART-${issueId}`, self: `${site}/rest/api/3/issue/${issueId}` },
-  });
-
   describe('pages and auth', () => {
     it('serves the login page', async () => {
       const r = await fetch(`${BASE}/login`, { redirect: 'manual' });
@@ -268,10 +219,13 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       }
     );
 
-    it('refuses /api/jira/connect without a session', async () => {
-      const r = await fetch(`${BASE}/api/jira/connect`, { redirect: 'manual' });
-      expect(r.headers.get('location') ?? '').toMatch(/\/login/);
-    });
+    it.each(['/api/jira/connect', '/api/jira/callback', `/api/jira/webhook/${randomUUID()}`])(
+      'no longer serves the Jira route %s',
+      async (path) => {
+        const r = await fetch(`${BASE}${path}`, { method: 'GET', redirect: 'manual' });
+        expect(r.status).toBe(404);
+      }
+    );
 
     it.each(['/api/github/install', '/api/github/callback?installation_id=1&code=x&state=y'])(
       'refuses %s without a session',
@@ -418,43 +372,6 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
     });
   });
 
-  describe('Jira webhook endpoint', () => {
-    it('rejects no JWT, a JWT signed with another secret, and an expired one', async () => {
-      for (const auth of [
-        '',
-        `Bearer ${jwt('wrong-secret')}`,
-        `Bearer ${jwt(SECRET!, { exp: 1 })}`,
-      ]) {
-        const r = await hook(delivery('100'), { authorization: auth });
-        expect(r.status).toBe(401);
-      }
-    });
-
-    it('404s an unknown connection even with a valid JWT', async () => {
-      expect((await hook(delivery('100'), {}, randomUUID())).status).toBe(404);
-    });
-
-    it('queues one re-read per delivery and drops Jira retries', async () => {
-      const id = `del-${label}`;
-      expect((await hook(delivery('101'), { 'x-atlassian-webhook-identifier': id })).status).toBe(
-        202
-      );
-      expect((await hook(delivery('101'), { 'x-atlassian-webhook-identifier': id })).status).toBe(
-        204
-      );
-      const jobs = await query(
-        `select 1 from sync_jobs where tenant_id = $1 and kind = 'jira_issue_sync' and payload->>'issueId' = '101'`,
-        [tenantId]
-      );
-      expect(jobs).toHaveLength(1);
-    });
-
-    it('ignores a delivery for an issue on another site', async () => {
-      const r = await hook(delivery('102', 'https://other.atlassian.net'));
-      expect(r.status).toBe(204);
-    });
-  });
-
   // Timing-dependent: a slow machine or a reset keep-alive socket can exceed vitest's 5 s.
   describe('load', { timeout: 30_000 }, () => {
     it('200 concurrent CI uploads all succeed, each stored once', async () => {
@@ -487,33 +404,6 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       expect(after[0]!.n - before[0]!.n).toBe(200);
     });
 
-    it('a burst of 300 webhook deliveries for 10 issues leaves one pending re-read per issue', async () => {
-      const latencies: number[] = [];
-      const statuses = await Promise.all(
-        Array.from({ length: 300 }, async (_, i) => {
-          const started = ms();
-          const r = await hook(delivery(String(500 + (i % 10))), {
-            'x-atlassian-webhook-identifier': `burst-${label}-${i}`,
-          });
-          latencies.push(ms() - started);
-          return r.status;
-        })
-      );
-      console.log(
-        `[load] webhook x300: p50=${percentile(latencies, 50)}ms p95=${percentile(latencies, 95)}ms max=${Math.max(...latencies)}ms`
-      );
-      expect(statuses.filter((s) => s !== 202)).toEqual([]);
-      const pending = await query<{ issue: string; n: number }>(
-        `select payload->>'issueId' issue, count(*)::int n from sync_jobs
-         where tenant_id = $1 and kind = 'jira_issue_sync' and status = 'queued'
-           and (payload->>'issueId')::int between 500 and 509
-         group by 1`,
-        [tenantId]
-      );
-      expect(pending).toHaveLength(10);
-      expect(pending.every((p) => p.n === 1)).toBe(true);
-    });
-
     it('100 concurrent anonymous page loads all redirect cleanly', async () => {
       const statuses = await Promise.all(
         Array.from({ length: 100 }, () =>
@@ -525,6 +415,8 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
   });
 
   describe.skipIf(!RAZORPAY_SECRET)('Razorpay webhook', () => {
+    // Payment ids are unique across the database, so each run brings its own.
+    const runId = Date.now();
     const url = () => `${BASE}/api/payments/razorpay/webhook`;
     const event = (orderId: string, paymentId: string, amount = 1500) =>
       JSON.stringify({
@@ -546,7 +438,7 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       createHmac('sha256', secret).update(body).digest('hex');
 
     it('rejects a missing or wrong signature, and changes nothing', async () => {
-      const body = event(rzpOrder, 'pay_e2eWrong');
+      const body = event(rzpOrder, `pay_e2eWrong${runId}`);
       expect((await post(body, null)).status).toBe(401);
       expect((await post(body, sign(body, 'not-the-secret'))).status).toBe(401);
       expect((await post(body, sign(`${body} `))).status).toBe(401);
@@ -558,14 +450,14 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
     });
 
     it('ignores a signed event for an order that is not ours, or a wrong amount', async () => {
-      const unknown = event('order_e2eUnknown', 'pay_e2eUnknown');
+      const unknown = event('order_e2eUnknown', `pay_e2eUnknown${runId}`);
       expect((await post(unknown, sign(unknown))).status).toBe(204);
-      const cheap = event(rzpOrder, 'pay_e2eCheap', 100);
+      const cheap = event(rzpOrder, `pay_e2eCheap${runId}`, 100);
       expect((await post(cheap, sign(cheap))).status).toBe(204);
     });
 
     it('starts Pro once for a signed payment, and once more for nothing on replay', async () => {
-      const body = event(rzpOrder, 'pay_e2eGood');
+      const body = event(rzpOrder, `pay_e2eGood${runId}`);
       const statuses = await Promise.all(
         Array.from({ length: 5 }, () => post(body, sign(body)).then((r) => r.status))
       );
@@ -599,21 +491,6 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
     it('rejects a declared Content-Length over 5 MB before reading', async () => {
       const r = await ci('x'.repeat(5_100_000));
       expect(r.status).toBe(413);
-    });
-
-    it('rejects a webhook body over 1 MB, and queues nothing', async () => {
-      // The server answers before the upload finishes, so the client sees either the 413
-      // or a reset connection; both mean the delivery was refused.
-      const outcome = await hook({ ...delivery('103'), pad: 'x'.repeat(1_100_000) }).then(
-        (r) => r.status,
-        (error: { cause?: { code?: string } }) => error.cause?.code
-      );
-      expect([413, 'ECONNRESET', 'EPIPE']).toContain(outcome);
-      const jobs = await query(
-        `select 1 from sync_jobs where tenant_id = $1 and payload->>'issueId' = '103'`,
-        [tenantId]
-      );
-      expect(jobs).toHaveLength(0);
     });
 
     it.skipIf(!GH_SECRET)('rejects a GitHub webhook body over 1 MB', async () => {
