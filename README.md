@@ -27,6 +27,12 @@ tests they came from, and a team with clear roles.
   (at sign-up or in Settings → Profile, with a photo) so teammates can find them.
 - **Project status** — Running (yellow), On hold, Completed (green) or Archived; only an owner
   changes it.
+- **Workspaces and plans** — after sign-up a person either creates a workspace (a one-time ₹25
+  fee; it opens when the fee is paid, on the Free plan) or continues as a reviewer free of
+  charge and asks to join an existing one. Free allows 5 projects and 5 admins and reviewers;
+  Pro (paid by the owner only) allows unlimited projects and 10 admins and reviewers. Only the
+  workspace owner sees pricing; only SpecFix's own team (`SPECFIX_OWNER_EMAILS`) approves
+  payments and creates workspaces free.
 - **Sign-in** — email and password or Google, optional two-step verification, and a Cloudflare
   Turnstile "verify you are human" check. Signed-out visitors opening any app link see the
   landing page.

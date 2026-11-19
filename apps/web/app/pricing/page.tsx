@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { FREE_PROJECT_LIMIT, latestPayment, listProjects, proCta, tenantPlan } from '@/lib/repos';
@@ -16,12 +17,14 @@ export const metadata: Metadata = { title: 'Pricing · SpecFix' };
 export default async function PricingPage() {
   const user = await requireUser();
   const tenant = await requireTenant(user.id);
+  const appOwner = isAppOwner(user);
+  // Only the workspace owner pays; admins and reviewers have nothing to buy here.
+  if (tenant.role !== 'owner' && !appOwner) notFound();
   const [projects, plan, payment] = await Promise.all([
     listProjects(tenant.tenant_id, user.id),
     tenantPlan(tenant.tenant_id),
     latestPayment(tenant.tenant_id),
   ]);
-  const appOwner = isAppOwner(user);
   const cta = proCta({ pro: plan.pro, appOwner, role: tenant.role });
   // Only someone who can pay opens the dialog, so only they need the QR codes.
   const canPay = cta === 'upgrade' || cta === 'extend';

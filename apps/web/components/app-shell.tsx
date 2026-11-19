@@ -58,7 +58,8 @@ export type ShellPage =
   | 'payments';
 
 /** Workspace settings: not daily navigation, so grouped behind the gear at the sidebar's foot. */
-function settingsLinks(appOwner: boolean) {
+/** Pricing only for whoever pays (the workspace owner) and SpecFix's own team. */
+function settingsLinks(appOwner: boolean, payer: boolean) {
   return [
     {
       key: 'team' as const,
@@ -74,13 +75,17 @@ function settingsLinks(appOwner: boolean) {
       note: 'Jira, GitHub and CI',
       icon: Plug,
     },
-    {
-      key: 'pricing' as const,
-      href: '/pricing',
-      label: 'Pricing and plan',
-      note: 'Free or Pro, and paying for it',
-      icon: Gem,
-    },
+    ...(payer
+      ? [
+          {
+            key: 'pricing' as const,
+            href: '/pricing',
+            label: 'Pricing and plan',
+            note: 'Free or Pro, and paying for it',
+            icon: Gem,
+          },
+        ]
+      : []),
     // SpecFix's own team approves payments; nobody else sees this.
     ...(appOwner
       ? [
@@ -278,8 +283,16 @@ async function BellSlot({ user, tenant }: { user: User; tenant: MembershipRow })
 }
 
 /** The gear at the sidebar's foot: the workspace's settings pages, opening upward. */
-function SettingsMenu({ current, appOwner }: { current?: ShellPage; appOwner: boolean }) {
-  const links = settingsLinks(appOwner);
+function SettingsMenu({
+  current,
+  appOwner,
+  payer,
+}: {
+  current?: ShellPage;
+  appOwner: boolean;
+  payer: boolean;
+}) {
+  const links = settingsLinks(appOwner, payer);
   const inSettings = links.some((l) => l.key === current);
   return (
     <details className="relative">
@@ -597,7 +610,11 @@ function Nav({
             </NavLink>
           </div>
         </div>
-        <SettingsMenu current={current} appOwner={appOwner} />
+        <SettingsMenu
+          current={current}
+          appOwner={appOwner}
+          payer={appOwner || tenant.role === 'owner'}
+        />
         <form action={signOut} className="lg:hidden">
           <button
             type="submit"

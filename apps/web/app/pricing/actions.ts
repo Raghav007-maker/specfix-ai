@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { PRO_PRICES, isBillingPeriod, paymentRef } from '@specfix/shared';
+import { PAYMENT_PRICES, isPaymentPeriod, paymentRef } from '@specfix/shared';
 import {
   RazorpayError,
   createRazorpayOrder,
@@ -25,9 +25,10 @@ import type { UtrState } from '@/components/playground/upi-dialog';
  */
 export async function submitUtrAction(_previous: UtrState, formData: FormData): Promise<UtrState> {
   const user = await requireUser();
-  const tenant = await requireTenant(user.id);
+  // A closed workspace pays its one-time fee here too.
+  const tenant = await requireTenant(user.id, undefined, { allowClosed: true });
   const period = formData.get('period');
-  if (!isBillingPeriod(period)) return { status: 'error', error: 'Choose monthly or annual.' };
+  if (!isPaymentPeriod(period)) return { status: 'error', error: 'Choose what to pay for.' };
 
   try {
     await submitUpiPayment(tenant.tenant_id, user.id, {
@@ -40,6 +41,7 @@ export async function submitUtrAction(_previous: UtrState, formData: FormData): 
     return { status: 'error', error: 'The payment could not be submitted. Please try again.' };
   }
   revalidatePath('/pricing');
+  revalidatePath('/activate');
   return { status: 'sent' };
 }
 
@@ -49,19 +51,19 @@ export type StartRazorpayResult =
 
 /**
  * Creates a Razorpay order at the price for `period` and records it for this workspace. Only
- * owners and admins; the price comes from the server's list.
+ * the owner; the price comes from the server's list.
  */
 export async function startRazorpayAction(period: unknown): Promise<StartRazorpayResult> {
   const user = await requireUser();
-  const tenant = await requireTenant(user.id);
-  if (!isBillingPeriod(period)) return { status: 'error', error: 'Choose monthly or annual.' };
-  if (tenant.role === 'reviewer') {
-    return { status: 'error', error: 'Only an owner or admin can pay for this workspace.' };
+  const tenant = await requireTenant(user.id, undefined, { allowClosed: true });
+  if (!isPaymentPeriod(period)) return { status: 'error', error: 'Choose what to pay for.' };
+  if (tenant.role !== 'owner') {
+    return { status: 'error', error: 'Only the workspace owner can pay for this workspace.' };
   }
   const keys = razorpayKeys();
   if (!keys) return { status: 'error', error: 'Razorpay is not set up yet. Ask the SpecFix team.' };
 
-  const amountPaise = PRO_PRICES[period].paise;
+  const amountPaise = PAYMENT_PRICES[period].paise;
   try {
     const orderId = await createRazorpayOrder(keys, {
       amountPaise,
@@ -93,7 +95,7 @@ export async function confirmRazorpayAction(input: {
   signature: unknown;
 }): Promise<UtrState> {
   const user = await requireUser();
-  const tenant = await requireTenant(user.id);
+  const tenant = await requireTenant(user.id, undefined, { allowClosed: true });
   const keys = razorpayKeys();
   const { orderId, paymentId, signature } = input;
   if (
@@ -115,10 +117,10 @@ export async function confirmRazorpayAction(input: {
     );
     return {
       status: 'error',
-      error:
-        'Your payment went through but Pro could not be switched on yet. Contact the SpecFix team.',
+      error: 'Your payment went through but could not be applied yet. Contact the SpecFix team.',
     };
   }
   revalidatePath('/pricing');
+  revalidatePath('/activate');
   return { status: 'sent' };
 }

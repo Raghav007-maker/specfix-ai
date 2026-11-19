@@ -111,15 +111,17 @@ export async function createProject(
  */
 export async function createWorkspace(
   userId: string,
-  input: { tenantName: string; projectName: string }
+  input: { tenantName: string; projectName: string },
+  /** false: the workspace waits for its one-time fee before it opens (onboarding). */
+  options: { open?: boolean } = {}
 ): Promise<TenantRow> {
   return tx(async (client) => {
     const {
       rows: [tenant],
     } = await client.query<TenantRow>(
-      `insert into tenants (name) values ($1)
+      `insert into tenants (name, activated_at) values ($1, case when $2 then now() end)
        returning id, name, monthly_token_cap`,
-      [input.tenantName]
+      [input.tenantName, options.open ?? true]
     );
     if (!tenant) throw new Error('tenants insert returned no row');
     await client.query(
@@ -146,6 +148,8 @@ export interface MembershipRow {
   tenant_id: string;
   tenant_name: string;
   role: 'owner' | 'admin' | 'reviewer';
+  /** False while the workspace waits for its one-time fee. */
+  open: boolean;
 }
 
 /**
@@ -157,7 +161,7 @@ export interface MembershipRow {
  */
 export async function listMembershipsForUser(userId: string): Promise<MembershipRow[]> {
   return query<MembershipRow>(
-    `select m.tenant_id, t.name as tenant_name, m.role
+    `select m.tenant_id, t.name as tenant_name, m.role, t.activated_at is not null as open
      from memberships m
      join tenants t on t.id = m.tenant_id
      where m.user_id = $1

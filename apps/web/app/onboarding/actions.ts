@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { forgetUser, requireUser } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import { createWorkspace } from '@/lib/repos';
+import { isAppOwner } from '@/lib/plan';
 import { TENANT_COOKIE } from '@/lib/tenant';
 
 /**
@@ -29,7 +30,13 @@ export async function createTenantAndProject(formData: FormData): Promise<void> 
     redirect('/onboarding?error=' + encodeURIComponent('A name can be at most 60 characters.'));
   }
 
-  const tenant = await createWorkspace(user.id, { tenantName, projectName });
+  if (tenantName.length > 100 || projectName.length > 100) {
+    redirect('/onboarding?error=' + encodeURIComponent('Names can be at most 100 characters.'));
+  }
+
+  // A new workspace stays closed until its one-time fee is paid; SpecFix's own team pays none.
+  const open = isAppOwner(user);
+  const tenant = await createWorkspace(user.id, { tenantName, projectName }, { open });
 
   if (personName) {
     const supabase = await createClient();
@@ -44,5 +51,5 @@ export async function createTenantAndProject(formData: FormData): Promise<void> 
   const cookieStore = await cookies();
   cookieStore.set(TENANT_COOKIE, tenant.id, { httpOnly: true, sameSite: 'lax', path: '/' });
 
-  redirect('/');
+  redirect(open ? '/' : '/activate');
 }

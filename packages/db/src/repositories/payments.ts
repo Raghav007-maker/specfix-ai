@@ -1,20 +1,21 @@
 /**
- * Payments for Pro, two ways:
- *   - UPI by QR: a workspace owner or admin submits the payment's UTR, and SpecFix's team
+ * Payments for Pro, and the one-time fee that opens a new workspace, two ways:
+ *   - UPI by QR: the workspace owner submits the payment's UTR, and SpecFix's team
  *     approves or rejects it after checking their bank app.
  *   - Razorpay: the server records an order at the price for the period, and it becomes paid
  *     when Razorpay's signature for it checks out (browser Checkout or webhook).
- * Paying extends tenants.pro_until by the period, from today or from the current end of Pro,
- * whichever is later. Every decision locks the payment row, so a repeated click, a webhook
+ * Paying for Pro extends tenants.pro_until by the period, from today or from the current end of
+ * Pro, whichever is later; paying the workspace fee opens the workspace (tenants.activated_at).
+ * Pro is only for an open workspace, and the fee only for one not open yet. Every decision locks the payment row, so a repeated click, a webhook
  * racing the browser, or a replayed webhook extends Pro exactly once.
  */
 import type { PoolClient } from 'pg';
 import {
-  PRO_PRICES,
+  PAYMENT_PRICES,
   normalizePayerCode,
   normalizeUtr,
   payerCode,
-  type BillingPeriod,
+  type PaymentPeriod,
 } from '@specfix/shared';
 import { tx, query, type TenantId } from '../client.ts';
 
@@ -28,7 +29,7 @@ export interface PaymentRow {
   id: string;
   tenant_id: string;
   method: 'upi' | 'razorpay';
-  period: BillingPeriod;
+  period: PaymentPeriod;
   amount_paise: number;
   utr: string | null;
   razorpay_payment_id: string | null;
@@ -40,29 +41,57 @@ export interface PaymentRow {
 const COLUMNS = `id, tenant_id, method, period, amount_paise, utr, razorpay_payment_id, status,
                  created_at, decided_at`;
 
-async function requirePayer(client: PoolClient, tenantId: TenantId, userId: string) {
-  const member = await client.query<{ role: string }>(
-    `select role from memberships where tenant_id = $1 and user_id = $2 for share`,
+/**
+ * Only the workspace's owner pays. The fee is only for a workspace not open yet, and Pro only
+ * for an open one.
+ */
+async function requirePayer(
+  client: PoolClient,
+  tenantId: TenantId,
+  userId: string,
+  period: PaymentPeriod
+) {
+  const member = await client.query<{ role: string; open: boolean }>(
+    `select m.role, t.activated_at is not null as open
+     from memberships m join tenants t on t.id = m.tenant_id
+     where m.tenant_id = $1 and m.user_id = $2 for share of m`,
     [tenantId, userId]
   );
-  const role = member.rows[0]?.role;
-  if (role !== 'owner' && role !== 'admin') {
-    throw new PaymentError('Only an owner or admin can pay for this workspace.');
+  const row = member.rows[0];
+  if (row?.role !== 'owner') {
+    throw new PaymentError('Only the workspace owner can pay for this workspace.');
+  }
+  if (period === 'workspace' && row.open) {
+    throw new PaymentError('This workspace is already open.');
+  }
+  if (period !== 'workspace' && !row.open) {
+    throw new PaymentError('Pay the workspace fee first; Pro comes after the workspace opens.');
   }
 }
 
-/** Adds the period to Pro, from today or from the current end of Pro, whichever is later. */
-async function extendPro(
+/**
+ * What a paid payment does: the fee opens the workspace (once); Pro adds the period, from
+ * today or from the current end of Pro, whichever is later. Returns the end of Pro, if any.
+ */
+async function settle(
   client: PoolClient,
   tenantId: string,
-  period: BillingPeriod
+  period: PaymentPeriod
 ): Promise<Date | null> {
+  if (period === 'workspace') {
+    const opened = await client.query<{ pro_until: Date | null }>(
+      `update tenants set activated_at = coalesce(activated_at, now()) where id = $1
+       returning pro_until`,
+      [tenantId]
+    );
+    return opened.rows[0]?.pro_until ?? null;
+  }
   const updated = await client.query<{ pro_until: Date }>(
     `update tenants
      set pro_until = greatest(coalesce(pro_until, now()), now()) + make_interval(days => $2::int)
      where id = $1
      returning pro_until`,
-    [tenantId, PRO_PRICES[period].days]
+    [tenantId, PAYMENT_PRICES[period].days]
   );
   return updated.rows[0]?.pro_until ?? null;
 }
@@ -70,15 +99,15 @@ async function extendPro(
 export async function submitUpiPayment(
   tenantId: TenantId,
   userId: string,
-  input: { period: BillingPeriod; utr: string }
+  input: { period: PaymentPeriod; utr: string }
 ): Promise<PaymentRow> {
-  const price = PRO_PRICES[input.period];
+  const price = PAYMENT_PRICES[input.period];
   const utr = normalizeUtr(input.utr);
-  if (!price) throw new PaymentError('Choose monthly or annual.');
+  if (!price) throw new PaymentError('Choose what to pay for.');
   if (!utr) throw new PaymentError('The UTR is the 12-digit number in your UPI app’s receipt.');
 
   return tx(async (client) => {
-    await requirePayer(client, tenantId, userId);
+    await requirePayer(client, tenantId, userId, input.period);
     // The tenant row serialises claims from the same workspace.
     await client.query(`select id from tenants where id = $1 for update`, [tenantId]);
     const waiting = await client.query(
@@ -151,7 +180,7 @@ export async function decidePayment(
   return tx(async (client) => {
     const found = await client.query<{
       tenant_id: string;
-      period: BillingPeriod;
+      period: PaymentPeriod;
       status: string;
       method: string;
       created_by: string | null;
@@ -178,23 +207,23 @@ export async function decidePayment(
     );
     if (decision === 'rejected') return { proUntil: null };
 
-    return { proUntil: await extendPro(client, payment.tenant_id, payment.period) };
+    return { proUntil: await settle(client, payment.tenant_id, payment.period) };
   });
 }
 
 /**
- * Records a Razorpay order the server just created at the price for `period`. Owners and
- * admins only, re-checked here.
+ * Records a Razorpay order the server just created at the price for `period`. The owner only,
+ * re-checked here.
  */
 export async function recordRazorpayOrder(
   tenantId: TenantId,
   userId: string,
-  input: { period: BillingPeriod; orderId: string }
+  input: { period: PaymentPeriod; orderId: string }
 ): Promise<PaymentRow> {
-  const price = PRO_PRICES[input.period];
-  if (!price) throw new PaymentError('Choose monthly or annual.');
+  const price = PAYMENT_PRICES[input.period];
+  if (!price) throw new PaymentError('Choose what to pay for.');
   return tx(async (client) => {
-    await requirePayer(client, tenantId, userId);
+    await requirePayer(client, tenantId, userId, input.period);
     const inserted = await client.query<PaymentRow>(
       `insert into payments
          (tenant_id, created_by, method, period, amount_paise, razorpay_order_id, status)
@@ -222,7 +251,7 @@ export async function confirmRazorpayPayment(input: {
     const found = await client.query<{
       id: string;
       tenant_id: string;
-      period: BillingPeriod;
+      period: PaymentPeriod;
       amount_paise: number;
       status: string;
       razorpay_payment_id: string | null;
@@ -255,6 +284,6 @@ export async function confirmRazorpayPayment(input: {
        where id = $1`,
       [order.id, input.paymentId]
     );
-    return { proUntil: await extendPro(client, order.tenant_id, order.period), already: false };
+    return { proUntil: await settle(client, order.tenant_id, order.period), already: false };
   });
 }

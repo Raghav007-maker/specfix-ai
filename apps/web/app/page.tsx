@@ -7,6 +7,7 @@ import {
   activeSprintSummaries,
   inProjects,
   listAssignedWorkItems,
+  listJoinableProjects,
   listProjectDetails,
   listProjects,
   listWorkEvents,
@@ -21,6 +22,7 @@ import { loadWorkspaceDashboard, profileOf } from '@/lib/dashboard';
 import type { QueueItem } from '@/components/playground/dashboard-data';
 import { switchTenant, createProjectForCurrentTenant } from './actions';
 import { AppShell } from '@/components/app-shell';
+import { JoinProjects } from './team/requests';
 import {
   Button,
   Card,
@@ -92,7 +94,7 @@ export default async function HomePage({
         ? 'reviews'
         : 'work';
 
-  const [{ data, agent }, allDetails, allCountRows, allAssigned, allSprints, events] =
+  const [{ data, agent }, allDetails, allCountRows, allAssigned, allSprints, events, joinable] =
     await Promise.all([
       loadWorkspaceDashboard(user, tenant, projects, activeProject?.id),
       migrated ? listProjectDetails(t) : Promise.resolve([] as ProjectDetailRow[]),
@@ -102,6 +104,8 @@ export default async function HomePage({
       migrated
         ? listWorkEvents(t, { projectIds: projectScope(tenant, projects) }, 15)
         : Promise.resolve([]),
+      // Running projects an admin or reviewer is not in yet, to ask to join from here.
+      tenant.role === 'owner' ? Promise.resolve([]) : listJoinableProjects(t, user.id),
     ]);
   // Tenant-wide reads, kept to the projects this person can see.
   const visible = new Set(projects.map((p) => p.id));
@@ -192,6 +196,8 @@ export default async function HomePage({
           {error}
         </Notice>
       ) : null}
+
+      {joinable.length > 0 ? <JoinProjects projects={joinable} /> : null}
 
       {projects.length === 0 ? (
         <NoProjects canCreate={canCreate} />

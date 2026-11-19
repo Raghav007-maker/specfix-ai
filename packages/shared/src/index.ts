@@ -9,3 +9,4 @@ export * from './pricing.ts';
 export * from './attempt-limit.ts';
 export * from './mfa.ts';
 export * from './avatar.ts';
+export * from './chart.ts';

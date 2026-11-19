@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { CheckCircle2, X as Close } from 'lucide-react';
-import { PRO_PRICES, type BillingPeriod } from '@specfix/shared/pricing';
+import { PAYMENT_PRICES, paymentLabel, type PaymentPeriod } from '@specfix/shared/pricing';
 import type { ConfirmRazorpay, StartRazorpay } from './razorpay-checkout';
 import s from './playground.module.css';
 import x from './pricing.module.css';
@@ -10,7 +10,7 @@ import x from './pricing.module.css';
 export interface UpiPay {
   payee: string;
   payeeName: string;
-  pay: Record<BillingPeriod, { link: string; qr: string }>;
+  pay: Record<PaymentPeriod, { link: string; qr: string }>;
 }
 
 export interface UtrState {
@@ -44,7 +44,7 @@ export function UpiDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  period: BillingPeriod;
+  period: PaymentPeriod;
   upi: UpiPay | null;
   razorpay: { test: boolean } | null;
   onRazorpay: () => void;
@@ -70,7 +70,7 @@ export function UpiDialog({
     },
     { status: 'idle' }
   );
-  const rupees = PRO_PRICES[period].paise / 100;
+  const rupees = PAYMENT_PRICES[period].paise / 100;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -85,7 +85,7 @@ export function UpiDialog({
         <Close aria-hidden size={16} />
       </button>
       <h2 id={titleId} className={x.name}>
-        Pay ₹{rupees} for Pro ({period === 'annual' ? 'annual' : 'monthly'})
+        Pay ₹{rupees} for {paymentLabel(period)}
       </h2>
 
       {state.status === 'sent' ? (
@@ -128,7 +128,9 @@ export function UpiDialog({
               {razorpay ? <p className={x.or}>or pay by UPI QR</p> : null}
               <ol className={x.steps}>
                 <li>Scan the QR with any UPI app (GPay, PhonePe, Paytm) and pay ₹{rupees}.</li>
-                <li>Keep the payment note as it is; the team checks it before switching on Pro.</li>
+                <li>
+                  Keep the payment note as it is; the team checks it before confirming the payment.
+                </li>
                 <li>Copy the 12-digit UTR from the payment receipt and paste it below.</li>
               </ol>
               <div className={x.qrBox}>

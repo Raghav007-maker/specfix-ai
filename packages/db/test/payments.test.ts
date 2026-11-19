@@ -61,7 +61,7 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     expect((await latestPayment(id))?.id).toBe(row.id);
   });
 
-  it('lets owners and admins pay, not reviewers or outsiders', async () => {
+  it('lets only the owner pay, not admins, reviewers or outsiders', async () => {
     const a = await workspace('roles-a');
     const b = await workspace('roles-b');
     await expect(
@@ -70,7 +70,10 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     await expect(
       submitUpiPayment(a, users.outsider, { period: 'monthly', utr: utr() })
     ).rejects.toThrow(PaymentError);
-    await submitUpiPayment(b, users.admin, { period: 'monthly', utr: utr() });
+    await expect(
+      submitUpiPayment(a, users.admin, { period: 'monthly', utr: utr() })
+    ).rejects.toThrow(/Only the workspace owner/);
+    await submitUpiPayment(b, users.owner, { period: 'monthly', utr: utr() });
     expect(await latestPayment(a)).toBeNull();
   });
 
@@ -97,7 +100,7 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
     const id = await workspace('one-pending');
     await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
     await expect(
-      submitUpiPayment(id, users.admin, { period: 'monthly', utr: utr() })
+      submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() })
     ).rejects.toThrow(/already waiting/);
   });
 
@@ -196,7 +199,7 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
 
     it('records an order at the server price, hidden until paid', async () => {
       const id = await workspace('rzp-order');
-      const row = await recordRazorpayOrder(id, users.admin, {
+      const row = await recordRazorpayOrder(id, users.owner, {
         period: 'annual',
         orderId: order(),
       });
@@ -206,9 +209,9 @@ describe.skipIf(!hasDatabase)('UPI payments', () => {
       await submitUpiPayment(id, users.owner, { period: 'monthly', utr: utr() });
     });
 
-    it('lets only owners and admins start a payment', async () => {
+    it('lets only the owner start a payment', async () => {
       const id = await workspace('rzp-roles');
-      for (const who of [users.reviewer, users.outsider]) {
+      for (const who of [users.admin, users.reviewer, users.outsider]) {
         await expect(
           recordRazorpayOrder(id, who, { period: 'monthly', orderId: order() })
         ).rejects.toThrow(PaymentError);
