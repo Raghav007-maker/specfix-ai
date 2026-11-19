@@ -30,16 +30,22 @@ export async function currentTenant(
 
   const cookieStore = await cookies();
   const selected = cookieStore.get(TENANT_COOKIE)?.value;
-  return list.find((m) => m.tenant_id === selected) ?? list[0]!;
+  // Without a choice, an open workspace before one still waiting for its fee.
+  return list.find((m) => m.tenant_id === selected) ?? list.find((m) => m.open) ?? list[0]!;
 }
 
-/** As currentTenant, but sends a user with no tenant to onboarding. */
+/**
+ * As currentTenant, but sends a user with no tenant to onboarding, and a workspace still waiting
+ * for its one-time fee to /activate. Only the pages that take that fee pass `allowClosed`.
+ */
 export async function requireTenant(
   userId: string,
-  memberships?: MembershipRow[]
+  memberships?: MembershipRow[],
+  options: { allowClosed?: boolean } = {}
 ): Promise<MembershipRow> {
   const tenant = await currentTenant(userId, memberships);
   if (!tenant) redirect('/onboarding');
+  if (!tenant.open && !options.allowClosed) redirect('/activate');
   return tenant;
 }
 

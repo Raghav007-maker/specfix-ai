@@ -3,7 +3,14 @@ import { cache } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { resolutionAgentEnabled } from '@/lib/agent';
 import QRCode from 'qrcode';
-import { PRO_PRICES, isUpiId, payerCode, upiPayLink, type BillingPeriod } from '@specfix/shared';
+import {
+  PAYMENT_PRICES,
+  isUpiId,
+  payerCode,
+  paymentLabel,
+  upiPayLink,
+  type PaymentPeriod,
+} from '@specfix/shared';
 import {
   agentAccessFor,
   isAppOwnerEmail,
@@ -90,7 +97,7 @@ export const planNoticeFor = cache(async function planNoticeFor(
 export interface UpiSetup {
   payee: string;
   payeeName: string;
-  pay: Record<BillingPeriod, { link: string; qr: string }>;
+  pay: Record<PaymentPeriod, { link: string; qr: string }>;
 }
 
 /**
@@ -107,12 +114,12 @@ export async function upiSetup(userId: string): Promise<UpiSetup | null> {
   if (!isUpiId(payee)) return null;
   const payeeName = process.env.UPI_PAYEE_NAME?.trim() || 'SpecFix';
   const ref = payerCode(userId);
-  const entry = async (period: BillingPeriod) => {
+  const entry = async (period: PaymentPeriod) => {
     const link = upiPayLink({
       payee,
       payeeName,
-      paise: PRO_PRICES[period].paise,
-      note: `SpecFix Pro ${period} ${ref}`,
+      paise: PAYMENT_PRICES[period].paise,
+      note: `SpecFix ${paymentLabel(period)} ${ref}`,
     });
     const svg = await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
     return { link, qr: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` };
@@ -120,7 +127,11 @@ export async function upiSetup(userId: string): Promise<UpiSetup | null> {
   return {
     payee,
     payeeName,
-    pay: { monthly: await entry('monthly'), annual: await entry('annual') },
+    pay: {
+      monthly: await entry('monthly'),
+      annual: await entry('annual'),
+      workspace: await entry('workspace'),
+    },
   };
 }
 

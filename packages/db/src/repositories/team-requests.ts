@@ -14,7 +14,7 @@
  * "no such request" answer as for an id that does not exist.
  */
 import { tx, query, type TenantId } from '../client.ts';
-import { assertProjectRoom } from './plans.ts';
+import { assertProjectRoom, memberRoomRefusal } from './plans.ts';
 import { projectRoleWith } from './project-members.ts';
 
 export class RequestError extends Error {}
@@ -43,6 +43,7 @@ export async function searchTeams(userId: string, text: string): Promise<TeamHit
               as requested
      from tenants t
      where t.name ilike $2 escape '\\'
+       and t.activated_at is not null
        and not exists (select 1 from memberships m where m.tenant_id = t.id and m.user_id = $1)
      order by t.name
      limit 8`,
@@ -55,9 +56,11 @@ export async function requestToJoin(userId: string, tenantId: string): Promise<v
   if (!UUID.test(userId) || !UUID.test(tenantId))
     throw new RequestError('That team was not found.');
   await tx(async (client) => {
-    const { rowCount: team } = await client.query(`select 1 from tenants where id = $1`, [
-      tenantId,
-    ]);
+    // A workspace still waiting for its fee takes no one yet.
+    const { rowCount: team } = await client.query(
+      `select 1 from tenants where id = $1 and activated_at is not null`,
+      [tenantId]
+    );
     if (!team) throw new RequestError('That team was not found.');
     const { rowCount: member } = await client.query(
       `select 1 from memberships where tenant_id = $1 and user_id = $2`,
@@ -133,7 +136,9 @@ export async function decideJoinRequest(
   tenantId: TenantId,
   actorId: string,
   requestId: string,
-  approve: boolean
+  approve: boolean,
+  /** SpecFix's own team: no seat limit. */
+  options: { unlimited?: boolean } = {}
 ): Promise<void> {
   if (!UUID.test(requestId) || !UUID.test(actorId)) throw new RequestError(NO_REQUEST);
   await tx(async (client) => {
@@ -147,6 +152,10 @@ export async function decideJoinRequest(
     );
     if (!request) throw new RequestError(NO_REQUEST);
     if (approve) {
+      if (!options.unlimited) {
+        const full = await memberRoomRefusal(client, tenantId);
+        if (full) throw new RequestError(full);
+      }
       await client.query(
         `insert into memberships (user_id, tenant_id, role) values ($1, $2, 'reviewer')
          on conflict (user_id, tenant_id) do nothing`,

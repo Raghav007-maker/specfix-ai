@@ -9,7 +9,12 @@ import {
   type PointerEvent,
 } from 'react';
 import { Building2, Check, Lock, Sparkles } from 'lucide-react';
-import { FREE_PROJECT_LIMIT, PRO_PRICES } from '@specfix/shared/pricing';
+import {
+  FREE_MEMBER_LIMIT,
+  FREE_PROJECT_LIMIT,
+  PRO_MEMBER_LIMIT,
+  PRO_PRICES,
+} from '@specfix/shared/pricing';
 import { UpiDialog, type PayActions, type UpiPay } from './upi-dialog';
 import { useRazorpayCheckout } from './razorpay-checkout';
 import s from './playground.module.css';
@@ -217,6 +222,7 @@ export function PricingView({ account, pay }: { account?: PricingAccount; pay?: 
               <Features
                 items={[
                   { text: `Up to ${limit} projects` },
+                  { text: `Up to ${FREE_MEMBER_LIMIT} admins and reviewers` },
                   { text: 'Flags on every ticket' },
                   { text: 'Gherkin specs from approved flags' },
                   { text: 'Conversational agent', locked: true },
@@ -276,6 +282,7 @@ export function PricingView({ account, pay }: { account?: PricingAccount; pay?: 
               <Features
                 items={[
                   { text: 'Unlimited projects' },
+                  { text: `Up to ${PRO_MEMBER_LIMIT} admins and reviewers` },
                   { text: 'Everything in Free' },
                   { text: 'Conversational agent' },
                 ]}

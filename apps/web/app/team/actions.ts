@@ -32,7 +32,9 @@ export async function addMemberAction(formData: FormData): Promise<void> {
   const role = formData.get('role');
   if (!isRole(role)) back('Choose a role for the new member.');
 
-  const outcome = await run(() => addMemberByEmail(tenantId, user.id, { email, role }));
+  const outcome = await run(() =>
+    addMemberByEmail(tenantId, user.id, { email, role }, { unlimited: isAppOwner(user) })
+  );
   if (outcome) back(outcome);
   back(undefined, `Added ${email.trim()} as ${role}.`);
 }
@@ -82,11 +84,11 @@ async function run(write: () => Promise<unknown>): Promise<string | null> {
   }
 }
 
-function back(error?: string, notice?: string): never {
+function back(error?: string, notice?: string, page: '/team' | '/join' = '/team'): never {
   const params = new URLSearchParams();
   if (error) params.set('error', error);
   if (notice) params.set('notice', notice);
-  redirect(`/team?${params.toString()}`);
+  redirect(`${page}?${params.toString()}`);
 }
 
 const joinByUser = new RateLimiter('team-join', 10, 60 * 60_000);
@@ -94,17 +96,23 @@ const joinByUser = new RateLimiter('team-join', 10, 60 * 60_000);
 /** Asks to join a team found by name; the owner decides. */
 export async function requestJoinAction(formData: FormData): Promise<void> {
   const user = await requireUser();
-  if (!(await joinByUser.take(user.id))) back('Too many requests. Try again in an hour.');
+  // Someone in no team yet asks from /join, which needs no workspace.
+  const page = formData.get('from') === 'join' ? '/join' : '/team';
+  if (!(await joinByUser.take(user.id))) {
+    back('Too many requests. Try again in an hour.', undefined, page);
+  }
   const outcome = await run(() => requestToJoin(user.id, String(formData.get('tenantId') ?? '')));
-  if (outcome) back(outcome);
-  back(undefined, 'Request sent. The team owner will see it.');
+  if (outcome) back(outcome, undefined, page);
+  back(undefined, 'Request sent. The team owner will see it.', page);
 }
 
 export async function decideJoinAction(formData: FormData): Promise<void> {
   const { user, tenantId } = await actor();
   const approve = formData.get('decision') === 'approve';
   const outcome = await run(() =>
-    decideJoinRequest(tenantId, user.id, String(formData.get('requestId') ?? ''), approve)
+    decideJoinRequest(tenantId, user.id, String(formData.get('requestId') ?? ''), approve, {
+      unlimited: isAppOwner(user),
+    })
   );
   if (outcome) back(outcome);
   back(undefined, approve ? 'Added to the team as a reviewer.' : 'Request rejected.');

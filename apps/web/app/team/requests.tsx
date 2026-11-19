@@ -30,10 +30,13 @@ export function FindTeam({
   find,
   hits,
   mine,
+  from = 'team',
 }: {
   find: string;
   hits: TeamHit[];
   mine: MyRequestRow[];
+  /** The page it sits on, so a request returns there. */
+  from?: 'team' | 'join';
 }) {
   return (
     <Card className="mb-6">
@@ -73,6 +76,7 @@ export function FindTeam({
                   ) : (
                     <form action={requestJoinAction}>
                       <input type="hidden" name="tenantId" value={h.id} />
+                      <input type="hidden" name="from" value={from} />
                       <SubmitButton size="sm" variant="outline" pendingLabel="Sending…">
                         Ask to join
                       </SubmitButton>

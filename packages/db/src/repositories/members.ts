@@ -16,6 +16,7 @@
  */
 import type { PoolClient } from 'pg';
 import { tx, query, type TenantId } from '../client.ts';
+import { memberRoomRefusal } from './plans.ts';
 
 export const ROLES = ['owner', 'admin', 'reviewer'] as const;
 export type Role = (typeof ROLES)[number];
@@ -75,12 +76,19 @@ export async function listMembers(tenantId: TenantId): Promise<MemberRow[]> {
 export async function addMemberByEmail(
   tenantId: TenantId,
   actorId: string,
-  input: { email: string; role: Role }
+  input: { email: string; role: Role },
+  /** SpecFix's own team: no seat limit. */
+  options: { unlimited?: boolean } = {}
 ): Promise<MemberRow> {
   const email = input.email.trim();
   if (!email) throw new MembershipError('An email address is required.');
 
   return tx(async (client) => {
+    // The tenant row first (seat limit), then the memberships: the same order as approvals.
+    if (input.role !== 'owner' && !options.unlimited) {
+      const full = await memberRoomRefusal(client, tenantId);
+      if (full) throw new MembershipError(full);
+    }
     const actor = await lockedRole(client, tenantId, actorId);
     if (!actor || !canManageMember(actor, null) || !assignableRoles(actor).includes(input.role)) {
       throw new MembershipError(`You cannot add a member as ${input.role}.`);

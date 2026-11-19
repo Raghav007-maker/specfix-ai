@@ -42,6 +42,9 @@ const plan = (p: Partial<TenantPlan>): TenantPlan => ({
   pro: false,
   proUntil: null,
   projectCount: 0,
+  memberCount: 0,
+  memberLimit: 5,
+  open: true,
   ...p,
 });
 
@@ -93,15 +96,15 @@ describe('plan rules', () => {
     ).toBeNull();
   });
 
-  it('offers the upgrade only to owners and admins of a Free workspace', () => {
+  it('offers payment only to the workspace owner', () => {
     const cta = (pro: boolean, appOwner: boolean, role: 'owner' | 'admin' | 'reviewer') =>
       proCta({ pro, appOwner, role });
     expect(cta(false, false, 'owner')).toBe('upgrade');
-    expect(cta(false, false, 'admin')).toBe('upgrade');
+    expect(cta(false, false, 'admin')).toBe('ask-admin');
     expect(cta(false, false, 'reviewer')).toBe('ask-admin');
     expect(cta(true, false, 'reviewer')).toBe('current');
     expect(cta(true, false, 'owner')).toBe('extend');
-    expect(cta(true, false, 'admin')).toBe('extend');
+    expect(cta(true, false, 'admin')).toBe('current');
     expect(cta(false, true, 'reviewer')).toBe('team');
     expect(cta(true, true, 'owner')).toBe('team');
   });
@@ -133,7 +136,14 @@ describe.skipIf(!hasDatabase)('project limit', () => {
 
   it('starts every workspace on Free', async () => {
     const id = await freshTenant('new', 0);
-    expect(await tenantPlan(id)).toEqual({ pro: false, proUntil: null, projectCount: 0 });
+    expect(await tenantPlan(id)).toEqual({
+      pro: false,
+      proUntil: null,
+      projectCount: 0,
+      memberCount: 0,
+      memberLimit: 5,
+      open: true,
+    });
   });
 
   it('allows five projects on Free and refuses the sixth', async () => {

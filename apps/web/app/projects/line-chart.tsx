@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type PointerEvent } from 'react';
+import { spreadLabels } from '@specfix/shared/chart';
 
 export interface ChartSeries {
   name: string;
@@ -50,6 +51,13 @@ export function LineChart({
       .filter(Boolean)
       .join(' ');
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
+  // Series that end at the same value would print their names on top of each other.
+  const endY = spreadLabels(
+    series.map((s) => y(s.values[n - 1] ?? 0) + 4),
+    13,
+    PAD.t + 4,
+    H - PAD.b + 4
+  );
   const every = Math.max(1, Math.ceil(n / 6));
 
   const onMove = (e: PointerEvent<SVGRectElement>) => {
@@ -126,7 +134,7 @@ export function LineChart({
               strokeDasharray="4 4"
             />
           ) : null}
-          {series.map((s) => (
+          {series.map((s, si) => (
             <g key={s.name}>
               <polyline
                 points={path(s.values)}
@@ -137,11 +145,7 @@ export function LineChart({
                 strokeLinecap="round"
               />
               {n > 0 ? (
-                <text
-                  x={x(n - 1) + 8}
-                  y={y(s.values[n - 1] ?? 0) + 4}
-                  className="fill-text text-[11px] font-medium"
-                >
+                <text x={x(n - 1) + 8} y={endY[si]} className="fill-text text-[11px] font-medium">
                   {s.name} {s.values[n - 1] ?? 0}
                 </text>
               ) : null}

@@ -17,6 +17,30 @@ export function isBillingPeriod(value: unknown): value is BillingPeriod {
   return value === 'monthly' || value === 'annual';
 }
 
+/** People (admins and reviewers; owners are not counted) a workspace may have, by plan. */
+export const FREE_MEMBER_LIMIT = 5;
+export const PRO_MEMBER_LIMIT = 10;
+
+/** One-time fee that opens a new workspace; it then starts on Free. */
+export const WORKSPACE_FEE_PAISE = 2500;
+
+/** What a payment buys: Pro for a period, or the fee that opens a new workspace. */
+export type PaymentPeriod = BillingPeriod | 'workspace';
+
+export const PAYMENT_PRICES: Record<PaymentPeriod, { paise: number; days: number }> = {
+  ...PRO_PRICES,
+  workspace: { paise: WORKSPACE_FEE_PAISE, days: 0 },
+};
+
+export function isPaymentPeriod(value: unknown): value is PaymentPeriod {
+  return isBillingPeriod(value) || value === 'workspace';
+}
+
+/** "Pro (monthly)", "Pro (annual)" or "New workspace", for receipts and payment dialogs. */
+export function paymentLabel(period: PaymentPeriod): string {
+  return period === 'workspace' ? 'New workspace' : `Pro (${period})`;
+}
+
 /** A UPI transaction reference (UTR) as people paste it: 12 digits, spaces or dashes allowed. */
 export function normalizeUtr(input: unknown): string | null {
   if (typeof input !== 'string' || input.length > 40) return null;

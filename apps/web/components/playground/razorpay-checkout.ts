@@ -2,11 +2,11 @@
 
 import { startTransition, useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { BillingPeriod } from '@specfix/shared/pricing';
+import { paymentLabel, type PaymentPeriod } from '@specfix/shared/pricing';
 import type { UtrState } from './upi-dialog';
 
 export type StartRazorpay = (
-  period: BillingPeriod
+  period: PaymentPeriod
 ) => Promise<
   | { status: 'ok'; orderId: string; amountPaise: number; keyId: string }
   | { status: 'error'; error: string }
@@ -65,7 +65,7 @@ export function useRazorpayCheckout(start: StartRazorpay, confirm: ConfirmRazorp
   const [status, setStatus] = useState<CheckoutStatus>({ state: 'idle' });
 
   const pay = useCallback(
-    async (period: BillingPeriod) => {
+    async (period: PaymentPeriod) => {
       const fail = (message: string) => setStatus({ state: 'error', message });
       setStatus({ state: 'busy' });
       const started = await start(period).catch(() => null);
@@ -81,7 +81,7 @@ export function useRazorpayCheckout(start: StartRazorpay, confirm: ConfirmRazorp
         currency: 'INR',
         order_id: started.orderId,
         name: 'SpecFix',
-        description: `Pro (${period})`,
+        description: paymentLabel(period),
         theme: { color: '#2b5fd9' },
         modal: { ondismiss: () => setStatus({ state: 'idle' }) },
         // Inside a transition, so the page re-renders with the new plan as soon as the action
