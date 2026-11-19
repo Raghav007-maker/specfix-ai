@@ -37,6 +37,7 @@ import {
   linkClasses,
   type PillTone,
 } from '@/components/ui';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import {
   PriorityPill,
@@ -122,6 +123,7 @@ export default async function HomePage({
   const ready = data.queue.filter((r) => r.ready).length;
   const overdueMine = assigned.filter((task) => task.overdue).length;
   const canCreate = tenant.role === 'owner';
+  const showAgent = Boolean(agent) && data.agent.state === 'ready';
 
   const tabLink = (key: Tab, label: string, count?: number) => {
     const params = new URLSearchParams({ tab: key });
@@ -132,7 +134,7 @@ export default async function HomePage({
         href={`/?${params}`}
         aria-current={tab === key ? 'page' : undefined}
         className={cn(
-          'inline-flex h-10 flex-none items-center gap-1.5 border-b-2 px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal',
+          'tab-link inline-flex h-10 flex-none items-center gap-1.5 border-b-2 px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal',
           tab === key
             ? 'border-text font-medium text-text'
             : 'border-transparent text-muted-foreground hover:text-text'
@@ -205,25 +207,12 @@ export default async function HomePage({
         <>
           <section
             aria-label="At a glance"
-            className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            className="stagger mb-8 grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-sheet xl:grid-cols-4"
           >
-            <Metric label="Assigned to me" value={assigned.length} note="Unfinished tasks" />
-            <Metric
-              label="My overdue tasks"
-              value={overdueMine}
-              warn={overdueMine > 0}
-              note="Past due, not done"
-            />
-            <Metric
-              label="Flags to decide"
-              value={openFlags}
-              note={`On ${data.queue.filter((r) => r.openFlags > 0).length} spec tickets`}
-            />
-            <Metric
-              label="Tickets ready for dev"
-              value={ready}
-              note={`of ${data.queue.length} spec tickets`}
-            />
+            <Metric label="Assigned to me" value={assigned.length} />
+            <Metric label="Overdue" value={overdueMine} warn={overdueMine > 0} />
+            <Metric label="Flags to decide" value={openFlags} />
+            <Metric label="Ready for dev" value={ready} of={data.queue.length} />
           </section>
 
           <section aria-labelledby="projects-h" className="mb-8">
@@ -235,65 +224,77 @@ export default async function HomePage({
                 View all projects
               </Link>
             </div>
-            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {projects.slice(0, 6).map((p) => {
                 const counts = summarizeCounts(countRows.filter((r) => r.project_id === p.id));
                 const open = counts.total - counts.byStatus.done;
+                const percent = counts.total
+                  ? Math.round((counts.byStatus.done / counts.total) * 100)
+                  : 0;
                 const detail = byId.get(p.id);
                 return (
                   <li key={p.id}>
-                    <Card className="flex h-full flex-col p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <Link
-                          href={`/projects/${p.id}`}
-                          className="min-w-0 truncate font-medium underline-offset-[3px] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                    <Link
+                      href={`/projects/${p.id}`}
+                      className="card-lift group flex h-full flex-col rounded-xl border border-border bg-sheet p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          aria-hidden
+                          className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-teal-tag font-mono text-xs font-semibold text-teal-ink transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110"
                         >
-                          {p.name}
-                        </Link>
-                        {detail?.task_key ? (
-                          <span className="flex-none font-mono text-xs text-muted-foreground">
-                            {detail.task_key}
+                          {(detail?.task_key ?? p.name).slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{p.name}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {migrated
+                              ? `${open} open${counts.overdue ? ` · ${counts.overdue} overdue` : ''}`
+                              : 'Task tracking not set up'}
                           </span>
+                        </span>
+                        <ArrowRight
+                          aria-hidden
+                          size={16}
+                          className="card-arrow flex-none text-teal"
+                        />
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        {detail ? <ProjectStatusPill status={detail.status} /> : null}
+                        {migrated && counts.total > 0 ? (
+                          <>
+                            <span
+                              role="progressbar"
+                              aria-label={`${p.name} progress`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={percent}
+                              className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised"
+                            >
+                              <span
+                                className="bar-fill block h-full rounded-full bg-positive"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {percent}%
+                            </span>
+                          </>
                         ) : null}
                       </div>
-                      {detail ? (
-                        <div className="mt-1.5">
-                          <ProjectStatusPill status={detail.status} />
-                        </div>
-                      ) : null}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {migrated
-                          ? `${open} open task${open === 1 ? '' : 's'}${counts.overdue ? ` · ${counts.overdue} overdue` : ''}`
-                          : 'Task tracking not set up'}
-                      </p>
-                      {migrated && counts.total > 0 ? (
-                        <div className="mt-3">
-                          <ProgressBar
-                            done={counts.byStatus.done}
-                            total={counts.total}
-                            label="Progress"
-                          />
-                        </div>
-                      ) : null}
-                      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-3 text-sm">
-                        <Link href={`/projects/${p.id}/board`} className={linkClasses}>
-                          Board
-                        </Link>
-                        <Link href={`/projects/${p.id}/backlog`} className={linkClasses}>
-                          Backlog
-                        </Link>
-                        <Link href={`/?project=${p.id}`} className={linkClasses}>
-                          Spec queue
-                        </Link>
-                      </div>
-                    </Card>
+                    </Link>
                   </li>
                 );
               })}
             </ul>
           </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <div
+            className={cn(
+              'grid gap-6',
+              (sprints.length > 0 || showAgent) && 'xl:grid-cols-[minmax(0,1fr)_22rem]'
+            )}
+          >
             <div className="min-w-0">
               <nav
                 aria-label="Your work"
@@ -310,11 +311,11 @@ export default async function HomePage({
                 ) : assigned.length === 0 ? (
                   <EmptyNote>Nothing is assigned to you right now.</EmptyNote>
                 ) : (
-                  <ul className="divide-y divide-rule rounded-lg border border-border bg-sheet">
+                  <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-border bg-sheet">
                     {assigned.map((task) => (
                       <li
                         key={task.id}
-                        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-sm"
+                        className="row-hover flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-sm"
                       >
                         <Link
                           href={`/projects/${task.project_id}/tasks/${task.number}`}
@@ -363,7 +364,7 @@ export default async function HomePage({
                       No spec tickets yet. Ingest tickets into a project to start reviewing.
                     </EmptyNote>
                   ) : (
-                    <ul className="divide-y divide-rule rounded-lg border border-border bg-sheet">
+                    <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-border bg-sheet">
                       {[...data.queue]
                         .sort((a, b) => b.openFlags - a.openFlags)
                         .map((r) => {
@@ -371,7 +372,7 @@ export default async function HomePage({
                           return (
                             <li
                               key={r.id}
-                              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-sm"
+                              className="row-hover flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-sm"
                             >
                               <Link
                                 href={`/tickets/${r.id}`}
@@ -405,7 +406,7 @@ export default async function HomePage({
                 events.length === 0 ? (
                   <EmptyNote>No task activity in this workspace yet.</EmptyNote>
                 ) : (
-                  <ol className="space-y-3 rounded-lg border border-border bg-sheet p-4">
+                  <ol className="stagger space-y-3 rounded-xl border border-border bg-sheet p-4">
                     {events.map((e) => (
                       <li key={e.id} className="text-sm leading-5">
                         <p>
@@ -446,32 +447,29 @@ export default async function HomePage({
               ) : null}
             </div>
 
-            <div className="space-y-6">
-              <SideCard title="Active sprints">
-                {sprints.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No sprint is running.</p>
-                ) : (
-                  <ul className="space-y-4">
-                    {sprints.map((s) => (
-                      <li key={s.id}>
-                        <Link
-                          href={`/projects/${s.project_id}/backlog`}
-                          className="mb-1 block truncate text-xs text-muted-foreground underline-offset-[3px] hover:underline"
-                        >
-                          {s.project_name}
-                          {s.ends_on ? ` · ends ${s.ends_on}` : ''}
-                        </Link>
-                        <ProgressBar done={s.done} total={s.total} label={s.name} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </SideCard>
-
-              {agent && data.agent.state === 'ready' ? (
-                <SideCard title="Resolution agent">{agent}</SideCard>
-              ) : null}
-            </div>
+            {sprints.length > 0 || showAgent ? (
+              <div className="stagger space-y-6">
+                {sprints.length > 0 ? (
+                  <SideCard title="Active sprints">
+                    <ul className="space-y-4">
+                      {sprints.map((s) => (
+                        <li key={s.id}>
+                          <Link
+                            href={`/projects/${s.project_id}/backlog`}
+                            className="mb-1 block truncate text-xs text-muted-foreground underline-offset-[3px] hover:underline"
+                          >
+                            {s.project_name}
+                            {s.ends_on ? ` · ends ${s.ends_on}` : ''}
+                          </Link>
+                          <ProgressBar done={s.done} total={s.total} label={s.name} />
+                        </li>
+                      ))}
+                    </ul>
+                  </SideCard>
+                ) : null}
+                {showAgent ? <SideCard title="Resolution agent">{agent}</SideCard> : null}
+              </div>
+            ) : null}
           </div>
         </>
       )}
@@ -493,22 +491,24 @@ function SideCard({ title, children }: { title: string; children: ReactNode }) {
 function Metric({
   label,
   value,
-  note,
+  of,
   warn,
 }: {
   label: string;
   value: number;
-  note?: string;
+  of?: number;
   warn?: boolean;
 }) {
   return (
-    <Card className="p-5">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-2xl font-semibold tabular-nums', warn && 'text-negative')}>
-        {value}
+    <div className="border-border px-5 py-4 transition-colors duration-200 hover:bg-raised max-xl:[&:nth-child(-n+2)]:border-b max-xl:[&:nth-child(odd)]:border-r xl:[&:not(:last-child)]:border-r">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">
+        <span className={cn('num-pop', warn && 'text-negative')}>{value}</span>
+        {of !== undefined ? (
+          <span className="ml-1 text-sm font-normal text-muted-foreground">/ {of}</span>
+        ) : null}
       </p>
-      {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
-    </Card>
+    </div>
   );
 }
 

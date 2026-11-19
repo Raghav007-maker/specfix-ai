@@ -9,14 +9,17 @@ type ButtonVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghos
 type ButtonSize = 'default' | 'sm';
 
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-[color,background-color,border-color,transform] duration-150 ease-out active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-busy:cursor-progress';
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-[color,background-color,border-color,transform,box-shadow] duration-200 ease-out active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-busy:cursor-progress';
 
 // `default` is the one near-black primary per screen. `outline` and `secondary` are the same
 // bordered white button; both names stay because pages not yet redesigned pass them.
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  default: 'bg-primary text-sheet hover:bg-primary/85',
-  secondary: 'border border-control bg-sheet text-text hover:border-field',
-  outline: 'border border-control bg-sheet text-text hover:border-field',
+  default:
+    'btn-shine bg-primary text-sheet shadow-sm hover:-translate-y-px hover:bg-primary/90 hover:shadow-[0_6px_16px_-6px_rgb(43_95_217/0.55)]',
+  secondary:
+    'border border-control bg-sheet text-text hover:-translate-y-px hover:border-field hover:shadow-sm',
+  outline:
+    'border border-control bg-sheet text-text hover:-translate-y-px hover:border-field hover:shadow-sm',
   ghost: 'text-muted-foreground hover:bg-raised hover:text-text',
   destructive: 'border border-negative/40 bg-sheet text-negative hover:border-negative',
 };

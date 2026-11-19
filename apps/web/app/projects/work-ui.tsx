@@ -94,7 +94,7 @@ export function ProjectHeader({
             href={view.href}
             aria-current={active === view.key ? 'page' : undefined}
             className={cn(
-              'inline-flex h-10 flex-none items-center border-b-2 px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal',
+              'tab-link inline-flex h-10 flex-none items-center border-b-2 px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal',
               active === view.key
                 ? 'border-text font-medium text-text'
                 : 'border-transparent text-muted-foreground hover:text-text'
@@ -209,7 +209,10 @@ export function ProgressBar({
         aria-valuenow={percent}
         className="mt-2 h-2 overflow-hidden rounded-full bg-raised"
       >
-        <div className="h-full rounded-full bg-positive" style={{ width: `${percent}%` }} />
+        <div
+          className="bar-fill h-full rounded-full bg-positive"
+          style={{ width: `${percent}%` }}
+        />
       </div>
     </div>
   );

@@ -172,7 +172,7 @@ export default async function ProjectListPage({
             </thead>
             <tbody className="divide-y divide-rule">
               {shown.map((task) => (
-                <tr key={task.id} className="hover:bg-raised/60">
+                <tr key={task.id} className="transition-colors duration-150 hover:bg-raised">
                   <td className={`${td} whitespace-nowrap font-mono text-[13px]`}>
                     <Link
                       href={`/projects/${projectId}/tasks/${task.number}`}

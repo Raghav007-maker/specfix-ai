@@ -173,11 +173,11 @@ export default async function BacklogPage({
     list.length === 0 ? (
       <EmptyNote>{empty}</EmptyNote>
     ) : (
-      <ul className="divide-y divide-rule rounded-lg border border-border">
+      <ul className="divide-y divide-rule overflow-hidden rounded-lg border border-border">
         {list.map((task) => (
           <li
             key={task.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm"
+            className="row-hover flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm"
           >
             <Link
               href={`/projects/${projectId}/tasks/${task.number}`}

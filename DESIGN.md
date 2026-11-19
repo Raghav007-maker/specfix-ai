@@ -181,9 +181,14 @@ nav items, Sign out, Show in ticket, Download, Edit. Never in a tinted square.
 **Focus & hover** — every interactive element has a 2px `accent` `:focus-visible` ring with 2px
 offset. Hover changes text or border colour, never only the fill.
 
-**Motion** — feedback only, CSS, 120–150ms, `transform`/`opacity`/`color`/`border-color`, never
-`transition: all`. Button press `translate-y-px`; dialog fades in. **Nothing performs an entrance**
-(no reveal animations). `prefers-reduced-motion: reduce` removes all of it.
+**Motion** — CSS only, `transform`/`opacity`/`color`/`border-color`/`box-shadow`, never
+`transition: all`; the classes live in `apps/web/app/globals.css`. Hover feedback 150–260ms:
+sidebar links grow an accent bar and nudge their icon (`.nav-item`), clickable cards lift
+(`.card-lift`), list rows tint (`.row-hover`), tabs grow an underline (`.tab-link`), the primary
+button gets a light sweep (`.btn-shine`). Entrances are short and capped: a page's top-level blocks
+rise in turn (`.page-enter > *`), grids and lists stagger (`.stagger`), progress fills grow
+(`.bar-fill`), big numbers settle (`.num-pop`), `<details>` menus pop (`.menu-pop`).
+`prefers-reduced-motion: reduce` removes all of it.
 
 ## 5. Layout Principles
 

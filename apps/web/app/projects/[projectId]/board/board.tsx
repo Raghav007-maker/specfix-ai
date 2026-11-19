@@ -121,7 +121,7 @@ export function Board({
           {error}
         </Notice>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((column) => {
           const inColumn = cards.filter((c) => c.status === column.status);
           const target = drop?.status === column.status;
@@ -215,8 +215,8 @@ function CardView({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        'cursor-grab space-y-2 rounded-md border border-border bg-sheet p-3 text-sm shadow-[0_1px_0_rgb(var(--border))] active:cursor-grabbing',
-        dragging && 'opacity-50'
+        'cursor-grab space-y-2 rounded-lg border border-border bg-sheet p-3 text-sm shadow-[0_1px_0_rgb(var(--border))] transition-[transform,box-shadow,border-color,opacity] duration-200 ease-out hover:-translate-y-0.5 hover:border-teal/40 hover:shadow-[0_10px_24px_-12px_rgb(43_95_217/0.35)] active:cursor-grabbing',
+        dragging && 'rotate-2 scale-[1.02] opacity-50'
       )}
     >
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

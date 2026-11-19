@@ -1,3 +1,4 @@
+import { cn } from '@/lib/cn';
 import { requireUser } from '@/lib/session';
 import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
@@ -126,7 +127,13 @@ export default async function InboxPage({
                 const key = typeof n.payload.key === 'string' ? n.payload.key : '';
                 const title = typeof n.payload.title === 'string' ? n.payload.title : '';
                 return (
-                  <li key={n.id} className={n.read_at ? 'opacity-70' : undefined}>
+                  <li
+                    key={n.id}
+                    className={cn(
+                      'transition-colors duration-150 hover:bg-raised',
+                      n.read_at && 'opacity-70'
+                    )}
+                  >
                     <form action={markReadAction} className="flex items-start gap-3 px-4 py-3">
                       <input type="hidden" name="id" value={n.id} />
                       <input
