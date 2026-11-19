@@ -67,8 +67,25 @@ describe.skipIf(!hasDatabase)('team requests', () => {
     expect(await searchTeams(u.owner, `${label} acme`)).toEqual([]);
   });
 
-  it('treats the search text as a literal and needs 3 characters', async () => {
-    expect(await searchTeams(u.newbie, 'ac')).toEqual([]);
+  it('finds from one character, never lists everything on empty text, and caps the list', async () => {
+    expect(await searchTeams(u.newbie, '')).toEqual([]);
+    expect(await searchTeams(u.newbie, '   ')).toEqual([]);
+    // One letter is enough to start the dropdown; the caller's limit is clamped to 1..20.
+    expect((await searchTeams(u.newbie, 'a')).length).toBeGreaterThan(0);
+    expect((await searchTeams(u.newbie, 'a', 1)).length).toBe(1);
+    expect((await searchTeams(u.newbie, 'a', 10_000)).length).toBeLessThanOrEqual(20);
+    expect((await searchTeams(u.newbie, 'a', -5)).length).toBe(1);
+  });
+
+  it('puts names that start with the text before names that only contain it', async () => {
+    const prefix = `${label} zq`;
+    await createTenant(`x ${prefix} later`);
+    await createTenant(`${prefix} first`);
+    const names = (await searchTeams(u.newbie, prefix)).map((t) => t.name);
+    expect(names.indexOf(`${prefix} first`)).toBeLessThan(names.indexOf(`x ${prefix} later`));
+  });
+
+  it('treats the search text as a literal', async () => {
     expect(await searchTeams(u.newbie, '%%%')).toEqual([]);
     expect(await searchTeams(u.newbie, '___')).toEqual([]);
     expect(await searchTeams(u.newbie, "x' or 1=1 --")).toEqual([]);
