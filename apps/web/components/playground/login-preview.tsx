@@ -168,7 +168,14 @@ export function LoginPreview({
           </div>
 
           <div className={s.field} data-invalid={errors.password ? 'true' : undefined}>
-            <label htmlFor={`${id}-password`}>Password</label>
+            <div className={s.labelRow}>
+              <label htmlFor={`${id}-password`}>Password</label>
+              {mode === 'sign-in' ? (
+                <a href="/login/forgot" className={s.forgot}>
+                  Forgot password?
+                </a>
+              ) : null}
+            </div>
             <div className={s.fieldBox}>
               <input
                 ref={passwordRef}

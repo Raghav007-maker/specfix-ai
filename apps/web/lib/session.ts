@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
-import { needsSecondFactor } from '@specfix/shared';
+import { needsSecondFactor, recoveryIsFresh } from '@specfix/shared';
 import { createClient } from '@/lib/supabase/server';
 
 const USER_TTL_MS = 60_000;
@@ -67,4 +67,19 @@ export async function requireUser(signedOutTo: '/' | '/login' = '/'): Promise<Us
   // Pages send a signed-out visitor to the landing page; OAuth routes go straight to sign-in.
   if (!user) redirect(signedOutTo);
   return user;
+}
+
+/**
+ * The signed-in user, only when this session came from a password-reset link opened in the last
+ * 15 minutes (the verified token's `amr` claim). Anything else gets null, so the new-password
+ * form never works for a session that simply signed in with a password.
+ */
+export async function getRecoveryUser(): Promise<User | null> {
+  const session = await getSession();
+  if (!session) return null;
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims || claims.sub !== session.user.id) return null;
+  return recoveryIsFresh(claims.amr, Math.floor(Date.now() / 1000)) ? session.user : null;
 }
