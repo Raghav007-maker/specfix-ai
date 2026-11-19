@@ -37,6 +37,14 @@ const nextConfig: NextConfig = {
   // generate path), so keep both external and require them at runtime.
   serverExternalPackages: ['pg', 'openai'],
 
+  // Task attachments are posted to a server action; 10 MB files plus the form's own fields.
+  // The action re-checks the size, so this is only the transport ceiling.
+  // Middleware also buffers request bodies, by default only up to 10 MB.
+  experimental: {
+    serverActions: { bodySizeLimit: '11mb' },
+    middlewareClientMaxBodySize: '11mb',
+  },
+
   // The Supabase URL and anon key are public by design (the anon key is meant to
   // ship to browsers). Bridge them from the root .env to the NEXT_PUBLIC_ names the
   // browser/auth client reads, so the secret material lives in exactly one file.

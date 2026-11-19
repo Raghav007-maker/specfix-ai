@@ -11,3 +11,4 @@ export * from './mfa.ts';
 export * from './avatar.ts';
 export * from './chart.ts';
 export * from './password-reset.ts';
+export * from './attachments.ts';

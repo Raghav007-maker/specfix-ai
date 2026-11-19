@@ -32,8 +32,14 @@ import {
   updateProjectDetails,
   updateWorkItem,
   sendTaskForSpecReview,
+  AttachmentError,
+  addAttachment,
+  deleteAttachment,
+  discardAttachment,
   type RawTaskInput,
 } from '@/lib/repos';
+import { checkAttachment } from '@specfix/shared';
+import { attachmentsReady, putAttachment, removeAttachments } from '@/lib/storage';
 
 /**
  * Project and task writes. Each action resolves the user and their current tenant; the
@@ -95,7 +101,8 @@ async function run<T>(write: () => Promise<T>): Promise<{ ok: T } | { error: str
     if (
       error instanceof WorkError ||
       error instanceof ProjectAccessError ||
-      error instanceof RequestError
+      error instanceof RequestError ||
+      error instanceof AttachmentError
     ) {
       return { error: error.message };
     }
@@ -180,7 +187,67 @@ export async function deleteTaskAction(formData: FormData): Promise<void> {
       error: result.error,
     });
   }
+  await removeAttachments(result.ok.storagePaths);
   back(projectPath(result.ok.projectId), { notice: `Deleted ${key.slice(0, 20)}.` });
+}
+
+// Uploads cost storage and bandwidth: a generous hourly allowance per person.
+const uploadsByUser = new RateLimiter('attachment-upload', 60, 60 * 60_000);
+
+/**
+ * Attaches one file to a task. The file is checked (size, type, and that its first bytes
+ * match its extension), the row is added under the task's lock (limit and project access
+ * re-checked there), then the bytes are stored; a failed store removes the row again.
+ */
+export async function uploadAttachmentAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId');
+  const number = Number(field(formData, 'number'));
+  const here = projectPath(projectId, Number.isSafeInteger(number) ? `/tasks/${number}` : '');
+  const fail = (error: string): never => back(`${here}`, { error });
+
+  if (!attachmentsReady()) fail('File attachments are not set up on this server.');
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) fail('Choose a file to attach.');
+  const upload = file as File;
+  const head = new Uint8Array(await upload.slice(0, 16).arrayBuffer());
+  const checked = checkAttachment({ name: upload.name, size: upload.size, head });
+  if (!checked.ok) fail(checked.error);
+  if (!(await uploadsByUser.take(user.id))) fail('Too many uploads. Try again in an hour.');
+  const ok = checked as Extract<typeof checked, { ok: true }>;
+
+  const result = await run(() =>
+    addAttachment(tenantId, user.id, field(formData, 'taskId') ?? '', {
+      name: ok.name,
+      contentType: ok.contentType,
+      size: upload.size,
+    })
+  );
+  if ('error' in result) fail(result.error);
+  const row = (result as { ok: Awaited<ReturnType<typeof addAttachment>> }).ok;
+  try {
+    await putAttachment(row.storage_path, upload, ok.contentType);
+  } catch (error) {
+    console.error('[attachments] upload failed:', error instanceof Error ? error.message : error);
+    await discardAttachment(tenantId, row.id);
+    fail('Could not store the file. Please try again.');
+  }
+  revalidatePath(here);
+  back(`${here}`, { notice: `Attached ${ok.name}.` });
+}
+
+/** Removes a file: whoever added it, or a project admin (re-checked in the repository). */
+export async function deleteAttachmentAction(formData: FormData): Promise<void> {
+  const { user, tenantId } = await actor();
+  const projectId = field(formData, 'projectId');
+  const number = Number(field(formData, 'number'));
+  const here = projectPath(projectId, Number.isSafeInteger(number) ? `/tasks/${number}` : '');
+  const result = await run(() =>
+    deleteAttachment(tenantId, user.id, field(formData, 'attachmentId') ?? '')
+  );
+  if ('error' in result) back(here, { error: result.error });
+  await removeAttachments([result.ok.storagePath]);
+  back(here, { notice: `Removed ${result.ok.fileName}.` });
 }
 
 export async function updateProjectAction(formData: FormData): Promise<void> {

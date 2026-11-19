@@ -1288,12 +1288,17 @@ export async function deleteWorkItem(
   tenantId: TenantId,
   actorId: string,
   itemId: string
-): Promise<{ projectId: string; number: number }> {
+): Promise<{ projectId: string; number: number; storagePaths: string[] }> {
   return tx(async (client) => {
     const item = await lockItem(client, tenantId, itemId);
     if (!canManage(await memberRole(client, tenantId, actorId, item.project_id, TASK_MISSING))) {
       throw new WorkError('Only owners and admins can delete tasks.');
     }
+    // The rows go with the task (on delete cascade); the caller removes the stored files.
+    const { rows: files } = await client.query<{ storage_path: string }>(
+      `select storage_path from work_item_attachments where tenant_id = $1 and work_item_id = $2`,
+      [tenantId, item.id]
+    );
     await insertEvent(client, tenantId, {
       projectId: item.project_id,
       workItemId: item.id,
@@ -1306,7 +1311,11 @@ export async function deleteWorkItem(
       tenantId,
       item.id,
     ]);
-    return { projectId: item.project_id, number: item.number };
+    return {
+      projectId: item.project_id,
+      number: item.number,
+      storagePaths: files.map((f) => f.storage_path),
+    };
   });
 }
 

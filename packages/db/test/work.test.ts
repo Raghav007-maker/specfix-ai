@@ -313,6 +313,7 @@ describe.skipIf(!hasDatabase)('work items in the database', () => {
     expect(await deleteWorkItem(tenantA, users.admin, task.id)).toEqual({
       projectId: projectA,
       number: 2,
+      storagePaths: [],
     });
     expect(await getWorkItemByNumber(tenantA, projectA, 2)).toBeNull();
     const events = await listWorkEvents(tenantA, { projectId: projectA }, 200);
