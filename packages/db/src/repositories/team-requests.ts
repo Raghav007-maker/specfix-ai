@@ -32,10 +32,21 @@ export interface TeamHit {
 /** "a_b%" → "a\_b\%": the search text is a literal, not a pattern. */
 const literal = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-/** Teams whose name contains `text` (at least 3 characters) that the user is not in; 8 at most. */
-export async function searchTeams(userId: string, text: string): Promise<TeamHit[]> {
+/** Most workspaces one search returns. Nothing lists every workspace: a search needs text. */
+export const TEAM_SEARCH_MAX = 20;
+
+/**
+ * Active workspaces whose name contains `text` that the user is not in, names starting with it
+ * first. Empty text finds nothing, so the full list of workspaces is never shown to anyone.
+ */
+export async function searchTeams(
+  userId: string,
+  text: string,
+  limit = TEAM_SEARCH_MAX
+): Promise<TeamHit[]> {
   const q = text.trim().replace(/\s+/g, ' ').slice(0, 100);
-  if (!UUID.test(userId) || q.length < 3) return [];
+  const max = Math.min(Math.max(Math.trunc(limit) || 1, 1), TEAM_SEARCH_MAX);
+  if (!UUID.test(userId) || q.length < 1) return [];
   return query<TeamHit>(
     `select t.id, t.name,
             exists (select 1 from team_join_requests r
@@ -45,9 +56,9 @@ export async function searchTeams(userId: string, text: string): Promise<TeamHit
      where t.name ilike $2 escape '\\'
        and t.activated_at is not null
        and not exists (select 1 from memberships m where m.tenant_id = t.id and m.user_id = $1)
-     order by t.name
-     limit 8`,
-    [userId, `%${literal(q)}%`]
+     order by (t.name ilike $3 escape '\\') desc, t.name
+     limit $4`,
+    [userId, `%${literal(q)}%`, `${literal(q)}%`, max]
   );
 }
 

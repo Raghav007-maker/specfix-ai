@@ -18,6 +18,8 @@ import {
   requestProject,
   requestProjectJoin,
   requestToJoin,
+  searchTeams,
+  type TeamHit,
 } from '@/lib/repos';
 
 /**
@@ -93,6 +95,22 @@ function back(error?: string, notice?: string, page: '/team' | '/join' = '/team'
 
 const joinByUser = new RateLimiter('team-join', 10, 60 * 60_000);
 
+/** Live search as someone types: generous, but a script cannot sweep every name quickly. */
+const searchByUser = new RateLimiter('team-search', 60, 60_000);
+
+/**
+ * The workspace picker's live search. Returns at most 20 workspaces the caller is not in, and
+ * nothing for empty text or once the caller has used up the minute's searches.
+ */
+export async function searchWorkspacesAction(text: unknown): Promise<TeamHit[]> {
+  const user = await requireUser();
+  if (typeof text !== 'string') return [];
+  const q = text.trim().slice(0, 100);
+  if (!q) return [];
+  if (!(await searchByUser.take(user.id))) return [];
+  return searchTeams(user.id, q);
+}
+
 /** Asks to join a team found by name; the owner decides. */
 export async function requestJoinAction(formData: FormData): Promise<void> {
   const user = await requireUser();
@@ -103,7 +121,7 @@ export async function requestJoinAction(formData: FormData): Promise<void> {
   }
   const outcome = await run(() => requestToJoin(user.id, String(formData.get('tenantId') ?? '')));
   if (outcome) back(outcome, undefined, page);
-  back(undefined, 'Request sent. The team owner will see it.', page);
+  back(undefined, 'Request sent. The workspace owner will see it.', page);
 }
 
 export async function decideJoinAction(formData: FormData): Promise<void> {

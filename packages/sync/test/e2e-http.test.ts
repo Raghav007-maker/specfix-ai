@@ -211,6 +211,63 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       }
     );
 
+    it('serves the forgot-password page to anyone', async () => {
+      const r = await fetch(`${BASE}/login/forgot`, { redirect: 'manual' });
+      expect(r.status).toBe(200);
+      expect(await r.text()).toContain('Send reset link');
+    });
+
+    it('shows "link expired" on /login/reset without a reset session, never a password form', async () => {
+      const r = await fetch(`${BASE}/login/reset`, { redirect: 'manual' });
+      expect(r.status).toBe(200);
+      const html = await r.text();
+      expect(html).toContain('Link expired');
+      expect(html).not.toContain('Save new password');
+    });
+
+    it.each([
+      '/auth/callback?next=reset',
+      '/auth/callback?next=reset&code=forged',
+      `/auth/callback?next=reset&code=${'x'.repeat(600)}`,
+    ])('sends a bad reset link %s to /login/forgot with a relative Location', async (path) => {
+      const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+      expect([302, 303, 307, 308]).toContain(r.status);
+      expect(r.headers.get('location') ?? '').toMatch(/^\/login\/forgot\?error=/);
+    });
+
+    it.each([
+      '/auth/callback?next=//evil.example&code=forged',
+      '/auth/callback?next=https://evil.example&code=forged',
+    ])('never redirects off-site from %s', async (path) => {
+      const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+      const location = r.headers.get('location') ?? '';
+      expect(location).toMatch(/^\/login\?error=/);
+      expect(location).not.toContain('evil');
+    });
+
+    // Next answers any form POST with no (or an unknown) server action id with a 500, on every
+    // page with a form ("Failed to find Server Action"); /login has always done it too.
+    it.fails.each(['/login', '/login/forgot'])(
+      'BUG: a plain POST to %s without a server action id answers 500',
+      async (path) => {
+        const body = new FormData();
+        body.set('email', `nobody-${Date.now()}@example.test`);
+        const r = await fetch(`${BASE}${path}`, { method: 'POST', body, redirect: 'manual' });
+        expect(r.status).toBeLessThan(500);
+      }
+    );
+
+    it.each(['/login', '/login/forgot'])(
+      'a plain POST to %s leaks no internal error text',
+      async (path) => {
+        const body = new FormData();
+        body.set('email', `nobody-${Date.now()}@example.test`);
+        const r = await fetch(`${BASE}${path}`, { method: 'POST', body, redirect: 'manual' });
+        const text = await r.text();
+        expect(text).not.toMatch(/Failed to find Server Action|at async|\.next[\\/]server/);
+      }
+    );
+
     it('refuses /api/jira/connect without a session', async () => {
       const r = await fetch(`${BASE}/api/jira/connect`, { redirect: 'manual' });
       expect(r.headers.get('location') ?? '').toMatch(/\/login/);

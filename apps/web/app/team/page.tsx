@@ -10,7 +10,6 @@ import {
   listJoinableProjects,
   listMyJoinRequests,
   listProjectRequests,
-  searchTeams,
   listProjectMemberships,
   listMembers,
   listOpenAssignedWork,
@@ -59,20 +58,17 @@ export default async function TeamPage({
     q?: string;
     project?: string;
     role?: string;
-    find?: string;
   }>;
 }) {
   const user = await requireUser();
   const [memberships, params] = await Promise.all([currentMemberships(user.id), searchParams]);
   const tenant = await requireTenant(user.id, memberships);
   const t = tenant.tenant_id;
-  const find = (params.find ?? '').trim().slice(0, 100);
   const [
     members,
     projects,
     migrated,
     allProjectRoles,
-    hits,
     myJoins,
     joins,
     projectRequests,
@@ -83,7 +79,6 @@ export default async function TeamPage({
     listProjects(t, user.id),
     workTablesAvailable(),
     listProjectMemberships(t),
-    searchTeams(user.id, find),
     listMyJoinRequests(user.id),
     listJoinRequests(t, user.id),
     listProjectRequests(t, user.id),
@@ -227,7 +222,7 @@ export default async function TeamPage({
         </div>
       </form>
 
-      <FindTeam find={find} hits={hits} mine={myJoins} />
+      <FindTeam mine={myJoins} />
       {joinable.length > 0 ? <JoinProjects projects={joinable} /> : null}
       {tenant.role === 'owner' ? <OwnerRequests joins={joins} projects={projectRequests} /> : null}
       {asks ? <RequestProject mine={projectRequests} /> : null}

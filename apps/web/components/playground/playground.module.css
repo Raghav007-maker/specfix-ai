@@ -3995,3 +3995,30 @@ pre.typeIn > span {
     animation: none;
   }
 }
+
+/* The password label with "Forgot password?" at its right. */
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.forgot {
+  font-size: 13px;
+  color: var(--pg-muted, inherit);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: transparent;
+  border-radius: 4px;
+  transition:
+    color 160ms ease-out,
+    text-decoration-color 160ms ease-out;
+}
+.forgot:hover {
+  color: inherit;
+  text-decoration-color: currentColor;
+}
+.forgot:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}

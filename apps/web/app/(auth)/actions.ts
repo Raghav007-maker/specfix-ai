@@ -3,10 +3,10 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { AuthError } from '@supabase/supabase-js';
-import { normalizeTotpCode } from '@specfix/shared';
+import { newPasswordProblem, normalizeTotpCode, resetEmailOk } from '@specfix/shared';
 import { RateLimiter } from '@/lib/repos';
 import { createClient } from '@/lib/supabase/server';
-import { getSession } from '@/lib/session';
+import { forgetUser, getRecoveryUser, getSession } from '@/lib/session';
 import { appOrigin, captchaSiteKey, googleSignInEnabled } from '@/lib/auth';
 
 const TOO_MANY = 'Too many attempts. Please wait a few minutes and try again.';
@@ -18,6 +18,10 @@ const signUpByIp = new RateLimiter('signup-ip', 5, 60 * 60_000);
 // Six digits are a million guesses; five tries per quarter hour keeps guessing hopeless.
 const secondStepByUser = new RateLimiter('2fa-user', 5, 15 * 60_000);
 const secondStepByIp = new RateLimiter('2fa-ip', 20, 15 * 60_000);
+// Each reset request sends an email: few per address, a few more per network.
+const resetByEmail = new RateLimiter('reset-email', 3, 60 * 60_000);
+const resetByIp = new RateLimiter('reset-ip', 10, 60 * 60_000);
+const newPasswordByUser = new RateLimiter('new-password-user', 5, 15 * 60_000);
 
 /** Emails over 254 chars are invalid; Supabase rejects passwords over 72. Refused without a call. */
 const tooLong = (email: string, password: string) => email.length > 254 || password.length > 72;
@@ -223,4 +227,100 @@ export async function signInWithGoogle(): Promise<void> {
     );
   }
   redirect(url);
+}
+
+/** The same answer whether or not an account exists, so this page cannot tell who has one. */
+const RESET_SENT =
+  'If an account uses that email, a reset link is on its way. Open it in this browser.';
+
+/**
+ * "Forgot password": asks Supabase to email a reset link. The link comes back to this app's own
+ * /auth/callback (PUBLIC_BASE_URL, never the request's Host), which signs the person in for
+ * the reset and opens /login/reset. Supabase uses that address only if it is on the project's
+ * Redirect URLs list; otherwise it falls back to the Site URL.
+ */
+export async function requestPasswordReset(formData: FormData): Promise<void> {
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase();
+  const back = (key: 'error' | 'message', text: string): never =>
+    redirect(`/login/forgot?${key}=${encodeURIComponent(text)}`);
+
+  if (!resetEmailOk(email)) back('error', 'Enter the email you sign in with.');
+  const captcha = captchaOptions(formData);
+  if (!captcha) back('error', NO_CAPTCHA);
+  if (!((await resetByIp.take(await clientIp())) && (await resetByEmail.take(email)))) {
+    back('error', TOO_MANY);
+  }
+
+  let failed: string | null = null;
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${appOrigin()}/auth/callback?next=reset`,
+      ...captcha,
+    });
+    if (error) {
+      console.error('[auth] reset request failed:', error.name, error.status ?? 0, error.message);
+      // An unknown email is not an error to the visitor; transport and rate problems are.
+      if (error.name === 'AuthRetryableFetchError' || !error.status) {
+        failed = 'Cannot reach the authentication server. Please try again.';
+      } else if (error.status === 429) {
+        failed = TOO_MANY;
+      } else if (error.code === 'captcha_failed' || /captcha/i.test(error.message)) {
+        failed = NO_CAPTCHA;
+      }
+    }
+  } catch (err) {
+    console.error('[auth] reset request threw:', err instanceof Error ? err.message : err);
+    failed = 'Something went wrong. Please try again.';
+  }
+  if (failed) back('error', failed);
+  back('message', RESET_SENT);
+}
+
+/**
+ * Sets a new password for the person the reset link signed in. Other sessions of the account
+ * are signed out, so whoever knew the old password loses access.
+ */
+export async function setNewPassword(formData: FormData): Promise<void> {
+  const user = await getRecoveryUser();
+  if (!user) {
+    redirect(
+      `/login/forgot?error=${encodeURIComponent('That reset link has expired. Ask for a new one.')}`
+    );
+  }
+  const password = String(formData.get('password') ?? '');
+  const confirm = String(formData.get('confirm') ?? '');
+  const back = (text: string): never => redirect(`/login/reset?error=${encodeURIComponent(text)}`);
+
+  const problem = newPasswordProblem(password, confirm);
+  if (problem) back(problem);
+  if (!(await newPasswordByUser.take(user.id))) back(TOO_MANY);
+
+  let failed: string | null = null;
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      console.error('[auth] password update failed:', error.name, error.status ?? 0, error.code);
+      failed =
+        error.code === 'same_password'
+          ? 'Choose a password different from your old one.'
+          : error.code === 'weak_password'
+            ? 'That password is too weak. Try a longer one.'
+            : error.status === 429
+              ? TOO_MANY
+              : 'Could not change the password. Ask for a new reset link and try again.';
+    } else {
+      await supabase.auth.signOut({ scope: 'others' });
+    }
+  } catch (err) {
+    console.error('[auth] password update threw:', err instanceof Error ? err.message : err);
+    failed = 'Something went wrong. Please try again.';
+  }
+  if (failed) back(failed);
+  forgetUser(user.id);
+  // A user with two-step verification still enters their code next (getUser sends them there).
+  redirect('/');
 }

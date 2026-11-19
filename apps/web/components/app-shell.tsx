@@ -196,7 +196,12 @@ export async function AppShell({
           <LogoMark size={22} className="text-text" />
         </Link>
         <div className="min-w-0 flex-1">{breadcrumb}</div>
-        <form action="/search" method="get" role="search" className="relative w-56 xl:w-80">
+        <form
+          action="/search"
+          method="get"
+          role="search"
+          className="relative w-56 transition-[width] duration-300 ease-out focus-within:w-72 xl:w-80 xl:focus-within:w-96"
+        >
           <Search
             aria-hidden
             size={15}
@@ -208,12 +213,20 @@ export async function AppShell({
             aria-label="Search tasks and projects"
             placeholder="Search"
             maxLength={100}
-            className="h-8 w-full rounded-md border border-border bg-sheet pl-8 pr-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+            className="h-8 w-full rounded-md border border-border bg-sheet pl-8 pr-2 text-sm transition-[border-color,box-shadow] duration-200 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
           />
         </form>
         {create ? (
-          <Link href={create.href} className={cn(buttonClasses('default', 'sm'), 'h-8')}>
-            <Plus aria-hidden size={15} strokeWidth={2} />
+          <Link
+            href={create.href}
+            className={cn(buttonClasses('default', 'sm'), 'group/create h-8')}
+          >
+            <Plus
+              aria-hidden
+              size={15}
+              strokeWidth={2}
+              className="transition-transform duration-300 group-hover/create:rotate-90"
+            />
             {create.label}
           </Link>
         ) : null}
@@ -264,11 +277,11 @@ function BellLink({ count }: { count: number }) {
     <Link
       href="/inbox"
       aria-label={count ? `Notifications, ${count} unread` : 'Notifications'}
-      className="relative flex h-9 w-9 flex-none items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+      className="bell-ring relative flex h-9 w-9 flex-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-raised hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
     >
       <Bell aria-hidden size={18} strokeWidth={1.6} />
       {count ? (
-        <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-negative px-1 text-center text-[11px] font-semibold leading-[18px] text-white tabular-nums">
+        <span className="num-pop absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-negative px-1 text-center text-[11px] font-semibold leading-[18px] text-white tabular-nums">
           {count > 99 ? '99+' : count}
         </span>
       ) : null}
@@ -295,19 +308,24 @@ function SettingsMenu({
   const links = settingsLinks(appOwner, payer);
   const inSettings = links.some((l) => l.key === current);
   return (
-    <details className="relative">
+    <details className="group/settings relative">
       <summary
         className={cn(
-          'flex h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11 [&::-webkit-details-marker]:hidden',
+          'nav-item flex h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11 [&::-webkit-details-marker]:hidden',
           inSettings
             ? 'bg-active font-medium text-text'
             : 'text-muted-foreground hover:bg-raised hover:text-text'
         )}
       >
-        <Settings aria-hidden size={18} strokeWidth={1.6} />
-        Settings
+        <Settings
+          aria-hidden
+          size={18}
+          strokeWidth={1.6}
+          className="transition-transform duration-500 group-open/settings:rotate-90"
+        />
+        <span>Settings</span>
       </summary>
-      <div className="absolute bottom-full left-0 z-40 mb-1 w-full min-w-64 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
+      <div className="menu-pop menu-up absolute bottom-full left-0 z-40 mb-1 w-full min-w-64 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
         <p className="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted-foreground">
           Workspace settings
         </p>
@@ -390,11 +408,11 @@ function AccountMenu({
     <details className="relative">
       <summary
         aria-label="Account"
-        className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal [&::-webkit-details-marker]:hidden"
+        className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full ring-0 ring-teal/30 transition-[box-shadow,transform] duration-200 hover:scale-105 hover:ring-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal [&::-webkit-details-marker]:hidden"
       >
         {avatar('h-8 w-8 text-xs')}
       </summary>
-      <div className="absolute right-0 top-11 z-40 w-72 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
+      <div className="menu-pop menu-down absolute right-0 top-11 z-40 w-72 rounded-lg border border-border bg-sheet p-2 shadow-[var(--float)]">
         <div className="flex items-center gap-3 rounded-md bg-raised p-3">
           {avatar('h-11 w-11 text-sm')}
           <div className="min-w-0">
@@ -517,7 +535,7 @@ function Nav({
         <p className="text-xs capitalize text-muted-foreground">{tenant.role}</p>
       </div>
 
-      <nav aria-label="Main" className="mt-5 flex flex-col gap-0.5">
+      <nav aria-label="Main" className="nav-stagger mt-5 flex flex-col gap-0.5">
         <NavLink
           href="/"
           active={current === 'queue'}
@@ -561,7 +579,7 @@ function Nav({
                 {project.id === activeProjectId ? (
                   <ul
                     aria-label={`${project.name} views`}
-                    className="mb-1 ml-[1.15rem] mt-0.5 space-y-0.5 border-l border-border pl-2"
+                    className="nav-unfold mb-1 ml-[1.15rem] mt-0.5 space-y-0.5 border-l border-border pl-2"
                   >
                     {projectViews(project.id, project.role !== 'reviewer').map((view) => (
                       <li key={view.key}>
@@ -569,13 +587,13 @@ function Nav({
                           href={view.href}
                           aria-current={view.key === projectView ? 'page' : undefined}
                           className={cn(
-                            'flex h-8 items-center rounded-md px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
+                            'nav-item flex h-8 items-center rounded-md px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
                             view.key === projectView
                               ? 'bg-active font-medium text-text'
                               : 'text-muted-foreground hover:bg-raised hover:text-text'
                           )}
                         >
-                          {view.label}
+                          <span>{view.label}</span>
                         </Link>
                       </li>
                     ))}
@@ -645,7 +663,7 @@ function NavLink({
       href={href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex h-10 items-center gap-3 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
+        'nav-item flex h-10 items-center gap-3 rounded-lg px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal max-lg:h-11',
         active
           ? 'bg-active font-medium text-text shadow-[0_0_0_1px_rgb(var(--border))]'
           : 'text-muted-foreground hover:bg-raised hover:text-text'

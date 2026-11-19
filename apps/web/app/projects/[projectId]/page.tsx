@@ -183,7 +183,7 @@ export default async function ProjectSummaryPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="stagger grid gap-6 lg:grid-cols-2">
         <SummaryCard title="Status overview" note="Every task in the project, by status.">
           <div className="space-y-5">
             <ProgressBar

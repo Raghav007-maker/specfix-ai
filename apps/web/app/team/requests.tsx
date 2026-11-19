@@ -1,39 +1,26 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EmptyNote,
-  Input,
-} from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, EmptyNote, Input } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
+import { WorkspacePicker } from './workspace-picker';
 import type {
   JoinRequestRow,
   JoinableProjectRow,
   MyRequestRow,
   ProjectRequestRow,
-  TeamHit,
 } from '@/lib/repos';
 import {
   decideJoinAction,
   decideProjectAction,
-  requestJoinAction,
   requestProjectAction,
   requestProjectJoinAction,
 } from './actions';
 
 const WHEN = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
 
-/** Search teams by name and ask to join one. Open to everyone signed in. */
+/** Pick a workspace from a searchable dropdown and ask to join it. Open to everyone signed in. */
 export function FindTeam({
-  find,
-  hits,
   mine,
   from = 'team',
 }: {
-  find: string;
-  hits: TeamHit[];
   mine: MyRequestRow[];
   /** The page it sits on, so a request returns there. */
   from?: 'team' | 'join';
@@ -41,52 +28,14 @@ export function FindTeam({
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle className="text-base">Find a team</CardTitle>
+        <CardTitle className="text-base">Find a workspace</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Search a team by its name and ask to join. Its owner decides; after that a project admin
-          adds you to projects.
+          Pick a workspace and ask to join. Its owner decides; after that a project admin adds you
+          to projects.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <form method="get" role="search" className="flex gap-2">
-          <Input
-            type="search"
-            name="find"
-            defaultValue={find}
-            minLength={3}
-            maxLength={100}
-            aria-label="Team name"
-            placeholder="Team name (at least 3 letters)"
-            autoComplete="off"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
-        {find ? (
-          hits.length === 0 ? (
-            <EmptyNote>No team matches “{find}”.</EmptyNote>
-          ) : (
-            <ul className="divide-y divide-rule text-sm">
-              {hits.map((h) => (
-                <li key={h.id} className="flex items-center gap-3 py-2">
-                  <span className="min-w-0 flex-1 truncate font-medium">{h.name}</span>
-                  {h.requested ? (
-                    <span className="text-xs text-muted-foreground">Request sent</span>
-                  ) : (
-                    <form action={requestJoinAction}>
-                      <input type="hidden" name="tenantId" value={h.id} />
-                      <input type="hidden" name="from" value={from} />
-                      <SubmitButton size="sm" variant="outline" pendingLabel="Sending…">
-                        Ask to join
-                      </SubmitButton>
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )
-        ) : null}
+        <WorkspacePicker from={from} />
         {mine.length > 0 ? (
           <ul className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
             {mine.map((r) => (

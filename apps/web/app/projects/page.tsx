@@ -123,12 +123,12 @@ export default async function ProjectsPage({
   }
 
   return shell(
-    <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <ul className="stagger grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {details.map((p) => {
         const counts = summarizeCounts(rows.filter((r) => r.project_id === p.id));
         return (
           <li key={p.id}>
-            <Card className="flex h-full flex-col gap-4 p-5">
+            <Card className="card-lift flex h-full flex-col gap-4 rounded-xl p-5">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="min-w-0 text-base font-semibold">
                   <Link
