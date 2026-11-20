@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   // install or a build. The tracing root is the monorepo root so @specfix/* get traced in.
   output: 'standalone',
   outputFileTracingRoot: resolve(process.cwd(), '../../'),
+  // The Spec Compiler and the agent read their prompt files from disk at run time; tracing
+  // cannot always see a path built from import.meta.url, so ship them explicitly.
+  outputFileTracingIncludes: { '/**': ['../../packages/*/prompts/*.md'] },
 
   // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
   // has to compile them itself rather than treat them as opaque deps. @specfix/compiler

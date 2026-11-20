@@ -261,6 +261,13 @@ describe.skipIf(!hasDatabase)('GitHub App integration', () => {
       raw: null,
       sourceUpdatedAt: null,
     });
+    // Sign-off needs an analysis of the version; these tests are about GitHub, not the model.
+    await query(
+      `insert into analysis_runs
+         (tenant_id, ticket_id, ticket_version_id, prompt_version, model, temperature, status)
+       values ($1, $2, $3, 'test', 'test-model', 1, 'succeeded')`,
+      [tenantId, t.ticket.id, t.version.id]
+    );
     return { id: t.ticket.id, versionId: t.version.id };
   }
 

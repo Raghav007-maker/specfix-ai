@@ -498,7 +498,7 @@ const SEMANTIC_NOTES: Record<Exclude<SemanticState, 'ready'>, string> = {
   schema_missing:
     'Similarity suggestions are off: the clause-embedding table (migration 0006) is not in this database yet.',
   not_embedded:
-    'Similarity suggestions appear once this version’s clauses are embedded — re-ingest the ticket or run the embedding backfill.',
+    'Similarity suggestions appear once this version’s clauses are embedded — send the task for spec review again, or run the embedding backfill.',
   error: 'Similarity suggestions could not be loaded just now. Exact coverage above is unaffected.',
 };
 

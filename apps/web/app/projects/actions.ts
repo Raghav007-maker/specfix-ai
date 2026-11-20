@@ -39,6 +39,7 @@ import {
   type RawTaskInput,
 } from '@/lib/repos';
 import { checkAttachment } from '@specfix/shared';
+import { embedTicketVersions } from '@specfix/sync';
 import { attachmentsReady, putAttachment, removeAttachments } from '@/lib/storage';
 
 /**
@@ -167,6 +168,12 @@ export async function sendForSpecReviewAction(formData: FormData): Promise<void>
     sendTaskForSpecReview(tenantId, user.id, field(formData, 'taskId') ?? '')
   );
   if ('error' in result) back(here, { error: result.error });
+  // Best effort, and free when the stored vectors already match: a missing vector only hides
+  // similarity hints, and re-sending (or the backfill) fills it in.
+  const problem = await embedTicketVersions(tenantId, [result.ok.versionId]).catch((e) =>
+    e instanceof Error ? e.message : String(e)
+  );
+  if (problem) console.error('[spec-review] embedding failed:', problem);
   back(here, {
     notice: result.ok.isNewVersion
       ? `Sent ${result.ok.key} for spec review. An admin can start its analysis from the spec queue.`

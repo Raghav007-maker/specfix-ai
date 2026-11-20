@@ -219,12 +219,20 @@ export async function markReady(
   userId: string
 ): Promise<ReadinessEventRow> {
   return tx(async (client) => {
-    const current = await client.query<{ ticket_version_id: string; open_flags: string }>(
+    const current = await client.query<{
+      ticket_version_id: string;
+      open_flags: string;
+      analyzed: boolean;
+    }>(
       `select v.id as ticket_version_id,
               (select count(*) from flags f
                 where f.tenant_id = v.tenant_id
                   and f.ticket_version_id = v.id
-                  and f.status = 'open')::text as open_flags
+                  and f.status = 'open')::text as open_flags,
+              exists (select 1 from analysis_runs r
+                       where r.tenant_id = v.tenant_id
+                         and r.ticket_version_id = v.id
+                         and r.status = 'succeeded') as analyzed
        from ticket_versions v
        where v.tenant_id = $1 and v.ticket_id = $2
        order by v.captured_at desc
@@ -234,6 +242,13 @@ export async function markReady(
 
     const row = current.rows[0];
     if (!row) throw new ReadinessError(`no analyzed version of ticket ${ticketId}`);
+    // No flags because the model never ran is not the same as no flags left: sign-off waits
+    // for an analysis of the text being signed off.
+    if (!row.analyzed) {
+      throw new ReadinessError(
+        'This version has not been analyzed yet. Ask an admin to run analysis from the spec queue first.'
+      );
+    }
     if (Number(row.open_flags) > 0) {
       throw new ReadinessError(
         `${row.open_flags} flag(s) are still open on the current version; resolve them first`

@@ -27,6 +27,7 @@ import {
   type ScenarioCiRow,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
+import { FormDraft } from '@/components/form-draft';
 import {
   Button,
   Card,
@@ -559,6 +560,7 @@ export default async function TaskPage({
             <CardContent className="pt-4">
               <form id="task-edit" action={updateTaskAction} className="space-y-4">
                 {hidden()}
+                <FormDraft name={`task-edit:${task.id}`} />
                 <TaskFormFields {...formProps} part="details" idPrefix="edit" />
                 <SubmitButton pendingLabel="Saving…" className="w-full">
                   Save changes

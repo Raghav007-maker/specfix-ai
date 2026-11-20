@@ -7,6 +7,7 @@ import {
   activeSprintSummaries,
   countAnalysisCandidates,
   latestAnalysisJob,
+  recentAnalysisFailures,
   tenantTokenBudget,
   inProjects,
   listAssignedWorkItems,
@@ -137,6 +138,7 @@ export default async function HomePage({
           latestAnalysisJob(t, activeProject.id),
           estimateAnalysisCost(t, analyzeBatchLimit()).catch(() => null),
           tenantTokenBudget(t),
+          isAdmin ? recentAnalysisFailures(t, activeProject.id) : Promise.resolve([]),
         ])
       : null;
   const showAgent = Boolean(agent) && data.agent.state === 'ready';
@@ -379,6 +381,7 @@ export default async function HomePage({
                       job={analysis[1]}
                       estimate={analysis[2]}
                       budget={analysis[3]}
+                      failures={analysis[4]}
                       batchLimit={analyzeBatchLimit()}
                       isAdmin={isAdmin}
                     />

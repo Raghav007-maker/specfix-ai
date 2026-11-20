@@ -191,3 +191,52 @@ export async function tenantTokenBudget(
   );
   return { used: Number(row?.used ?? 0), cap: Number(row?.cap ?? 0) };
 }
+
+export interface AnalysisFailureRow {
+  ticket_id: string;
+  external_key: string;
+  /** The model or client error, as the worker recorded it (at most 500 characters). */
+  error: string | null;
+  failures: number;
+  last_failed_at: Date;
+  /** True once the version has failed MAX_FAILED_ANALYSES times and left the queue. */
+  given_up: boolean;
+}
+
+/**
+ * The project's current ticket versions whose analysis failed and never succeeded, newest
+ * failure first, with the latest error: what an admin needs to see before trying again.
+ */
+export async function recentAnalysisFailures(
+  tenantId: TenantId,
+  projectId: string,
+  limit = 5
+): Promise<AnalysisFailureRow[]> {
+  return query<AnalysisFailureRow>(
+    `with current_versions as (
+       select distinct on (v.ticket_id) v.id, v.ticket_id
+       from ticket_versions v
+       join tickets t on t.id = v.ticket_id and t.tenant_id = v.tenant_id
+       where v.tenant_id = $1 and t.project_id = $2
+       order by v.ticket_id, v.captured_at desc
+     )
+     select cv.ticket_id, t.external_key,
+            (select r.error from analysis_runs r
+              where r.tenant_id = $1 and r.ticket_version_id = cv.id and r.status = 'failed'
+              order by r.created_at desc limit 1) as error,
+            count(r.id)::int as failures,
+            max(r.created_at) as last_failed_at,
+            count(r.id) >= $3 as given_up
+     from current_versions cv
+     join tickets t on t.id = cv.ticket_id and t.tenant_id = $1
+     join analysis_runs r on r.tenant_id = $1 and r.ticket_version_id = cv.id and r.status = 'failed'
+     where not exists (
+       select 1 from analysis_runs s
+       where s.tenant_id = $1 and s.ticket_version_id = cv.id and s.status = 'succeeded'
+     )
+     group by cv.ticket_id, cv.id, t.external_key
+     order by max(r.created_at) desc
+     limit $4`,
+    [tenantId, projectId, MAX_FAILED_ANALYSES, Math.min(Math.max(limit, 1), 20)]
+  );
+}
