@@ -13,6 +13,7 @@ import {
   workTablesAvailable,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
+import { FormDraft } from '@/components/form-draft';
 import { Card, CardContent, CardHeader, CardTitle, Notice, buttonClasses } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
 import { createTaskAction } from '../../../actions';
@@ -92,6 +93,7 @@ export default async function NewTaskPage({
           <form action={createTaskAction} className="space-y-6">
             <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="from" value="new" />
+            <FormDraft name={`new-task:${projectId}`} />
             <TaskFormFields
               members={members}
               tickets={tickets}

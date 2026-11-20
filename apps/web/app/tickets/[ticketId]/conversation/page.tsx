@@ -14,6 +14,7 @@ import {
   listAgentMessages,
   listProjects,
   readinessTimeline,
+  listRunsForTicket,
   revealedFlags,
   type AgentConversationRow,
   type AgentMessageRow,
@@ -99,13 +100,16 @@ export default async function ConversationPage({
   let conversation: AgentConversationRow | null = null;
   let messages: AgentMessageRow[] = [];
   let ready = false;
+  let analyzed = false;
 
   if (version && session && locked && migrated) {
-    const [revealed, found, timeline] = await Promise.all([
+    const [revealed, found, timeline, runs] = await Promise.all([
       revealedFlags(tenant.tenant_id, session.id),
       findAgentConversation(tenant.tenant_id, version.id, user.id),
       readinessTimeline(tenant.tenant_id, ticket.id),
+      listRunsForTicket(tenant.tenant_id, ticket.id),
     ]);
+    analyzed = runs.some((r) => r.ticket_version_id === version.id && r.status === 'succeeded');
     // The Critic's pruned flags were never meant for review (the form excludes them too).
     flags = revealed.flags.filter((f) => f.status !== 'pruned');
     conversation = found;
@@ -181,7 +185,12 @@ export default async function ConversationPage({
                 Ready for development
               </Pill>
             ) : (
-              <MarkReadyAction ticketId={ticket.id} openFlags={open.length} describedBy="finding" />
+              <MarkReadyAction
+                ticketId={ticket.id}
+                openFlags={open.length}
+                analyzed={analyzed}
+                describedBy="finding"
+              />
             )}
           </div>
         ) : null}

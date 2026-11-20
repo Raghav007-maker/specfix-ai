@@ -1,5 +1,5 @@
 import type { CostEstimate } from '@specfix/sync';
-import type { JobRow } from '@/lib/repos';
+import type { AnalysisFailureRow, JobRow } from '@/lib/repos';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { ConfirmSubmit } from '@/components/confirm-dialog';
 import { analyzeProjectAction } from '@/app/actions';
@@ -16,10 +16,13 @@ export function AnalysisPanel({
   batchLimit,
   estimate,
   budget,
+  failures,
   isAdmin,
 }: {
   projectId: string;
   job: JobRow | null;
+  /** Current versions whose analysis failed; shown to owners and admins only. */
+  failures: AnalysisFailureRow[];
   candidates: number;
   batchLimit: number;
   /** Null when analysis cannot run on this server (no model configured). */
@@ -61,6 +64,28 @@ export function AnalysisPanel({
           {estimate.basis === 'default' ? ' (rough: no runs yet to estimate from)' : null}.
         </p>
       )}
+      {isAdmin && failures.length > 0 ? (
+        <div className="rounded-lg border border-negative/30 bg-negative-bg/40 px-3 py-2">
+          <p className="text-xs font-medium text-negative-ink">Analysis failed for:</p>
+          <ul className="mt-1 space-y-1 text-xs">
+            {failures.map((f) => (
+              <li key={f.ticket_id} className="break-words">
+                <a
+                  href={`/tickets/${f.ticket_id}`}
+                  className="font-mono underline-offset-2 hover:underline"
+                >
+                  {f.external_key}
+                </a>{' '}
+                <span className="text-muted-foreground">
+                  ({f.failures} {f.failures === 1 ? 'try' : 'tries'}
+                  {f.given_up ? ', left the queue: edit and send the task again to retry' : ''})
+                </span>
+                {f.error ? <span className="block text-text">{f.error.slice(0, 300)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {waitingTooLong ? (
         <p className="text-xs text-warning-ink">
           Still waiting to start. Batches run in the background worker — is it running?

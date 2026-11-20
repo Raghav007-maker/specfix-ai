@@ -51,16 +51,21 @@ jobs:
 
       - name: Bundle worker
         run: |
-          mkdir worker-dist
+          mkdir -p worker-dist/app worker-dist/prompts
+          # The bundle sits in app/ and every package's prompts in prompts/ beside it: each
+          # package loads its prompts from <its own file>/../prompts, which after bundling is
+          # app/../prompts. Without them every analysis fails with "Unknown prompt".
+          cp packages/core/prompts/*.md packages/compiler/prompts/*.md packages/agent/prompts/*.md \
+            worker-dist/prompts/
           npx esbuild scripts/worker.ts --bundle --platform=node --target=node22 --format=esm \
-            --outfile=worker-dist/worker.mjs --external:pg-native \
+            --outfile=worker-dist/app/worker.mjs --external:pg-native \
             --banner:js="import{createRequire as __cr}from'module';const require=__cr(import.meta.url);"
           echo '{"name":"specfix-worker","private":true,"type":"module"}' > worker-dist/package.json
           cat > worker-dist/start.mjs <<'JS'
           // App Service needs something listening on PORT; the worker has no HTTP surface.
           import http from 'node:http';
           http.createServer((_q, r) => r.end('specfix worker ok')).listen(process.env.PORT || 8080);
-          await import('./worker.mjs');
+          await import('./app/worker.mjs');
           JS
           cd worker-dist && zip -qr ../worker.zip .
 

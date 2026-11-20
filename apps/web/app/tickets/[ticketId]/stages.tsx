@@ -242,21 +242,27 @@ export function LockAction({
   );
 }
 
-/** "Mark ready for development" — refused by the repository while a flag is open. */
+/**
+ * "Mark ready for development" — refused by the repository while a flag is open, or while the
+ * current version has not been analyzed (no flags because the model never ran).
+ */
 export function MarkReadyAction({
   ticketId,
   openFlags,
+  analyzed,
   describedBy,
 }: {
   ticketId: string;
   openFlags: number;
+  analyzed: boolean;
   describedBy: string;
 }) {
   return (
     <form action={markReadyAction} className="max-sm:w-full">
       <input type="hidden" name="ticketId" value={ticketId} />
       <SubmitButton
-        disabled={openFlags > 0}
+        disabled={openFlags > 0 || !analyzed}
+        title={analyzed ? undefined : 'Run analysis on this version first'}
         aria-describedby={describedBy}
         pendingLabel="Marking ready…"
         className="max-sm:w-full"

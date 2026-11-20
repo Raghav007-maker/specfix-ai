@@ -184,7 +184,12 @@ export default async function TicketPage({
                 Ready for development
               </Pill>
             ) : (
-              <MarkReadyAction ticketId={ticket.id} openFlags={openFlags} describedBy="finding" />
+              <MarkReadyAction
+                ticketId={ticket.id}
+                openFlags={openFlags}
+                analyzed={analyzed}
+                describedBy="finding"
+              />
             )}
           </div>
         ) : null}

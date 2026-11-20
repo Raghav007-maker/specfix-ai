@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   // install or a build. The tracing root is the monorepo root so @specfix/* get traced in.
   output: 'standalone',
   outputFileTracingRoot: resolve(process.cwd(), '../../'),
+  // The Spec Compiler and the agent read their prompt files from disk at run time; tracing
+  // cannot always see a path built from import.meta.url, so ship them explicitly.
+  outputFileTracingIncludes: { '/**': ['../../packages/*/prompts/*.md'] },
 
   // @specfix/* workspaces ship raw TypeScript from src/ with no build step, so Next
   // has to compile them itself rather than treat them as opaque deps. @specfix/compiler
@@ -36,6 +39,14 @@ const nextConfig: NextConfig = {
   // ships its own runtime shims and is only ever reached from a server action (the
   // generate path), so keep both external and require them at runtime.
   serverExternalPackages: ['pg', 'openai'],
+
+  // Task attachments are posted to a server action; 10 MB files plus the form's own fields.
+  // The action re-checks the size, so this is only the transport ceiling.
+  // Middleware also buffers request bodies, by default only up to 10 MB.
+  experimental: {
+    serverActions: { bodySizeLimit: '11mb' },
+    middlewareClientMaxBodySize: '11mb',
+  },
 
   // The Supabase URL and anon key are public by design (the anon key is meant to
   // ship to browsers). Bridge them from the root .env to the NEXT_PUBLIC_ names the

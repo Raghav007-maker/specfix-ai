@@ -6,3 +6,4 @@ export * from './env.ts';
 export * from './mail.ts';
 export * from './notify.ts';
 export * from './github.ts';
+export * from './embed.ts';

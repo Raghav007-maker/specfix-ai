@@ -6,7 +6,7 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 /** Pages that need a session. Their own checks stay; this only answers a visitor without one
  * with a real 307 before any rendering, instead of a streamed 200 that redirects in the browser. */
 const SIGNED_IN_ONLY =
-  /^\/(?:activate|admin|analytics|calendar|inbox|join|onboarding|pricing|projects|search|settings|team|tickets|login\/verify)(?:\/|$)/;
+  /^\/(?:activate|admin|analytics|attachments|calendar|inbox|join|onboarding|pricing|projects|search|settings|team|tickets|login\/verify)(?:\/|$)/;
 
 export function needsSession(pathname: string): boolean {
   return SIGNED_IN_ONLY.test(pathname);

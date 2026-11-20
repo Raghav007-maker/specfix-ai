@@ -6,6 +6,7 @@ import { currentMemberships, requireTenant } from '@/lib/tenant';
 import {
   LINK_KINDS,
   SPEC_REVIEW_TYPES,
+  listAttachments,
   WORK_TYPE_LABELS,
   getProjectDetail,
   getWorkItemByNumber,
@@ -26,6 +27,7 @@ import {
   type ScenarioCiRow,
 } from '@/lib/repos';
 import { AppShell, Breadcrumb } from '@/components/app-shell';
+import { FormDraft } from '@/components/form-draft';
 import {
   Button,
   Card,
@@ -44,6 +46,8 @@ import {
   type PillTone,
 } from '@/components/ui';
 import { SubmitButton } from '@/components/submit-button';
+import { ATTACHMENTS_PER_TASK, ATTACHMENT_ACCEPT, formatBytes } from '@specfix/shared';
+import { attachmentsReady } from '@/lib/storage';
 import { ConfirmSubmit } from '@/components/confirm-dialog';
 import {
   addCommentAction,
@@ -54,6 +58,8 @@ import {
   deleteTaskAction,
   removeLinkAction,
   sendForSpecReviewAction,
+  uploadAttachmentAction,
+  deleteAttachmentAction,
   updateTaskAction,
 } from '../../../actions';
 import {
@@ -118,7 +124,7 @@ export default async function TaskPage({
     getWorkItemByNumber(t, projectId, number),
   ]);
   if (!project || !task) notFound();
-  const [events, members, tickets, scenarios, comments, links, projectTasks, ci, time] =
+  const [events, members, tickets, scenarios, comments, links, projectTasks, ci, time, files] =
     await Promise.all([
       listWorkEvents(t, { workItemId: task.id }, 50),
       listProjectPeople(t, projectId),
@@ -129,6 +135,7 @@ export default async function TaskPage({
       listWorkItems(t, projectId),
       task.scenario_id && task.ticket_id ? latestCiForTicket(t, task.ticket_id) : [],
       listTimeEntries(t, task.id),
+      listAttachments(t, user.id, task.id),
     ]);
   const totalMinutes = time.reduce((n, e) => n + e.minutes, 0);
   const key = taskKeyOf(project.task_key, task.number);
@@ -254,6 +261,83 @@ export default async function TaskPage({
               </CardContent>
             </Card>
           ) : null}
+
+          <Card id="files">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Files{' '}
+                <span className="font-normal tabular-nums text-muted-foreground">
+                  {files.length}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {files.length === 0 ? (
+                <EmptyNote>No files yet. Attach screenshots, logs or documents.</EmptyNote>
+              ) : (
+                <ul className="divide-y divide-rule overflow-hidden rounded-lg border border-border">
+                  {files.map((f) => (
+                    <li
+                      key={f.id}
+                      className="row-hover flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm"
+                    >
+                      <a
+                        href={`/attachments/${f.id}`}
+                        className={`${linkClasses} min-w-0 flex-1 truncate font-medium`}
+                        title={f.file_name}
+                      >
+                        {f.file_name}
+                      </a>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {formatBytes(f.size_bytes)} · {f.uploader_email ?? 'Former member'} ·{' '}
+                        {stamp(f.created_at)}
+                      </span>
+                      {f.uploaded_by === user.id || canManage ? (
+                        <ConfirmSubmit
+                          action={deleteAttachmentAction}
+                          fields={{ ...here, attachmentId: f.id }}
+                          label="Remove"
+                          pendingLabel="Removing…"
+                          title={`Remove ${f.file_name}?`}
+                          body="The file is deleted for everyone and cannot be brought back."
+                          confirmLabel="Remove"
+                          variant="ghost"
+                        />
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!attachmentsReady() ? (
+                <p className="text-xs text-muted-foreground">
+                  File uploads are not set up on this server (SUPABASE_SERVICE_ROLE_KEY).
+                </p>
+              ) : files.length >= ATTACHMENTS_PER_TASK ? (
+                <p className="text-xs text-muted-foreground">
+                  This task holds the most files it can ({ATTACHMENTS_PER_TASK}). Remove one to add
+                  another.
+                </p>
+              ) : (
+                <form action={uploadAttachmentAction} className="flex flex-wrap items-center gap-3">
+                  {hidden()}
+                  <input
+                    type="file"
+                    name="file"
+                    required
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-label="File to attach"
+                    className="min-w-0 flex-1 text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-control file:bg-sheet file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-field"
+                  />
+                  <SubmitButton size="sm" variant="outline" pendingLabel="Uploading…">
+                    Attach
+                  </SubmitButton>
+                  <p className="w-full text-xs text-muted-foreground">
+                    Up to 10 MB: images, PDF, text, CSV, JSON, ZIP, DOCX or XLSX.
+                  </p>
+                </form>
+              )}
+            </CardContent>
+          </Card>
 
           {task.type !== 'subtask' ? (
             <Card id="children">
@@ -476,6 +560,7 @@ export default async function TaskPage({
             <CardContent className="pt-4">
               <form id="task-edit" action={updateTaskAction} className="space-y-4">
                 {hidden()}
+                <FormDraft name={`task-edit:${task.id}`} />
                 <TaskFormFields {...formProps} part="details" idPrefix="edit" />
                 <SubmitButton pendingLabel="Saving…" className="w-full">
                   Save changes

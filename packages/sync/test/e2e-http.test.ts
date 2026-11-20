@@ -144,6 +144,8 @@ describe.skipIf(!enabled)('E2E over HTTP', () => {
       '/calendar',
       '/search?q=x',
       '/projects/00000000-0000-4000-8000-000000000000/tasks/1',
+      '/attachments/00000000-0000-4000-8000-000000000000',
+      "/attachments/x' or 1=1--",
     ])('redirects an anonymous visitor from %s to the landing page or sign-in', async (path) => {
       const r = await fetch(`${BASE}${path}`, { redirect: 'manual' });
       expect([302, 303, 307, 308]).toContain(r.status);
