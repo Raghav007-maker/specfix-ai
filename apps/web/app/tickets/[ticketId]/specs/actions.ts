@@ -22,6 +22,7 @@ import {
   isApprovedScenario,
   parseGherkin,
   type ScenarioReviewDecision,
+  isSignedOff,
 } from '@specfix/shared';
 import { compileScenarios, emitPlaywrightScaffold } from '@specfix/compiler';
 import { GithubAuthError, GithubHttpError } from '@specfix/ingest';
@@ -105,9 +106,7 @@ export async function generateScenarios(formData: FormData): Promise<void> {
     if (!version) throw new ActionError('This ticket has no analyzable version yet.');
 
     const events = await listReadinessEvents(ctx.tenantId, ctx.ticketId);
-    const ready = events.some(
-      (e) => e.event === 'marked_ready' && e.ticket_version_id === version.id
-    );
+    const ready = isSignedOff(events, version.id);
     if (!ready) {
       throw new ActionError(
         'Mark this ticket ready for development first — generation compiles from the approved requirement, so every flag has to be resolved and the ticket signed off.'

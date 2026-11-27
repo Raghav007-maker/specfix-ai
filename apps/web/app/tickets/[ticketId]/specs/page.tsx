@@ -2,7 +2,12 @@ import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { agentAccess } from '@/lib/plan';
-import { buildClauseCoverage, isApprovedScenario, type ClauseCoverageRow } from '@specfix/shared';
+import {
+  buildClauseCoverage,
+  isApprovedScenario,
+  isSignedOff,
+  type ClauseCoverageRow,
+} from '@specfix/shared';
 import {
   clauseCoverage,
   clauseEmbeddingsAvailable,
@@ -100,7 +105,7 @@ export default async function SpecsPage({
 
   if (version) {
     const events = await listReadinessEvents(tenant.tenant_id, ticket.id);
-    ready = events.some((e) => e.event === 'marked_ready' && e.ticket_version_id === version.id);
+    ready = isSignedOff(events, version.id);
     scenarios = await listScenariosForVersion(tenant.tenant_id, version.id);
     ci = await latestCiForTicket(tenant.tenant_id, ticket.id);
     if (await workTablesAvailable()) {

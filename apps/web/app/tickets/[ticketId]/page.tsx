@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { isSignedOff } from '@specfix/shared';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { agentAccess } from '@/lib/plan';
@@ -107,9 +108,7 @@ export default async function TicketPage({
   const decided = flags.length - openFlags;
   const matched = gaps.filter((g) => g.matched_flag_id !== null).length;
   const sessionDone = session?.stage === 'done';
-  const ready = timeline.some(
-    (e) => e.event === 'marked_ready' && e.ticket_version_id === version?.id
-  );
+  const ready = version ? isSignedOff(timeline, version.id) : false;
   // Which flags' quoted spans can be found in the ticket text — empty before lock, because
   // `flags` is never fetched on that path.
   const located = version
