@@ -268,6 +268,11 @@ describe.skipIf(!hasDatabase)('GitHub App integration', () => {
        values ($1, $2, $3, 'test', 'test-model', 1, 'succeeded')`,
       [tenantId, t.ticket.id, t.version.id]
     );
+    await query(
+      `insert into readiness_events (tenant_id, ticket_id, ticket_version_id, event)
+       values ($1, $2, $3, 'analysis_complete')`,
+      [tenantId, t.ticket.id, t.version.id]
+    );
     return { id: t.ticket.id, versionId: t.version.id };
   }
 
