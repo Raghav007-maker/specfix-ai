@@ -37,12 +37,12 @@ import {
   decideScenario,
   getScenario,
   getTicket,
-  isOverTokenCap,
   latestVersion,
   listReadinessEvents,
   recordCompilation,
   resolvedFlagsForVersion,
   saveScaffold,
+  tryReserveTokenCap,
 } from '@/lib/repos';
 
 /** A refusal these actions word for the reviewer themselves. */
@@ -117,48 +117,53 @@ export async function generateScenarios(formData: FormData): Promise<void> {
       throw new ActionError('This version has no acceptance criteria to compile scenarios from.');
     }
 
-    if (await isOverTokenCap(ctx.tenantId)) {
+    const tokenReservation = await tryReserveTokenCap(ctx.tenantId, 8_000);
+    if (!tokenReservation.allowed) {
       throw new ActionError(
         'This workspace is over its monthly token cap, so generation is paused until the cap resets.'
       );
     }
 
-    const resolvedFlags = await resolvedFlagsForVersion(ctx.tenantId, version.id);
+    try {
+      const resolvedFlags = await resolvedFlagsForVersion(ctx.tenantId, version.id);
 
-    const outcome = await compileScenarios({
-      externalKey: ticket.external_key,
-      title: version.title,
-      acceptanceCriteriaText: version.acceptance_criteria_text,
-      resolvedFlags,
-    });
+      const outcome = await compileScenarios({
+        externalKey: ticket.external_key,
+        title: version.title,
+        acceptanceCriteriaText: version.acceptance_criteria_text,
+        resolvedFlags,
+      });
 
-    await recordCompilation(ctx.tenantId, {
-      ticketId: ctx.ticketId,
-      ticketVersionId: version.id,
-      meta: {
-        promptVersion: outcome.meta.promptVersion,
-        model: outcome.meta.model,
-        temperature: outcome.meta.temperature,
-        seed: outcome.meta.seed,
-        truncated: outcome.meta.truncated,
-        inputTokens: outcome.meta.inputTokens,
-        outputTokens: outcome.meta.outputTokens,
-        costUsd: outcome.meta.costUsd,
-      },
-      scenarios: outcome.scenarios,
-      calls: outcome.calls.map((call) => ({
-        purpose: 'compile_gherkin' as const,
-        promptVersion: call.promptVersion,
-        model: call.model,
-        request: call.request,
-        response: call.response,
-        latencyMs: call.latencyMs,
-        inputTokens: call.inputTokens,
-        outputTokens: call.outputTokens,
-        costUsd: call.costUsd,
-        error: call.error,
-      })),
-    });
+      await recordCompilation(ctx.tenantId, {
+        ticketId: ctx.ticketId,
+        ticketVersionId: version.id,
+        meta: {
+          promptVersion: outcome.meta.promptVersion,
+          model: outcome.meta.model,
+          temperature: outcome.meta.temperature,
+          seed: outcome.meta.seed,
+          truncated: outcome.meta.truncated,
+          inputTokens: outcome.meta.inputTokens,
+          outputTokens: outcome.meta.outputTokens,
+          costUsd: outcome.meta.costUsd,
+        },
+        scenarios: outcome.scenarios,
+        calls: outcome.calls.map((call) => ({
+          purpose: 'compile_gherkin' as const,
+          promptVersion: call.promptVersion,
+          model: call.model,
+          request: call.request,
+          response: call.response,
+          latencyMs: call.latencyMs,
+          inputTokens: call.inputTokens,
+          outputTokens: call.outputTokens,
+          costUsd: call.costUsd,
+          error: call.error,
+        })),
+      });
+    } finally {
+      tokenReservation.release();
+    }
   });
 }
 

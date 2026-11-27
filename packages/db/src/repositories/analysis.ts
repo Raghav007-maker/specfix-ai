@@ -306,20 +306,64 @@ export async function monthlyTokenUsage(tenantId: TenantId): Promise<number> {
   return Number(row?.total ?? 0);
 }
 
-export async function isOverTokenCap(tenantId: TenantId): Promise<boolean> {
-  const [row] = await query<{ over: boolean }>(
+/** In-flight token reservations per tenant so concurrent LLM dispatches cannot race past the cap. */
+const inFlightTokens = new Map<string, number>();
+
+export function reservedTokensForTenant(tenantId: TenantId): number {
+  return inFlightTokens.get(tenantId) ?? 0;
+}
+
+async function tokenCapState(tenantId: TenantId): Promise<{ used: number; cap: number }> {
+  const [row] = await query<{ used: string; cap: string }>(
     `select coalesce(
               (select sum(c.input_tokens + c.output_tokens)
                  from llm_calls c
                 where c.tenant_id = t.id
                   and c.created_at >= date_trunc('month', now())), 0
-            ) >= t.monthly_token_cap as over
+            )::text as used,
+            t.monthly_token_cap::text as cap
      from tenants t
      where t.id = $1`,
     [tenantId]
   );
   if (!row) throw new Error(`no such tenant: ${tenantId}`);
-  return row.over;
+  return { used: Number(row.used), cap: Number(row.cap) };
+}
+
+export async function isOverTokenCap(tenantId: TenantId): Promise<boolean> {
+  const { used, cap } = await tokenCapState(tenantId);
+  return used + reservedTokensForTenant(tenantId) >= cap;
+}
+
+/**
+ * Checks whether the tenant is under its monthly token cap (counting recorded usage plus
+ * active in-flight reservations) and, if allowed, reserves `estimatedTokens` until `release()`
+ * runs in a `finally` block.
+ */
+export async function tryReserveTokenCap(
+  tenantId: TenantId,
+  estimatedTokens: number
+): Promise<{ allowed: boolean; release: () => void }> {
+  const estimate = Math.max(0, Math.trunc(estimatedTokens));
+  const { used, cap } = await tokenCapState(tenantId);
+  const current = inFlightTokens.get(tenantId) ?? 0;
+  if (used + current >= cap) {
+    return { allowed: false, release: () => {} };
+  }
+  if (estimate > 0) {
+    inFlightTokens.set(tenantId, current + estimate);
+  }
+  let released = false;
+  return {
+    allowed: true,
+    release: () => {
+      if (released || estimate === 0) return;
+      released = true;
+      const next = (inFlightTokens.get(tenantId) ?? 0) - estimate;
+      if (next <= 0) inFlightTokens.delete(tenantId);
+      else inFlightTokens.set(tenantId, next);
+    },
+  };
 }
 
 async function rows<T extends QueryResultRow>(

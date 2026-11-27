@@ -126,6 +126,52 @@ describe.skipIf(!hasDatabase)('workspace members', () => {
       /cannot remove/
     );
   });
+
+  it('refuses demoting an owner to admin or reviewer when the seat limit is reached', async () => {
+    const capLabel = `members-cap-${Date.now()}`;
+    const capTenant = (await createTenant(capLabel)).id;
+    const mkUser = async (suffix: string) => {
+      const email = `${capLabel}-${suffix}@example.test`;
+      const [u] = await query<{ id: string }>(
+        `insert into auth.users (email) values ($1) returning id`,
+        [email]
+      );
+      return { id: u!.id, email };
+    };
+    const o1 = await mkUser('o1');
+    const o2 = await mkUser('o2');
+    await addMembership(capTenant, o1.id, 'owner');
+    await addMembership(capTenant, o2.id, 'owner');
+
+    const seats: Array<{ id: string; email: string }> = [];
+    for (let i = 0; i < 5; i++) {
+      const u = await mkUser(`s${i}`);
+      seats.push(u);
+      await addMembership(capTenant, u.id, 'reviewer');
+    }
+
+    // Free plan allows 5 admins + reviewers; demoting a 2nd owner cannot bypass it.
+    await expect(
+      changeMemberRole(capTenant, o1.id, { userId: o2.id, role: 'admin' })
+    ).rejects.toThrow(/Free plan allows 5/);
+    await expect(
+      changeMemberRole(capTenant, o1.id, { userId: o2.id, role: 'reviewer' })
+    ).rejects.toThrow(/Free plan allows 5/);
+
+    // Re-rolling an existing non-owner (reviewer -> admin) at the cap stays allowed.
+    await changeMemberRole(capTenant, o1.id, { userId: seats[0]!.id, role: 'admin' });
+
+    // Remove one seat so 4/5 are used; parallel add + owner demotion can only fill 1 seat.
+    await removeMember(capTenant, o1.id, seats[4]!.id);
+    const late = await mkUser('late');
+    const race = await Promise.allSettled([
+      addMemberByEmail(capTenant, o1.id, { email: late.email, role: 'reviewer' }),
+      changeMemberRole(capTenant, o1.id, { userId: o2.id, role: 'reviewer' }),
+    ]);
+    expect(race.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const nonOwners = (await listMembers(capTenant)).filter((m) => m.role !== 'owner');
+    expect(nonOwners).toHaveLength(5);
+  });
 });
 
 describe.skipIf(!hasDatabase)('createWorkspace', () => {
