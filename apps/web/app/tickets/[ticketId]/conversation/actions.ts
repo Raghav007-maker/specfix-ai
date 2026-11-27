@@ -92,7 +92,7 @@ async function context(formData: FormData): Promise<Context> {
 }
 
 /** A failure the reviewer can act on, as opposed to a bug. Its message is shown as-is. */
-class SendError extends Error { }
+class SendError extends Error {}
 
 export async function sendAgentMessage(
   _previous: SendState,
@@ -154,7 +154,9 @@ export async function sendAgentMessage(
           (m) => m.flag_id === flag.id && m.kind !== 'decision'
         );
         const agentFlag = toAgentFlag(flag);
-        const opener = history.some((m) => m.kind === 'question') ? null : openingQuestion(agentFlag);
+        const opener = history.some((m) => m.kind === 'question')
+          ? null
+          : openingQuestion(agentFlag);
 
         let outcome: Awaited<ReturnType<typeof agentTurn>>;
         try {

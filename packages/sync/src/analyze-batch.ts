@@ -70,7 +70,7 @@ export async function runAnalyzeBatch(
   if (!deps.modelPriced()) {
     throw new PermanentJobError(
       `Analysis model "${getConfig().modelJudge}" has no known price, so its spend cannot be ` +
-      'tracked. Add it to MODEL_PRICING in packages/core/src/cost.ts.'
+        'tracked. Add it to MODEL_PRICING in packages/core/src/cost.ts.'
     );
   }
   const ids = Array.isArray(job.payload.versionIds)
@@ -103,7 +103,7 @@ export async function runAnalyzeBatch(
     const tokenReservation =
       deps.overCap === isOverTokenCap
         ? await tryReserveTokenCap(tenantId, 6_000)
-        : { allowed: !(await deps.overCap(tenantId)), release: () => { } };
+        : { allowed: !(await deps.overCap(tenantId)), release: () => {} };
     if (!tokenReservation.allowed) {
       progress.stopped = 'token_cap';
       break;
