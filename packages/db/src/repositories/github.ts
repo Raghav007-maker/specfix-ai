@@ -562,6 +562,10 @@ export async function pullRequestTickets(
             exists (
               select 1 from readiness_events e
               where e.tenant_id = t.tenant_id and e.ticket_id = t.id and e.event = 'marked_ready'
+                and (e.backfilled or exists (
+                  select 1 from readiness_events a
+                  where a.tenant_id = e.tenant_id and a.ticket_version_id = e.ticket_version_id
+                    and a.event = 'analysis_complete' and a.occurred_at <= e.occurred_at))
                 and e.ticket_version_id = (
                   select v.id from ticket_versions v
                   where v.tenant_id = t.tenant_id and v.ticket_id = t.id

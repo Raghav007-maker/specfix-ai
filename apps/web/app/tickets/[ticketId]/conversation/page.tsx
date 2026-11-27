@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { openingQuestion } from '@specfix/agent';
+import { isSignedOff } from '@specfix/shared';
 import { requireUser } from '@/lib/session';
 import { requireTenant } from '@/lib/tenant';
 import { resolutionAgentEnabled } from '@/lib/agent';
@@ -114,7 +115,7 @@ export default async function ConversationPage({
     flags = revealed.flags.filter((f) => f.status !== 'pruned');
     conversation = found;
     messages = found ? await listAgentMessages(tenant.tenant_id, found.id) : [];
-    ready = timeline.some((e) => e.event === 'marked_ready' && e.ticket_version_id === version.id);
+    ready = isSignedOff(timeline, version.id);
   }
 
   const open = flags.filter((f) => f.status === 'open');

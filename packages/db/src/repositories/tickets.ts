@@ -317,6 +317,10 @@ export async function ticketQueue(
            and e.ticket_id = t.id
            and e.ticket_version_id = l.version_id
            and e.event = 'marked_ready'
+           and (e.backfilled or exists (
+           select 1 from readiness_events a
+           where a.tenant_id = e.tenant_id and a.ticket_version_id = e.ticket_version_id
+             and a.event = 'analysis_complete' and a.occurred_at <= e.occurred_at))
        ) as ready
      from tickets t
      left join latest l on l.ticket_id = t.id
