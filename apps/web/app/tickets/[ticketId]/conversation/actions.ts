@@ -38,7 +38,6 @@ import {
   declineAgentProposal,
   findSession,
   getTicket,
-  isOverTokenCap,
   latestVersion,
   listAgentMessages,
   recordAgentTurn,
@@ -46,6 +45,7 @@ import {
   releaseAgentTurn,
   revealedFlags,
   startAgentConversation,
+  tryReserveTokenCap,
   type AgentCallInput,
   type FlagRow,
 } from '@/lib/repos';
@@ -92,7 +92,7 @@ async function context(formData: FormData): Promise<Context> {
 }
 
 /** A failure the reviewer can act on, as opposed to a bug. Its message is shown as-is. */
-class SendError extends Error {}
+class SendError extends Error { }
 
 export async function sendAgentMessage(
   _previous: SendState,
@@ -113,100 +113,105 @@ export async function sendAgentMessage(
 
     const { ticket, version, flag } = await loadOpenFlag(ctx, flagId);
 
-    if (await isOverTokenCap(ctx.tenantId)) {
+    const tokenReservation = await tryReserveTokenCap(ctx.tenantId, 4_000);
+    if (!tokenReservation.allowed) {
       throw new SendError(
         'This workspace is over its monthly token cap, so the agent is paused until the cap resets. You can still decide flags on the Review tab.'
       );
     }
 
-    const conversation = await startAgentConversation(ctx.tenantId, {
-      ticketId: ctx.ticketId,
-      ticketVersionId: version.id,
-      userId: ctx.userId,
-    });
-
-    let settings: ReturnType<typeof agentSettings>;
     try {
-      settings = agentSettings();
-    } catch (error) {
-      throw new SendError(describeModelFailure(error));
-    }
-    const spent = await agentConversationCost(ctx.tenantId, conversation.id);
-    if (spent >= settings.costCeilingUsd) {
-      throw new SendError(
-        `This conversation has reached its cost ceiling ($${settings.costCeilingUsd.toFixed(2)}), so the agent stops here. Decide the remaining flags on the Review tab.`
-      );
-    }
+      const conversation = await startAgentConversation(ctx.tenantId, {
+        ticketId: ctx.ticketId,
+        ticketVersionId: version.id,
+        userId: ctx.userId,
+      });
 
-    // A claim is only treated as abandoned once it has outlived any legitimate turn.
-    const staleAfterMs = agentTurnDeadlineMs(settings) + 15_000;
-    const claim = await claimAgentTurn(ctx.tenantId, conversation.id, ctx.userId, staleAfterMs);
-    if (!claim) {
-      throw new SendError(
-        'The agent is still answering your previous message. Wait for it, then send again.'
-      );
-    }
-
-    try {
-      const history = (await listAgentMessages(ctx.tenantId, conversation.id)).filter(
-        (m) => m.flag_id === flag.id && m.kind !== 'decision'
-      );
-      const agentFlag = toAgentFlag(flag);
-      const opener = history.some((m) => m.kind === 'question') ? null : openingQuestion(agentFlag);
-
-      let outcome: Awaited<ReturnType<typeof agentTurn>>;
+      let settings: ReturnType<typeof agentSettings>;
       try {
-        outcome = await agentTurn({
-          ticket: {
-            externalKey: ticket.external_key,
-            title: version.title,
-            descriptionText: version.description_text,
-            acceptanceCriteriaText: version.acceptance_criteria_text,
-          },
-          flag: agentFlag,
-          history: [
-            ...(opener ? [{ role: 'agent' as const, content: opener }] : []),
-            ...history.map((m) => ({ role: m.role, content: m.content })),
-          ],
-          message: message.text,
-        });
+        settings = agentSettings();
       } catch (error) {
-        // Billed attempts are logged even when the turn failed (schema or transport).
-        const calls = callsFromError(error).map(toCallInput);
-        await recordFailedAgentTurn(ctx.tenantId, conversation.id, claim, calls);
         throw new SendError(describeModelFailure(error));
       }
+      const spent = await agentConversationCost(ctx.tenantId, conversation.id);
+      if (spent >= settings.costCeilingUsd) {
+        throw new SendError(
+          `This conversation has reached its cost ceiling ($${settings.costCeilingUsd.toFixed(2)}), so the agent stops here. Decide the remaining flags on the Review tab.`
+        );
+      }
+
+      // A claim is only treated as abandoned once it has outlived any legitimate turn.
+      const staleAfterMs = agentTurnDeadlineMs(settings) + 15_000;
+      const claim = await claimAgentTurn(ctx.tenantId, conversation.id, ctx.userId, staleAfterMs);
+      if (!claim) {
+        throw new SendError(
+          'The agent is still answering your previous message. Wait for it, then send again.'
+        );
+      }
 
       try {
-        await recordAgentTurn(ctx.tenantId, {
-          conversationId: conversation.id,
-          claimToken: claim,
-          flagId: flag.id,
-          userId: ctx.userId,
-          opener,
-          pmMessage: message.text,
-          reply: outcome.reply,
-          proposal: outcome.proposal,
-          calls: outcome.calls.map(toCallInput),
-        });
-      } catch (error) {
-        // The reply was not saved (its claim was taken over, or the write failed), but the
-        // model call was made and billed: log it so spend and the cost ceiling stay true.
-        await recordFailedAgentTurn(
-          ctx.tenantId,
-          conversation.id,
-          claim,
-          outcome.calls.map(toCallInput)
-        ).catch((logError: unknown) =>
-          console.error('[conversation] could not log a refused turn', logError)
+        const history = (await listAgentMessages(ctx.tenantId, conversation.id)).filter(
+          (m) => m.flag_id === flag.id && m.kind !== 'decision'
         );
+        const agentFlag = toAgentFlag(flag);
+        const opener = history.some((m) => m.kind === 'question') ? null : openingQuestion(agentFlag);
+
+        let outcome: Awaited<ReturnType<typeof agentTurn>>;
+        try {
+          outcome = await agentTurn({
+            ticket: {
+              externalKey: ticket.external_key,
+              title: version.title,
+              descriptionText: version.description_text,
+              acceptanceCriteriaText: version.acceptance_criteria_text,
+            },
+            flag: agentFlag,
+            history: [
+              ...(opener ? [{ role: 'agent' as const, content: opener }] : []),
+              ...history.map((m) => ({ role: m.role, content: m.content })),
+            ],
+            message: message.text,
+          });
+        } catch (error) {
+          // Billed attempts are logged even when the turn failed (schema or transport).
+          const calls = callsFromError(error).map(toCallInput);
+          await recordFailedAgentTurn(ctx.tenantId, conversation.id, claim, calls);
+          throw new SendError(describeModelFailure(error));
+        }
+
+        try {
+          await recordAgentTurn(ctx.tenantId, {
+            conversationId: conversation.id,
+            claimToken: claim,
+            flagId: flag.id,
+            userId: ctx.userId,
+            opener,
+            pmMessage: message.text,
+            reply: outcome.reply,
+            proposal: outcome.proposal,
+            calls: outcome.calls.map(toCallInput),
+          });
+        } catch (error) {
+          // The reply was not saved (its claim was taken over, or the write failed), but the
+          // model call was made and billed: log it so spend and the cost ceiling stay true.
+          await recordFailedAgentTurn(
+            ctx.tenantId,
+            conversation.id,
+            claim,
+            outcome.calls.map(toCallInput)
+          ).catch((logError: unknown) =>
+            console.error('[conversation] could not log a refused turn', logError)
+          );
+          throw error;
+        }
+      } catch (error) {
+        // Covers a failure after the claim that was not already released (e.g. the DB
+        // write). Releasing twice is harmless, and only ever releases this turn's claim.
+        await releaseAgentTurn(ctx.tenantId, conversation.id, claim).catch(() => undefined);
         throw error;
       }
-    } catch (error) {
-      // Covers a failure after the claim that was not already released (e.g. the DB
-      // write). Releasing twice is harmless, and only ever releases this turn's claim.
-      await releaseAgentTurn(ctx.tenantId, conversation.id, claim).catch(() => undefined);
-      throw error;
+    } finally {
+      tokenReservation.release();
     }
   } catch (error) {
     if (error instanceof SendError || error instanceof AgentConversationError) {

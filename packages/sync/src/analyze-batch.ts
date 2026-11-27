@@ -25,6 +25,7 @@ import {
   notifyTicketEvent,
   recordAnalysis,
   recordFailedAnalysis,
+  tryReserveTokenCap,
   versionsForAnalysis,
   type JobRow,
 } from '@specfix/db';
@@ -69,7 +70,7 @@ export async function runAnalyzeBatch(
   if (!deps.modelPriced()) {
     throw new PermanentJobError(
       `Analysis model "${getConfig().modelJudge}" has no known price, so its spend cannot be ` +
-        'tracked. Add it to MODEL_PRICING in packages/core/src/cost.ts.'
+      'tracked. Add it to MODEL_PRICING in packages/core/src/cost.ts.'
     );
   }
   const ids = Array.isArray(job.payload.versionIds)
@@ -94,12 +95,17 @@ export async function runAnalyzeBatch(
       progress.skipped += 1;
       continue;
     }
-    if (await deps.overCap(tenantId)) {
-      progress.stopped = 'token_cap';
-      break;
-    }
     if (progress.costUsd >= deps.maxUsd) {
       progress.stopped = 'batch_budget';
+      break;
+    }
+
+    const tokenReservation =
+      deps.overCap === isOverTokenCap
+        ? await tryReserveTokenCap(tenantId, 6_000)
+        : { allowed: !(await deps.overCap(tenantId)), release: () => { } };
+    if (!tokenReservation.allowed) {
+      progress.stopped = 'token_cap';
       break;
     }
 
@@ -148,6 +154,8 @@ export async function runAnalyzeBatch(
       });
       progress.failed += 1;
       progress.costUsd += calls.reduce((sum, c) => sum + c.costUsd, 0);
+    } finally {
+      tokenReservation.release();
     }
     await checkpointJob(tenantId, job.id, { progress: { ...progress } });
   }

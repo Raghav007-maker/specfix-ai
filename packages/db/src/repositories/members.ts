@@ -125,6 +125,9 @@ export async function changeMemberRole(
   if (input.userId === actorId) throw new MembershipError('You cannot change your own role.');
 
   await tx(async (client) => {
+    // Lock the tenant row before memberships (same lock order as addMemberByEmail) so
+    // demoting an owner to admin/reviewer cannot bypass seat limits or deadlock.
+    const roomRefusal = input.role !== 'owner' ? await memberRoomRefusal(client, tenantId) : null;
     const actor = await lockedRole(client, tenantId, actorId);
     const target = await lockedRole(client, tenantId, input.userId);
     if (!target) throw new MembershipError('That person is not a member of this workspace.');
@@ -132,7 +135,10 @@ export async function changeMemberRole(
       throw new MembershipError(`You cannot change this member to ${input.role}.`);
     }
     if (target === input.role) return;
-    if (target === 'owner') await requireAnotherOwner(client, tenantId);
+    if (target === 'owner') {
+      await requireAnotherOwner(client, tenantId);
+      if (roomRefusal) throw new MembershipError(roomRefusal);
+    }
 
     await client.query(`update memberships set role = $3 where tenant_id = $1 and user_id = $2`, [
       tenantId,
